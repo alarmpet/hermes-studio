@@ -17,6 +17,7 @@ const subtitleFontSize = document.querySelector("#subtitleFontSize");
 const subtitleOutline = document.querySelector("#subtitleOutline");
 const subtitleShadow = document.querySelector("#subtitleShadow");
 const subtitlePreviewText = document.querySelector("#subtitlePreviewText");
+const mockMediaModeInput = document.querySelector("#mockMediaMode");
 const thumbnailProviderName = "ChatGPT";
 
 const subtitlePresetDefaults = {
@@ -27,6 +28,7 @@ const subtitlePresetDefaults = {
 
 let latestOutputPath = "";
 let outputDir = "";
+let appIsPackaged = false;
 
 function appendLog(message, detail) {
   const row = document.createElement("div");
@@ -62,6 +64,7 @@ function readJobInput() {
       marginV: subtitlePresetDefaults[subtitleStyleId.value]?.marginV || 78,
     },
     speechSpeed: Number(speed.value),
+    mockMediaMode: !appIsPackaged && mockMediaModeInput.checked,
     thumbnailMode: document.querySelector("#chatgptThumbnail").checked ? thumbnailProviderName.toLowerCase() : "auto",
     uploadEnabled: document.querySelector("#uploadEnabled").checked,
     privacyStatus: "private",
@@ -71,6 +74,11 @@ function readJobInput() {
 async function loadConfig() {
   const config = await window.hermes.getConfig();
   outputDir = config.outputDir;
+  appIsPackaged = Boolean(config.isPackaged);
+  if (appIsPackaged) {
+    mockMediaModeInput.checked = false;
+    mockMediaModeInput.disabled = true;
+  }
   rootPath.textContent = config.root;
   await populateVoicePresets();
   updateSubtitlePreview();

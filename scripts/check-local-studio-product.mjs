@@ -13,6 +13,7 @@ const renderer = readFileSync(resolve(root, "electron/renderer/app.js"), "utf8")
 const styles = readFileSync(resolve(root, "electron/renderer/styles.css"), "utf8");
 const authService = readFileSync(resolve(root, "electron/services/auth-service.mjs"), "utf8");
 const browserProfileService = readFileSync(resolve(root, "electron/services/browser-profile-service.mjs"), "utf8");
+const jobService = readFileSync(resolve(root, "electron/services/youtube-job-service.mjs"), "utf8");
 const planner = readFileSync(resolve(root, "electron/services/script-planner.mjs"), "utf8");
 const voicePresets = readFileSync(resolve(root, "electron/services/voice-presets.mjs"), "utf8");
 const schema = readFileSync(resolve(root, "youtube-job-schema.mjs"), "utf8");
@@ -65,5 +66,10 @@ assert.match(renderer, /updateSubtitlePreview/, "renderer should update subtitle
 assert.match(workflow, /subtitleAss/, "workflow should write subtitle ASS render options");
 assert.match(renderScript, /subtitleForceStyle/, "render script should derive ffmpeg subtitle style from options");
 assert.match(styles, /text-shadow:\s*[\s\S]*-2px -2px 0 #000/, "subtitle preview should use multi-direction outline shadow");
+assert.match(jobService, /runYouTubeJob/, "desktop job service should use shared runner");
+assert.match(jobService, /mockMediaMode/, "desktop job service should support explicit mock media mode");
+assert.match(jobService, /generateFlowMedia|flow/i, "desktop job service should call Flow stage by default");
+assert.match(renderer, /mockMediaMode/, "renderer should expose explicit Mock Media Mode for development");
+assert.doesNotMatch(main, /createSyntheticSceneVideo/, "main should not contain synthetic scene generator in product path");
 
 console.log(JSON.stringify({ ok: true, checked: "local-studio-product" }));

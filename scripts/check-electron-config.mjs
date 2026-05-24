@@ -11,6 +11,7 @@ const html = readFileSync(resolve(root, "electron/renderer/index.html"), "utf8")
 const renderer = readFileSync(resolve(root, "electron/renderer/app.js"), "utf8");
 const styles = readFileSync(resolve(root, "electron/renderer/styles.css"), "utf8");
 const pathResolver = readFileSync(resolve(root, "electron/services/path-resolver.mjs"), "utf8");
+const jobService = readFileSync(resolve(root, "electron/services/youtube-job-service.mjs"), "utf8");
 
 assert.equal(packageJson.main, "electron/main.mjs", "Electron main entry should be configured");
 assert.ok(packageJson.scripts["electron:dev"], "electron:dev script should exist");
@@ -30,8 +31,9 @@ for (const file of [
 
 assert.match(main, /BrowserWindow/, "Main process should create a BrowserWindow");
 assert.match(main, /ipcMain\.handle\("youtube:createJob"/, "Main process should handle YouTube job creation");
-assert.match(main, /runYouTubeJob/, "Main process should call the shared YouTube runner");
-assert.match(main, /normalizeYouTubeJobRequest/, "Main process should normalize desktop job requests");
+assert.match(main, /createYouTubeJob/, "Main process should delegate YouTube jobs to the desktop job service");
+assert.match(jobService, /runYouTubeJob/, "Desktop job service should call the shared YouTube runner");
+assert.match(jobService, /normalizeYouTubeJobRequest/, "Desktop job service should normalize desktop job requests");
 assert.match(main, /getRuntimePaths/, "Main process should use centralized runtime paths");
 assert.match(pathResolver, /app\.isPackaged/, "Path resolver should branch packaged runtime paths");
 assert.match(pathResolver, /app\.getPath\("userData"\)/, "Packaged app should write outputs to userData");
