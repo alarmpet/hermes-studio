@@ -28,6 +28,9 @@ assert.match(draftService, /response_format:\s*\{\s*type:\s*"json_object"\s*\}/,
 assert.match(draftService, /fetchArticleSource/, "desktop draft service should support URL article sources");
 assert.match(flowAutomation, /launchPersistentContext/, "Flow automation should use the authenticated persistent profile");
 assert.match(flowAutomation, /Flow did not expose a new video URL/, "Flow automation should save diagnostic evidence when no video is exposed");
+assert.match(flowAutomation, /scene_\$\{sceneOrder\}_flow_submitted\.png/, "Flow automation should save a post-submit screenshot");
+assert.match(flowAutomation, /scene_\$\{sceneOrder\}_flow_waiting\.png/, "Flow automation should save a waiting screenshot");
+assert.match(service, /onProgress:\s*\(\{ message, details \}\)/, "desktop service should forward Flow internal progress to the UI");
 assert.match(main, /desktop-job-failed/, "main process should emit desktop-job-failed events");
 
 console.log("Desktop progress feedback contract OK");

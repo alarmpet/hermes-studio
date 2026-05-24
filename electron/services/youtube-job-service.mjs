@@ -149,6 +149,12 @@ export async function generateFlowMedia({ scene, jobDir }, context = {}) {
       chromePath: context.chromePath || findChromeExecutable(),
       profileDir: context.paths?.flowProfileDir,
       timeoutMs: context.flowTimeoutMs,
+      onProgress: ({ message, details }) => emitJobProgress(context.emit, {
+        jobId: context.job?.id || "",
+        phase: "flow-media",
+        message,
+        details: { sceneOrder: scene.order, ...(details || {}) },
+      }),
     });
     return { path: media.path, bytes: media.bytes, contentType: media.contentType };
   } catch (error) {

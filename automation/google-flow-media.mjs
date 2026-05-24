@@ -127,6 +127,28 @@ async function configureFlowVideo(page) {
       .map((el) => ({ el, text: textOf(el), rect: el.getBoundingClientRect() }))
       .filter((item) => item.text);
     const bodyText = () => document.body?.innerText || "";
+    const openGeneratorMenu = async () => {
+      const menuOpen = bodyText().includes("Veo 3.1 - Lite")
+        && bodyText().includes(labels.video)
+        && bodyText().includes("16:9")
+        && bodyText().includes("x4");
+      if (menuOpen) return { ok: true, alreadyOpen: true };
+
+      const candidates = controls().filter((item) => {
+        const text = item.text;
+        return item.el.matches("button,[role='button']")
+          && item.rect.y > window.innerHeight * 0.72
+          && (text.includes("Nano Banana")
+            || text.includes("Veo")
+            || text.includes("crop_9_16")
+            || text.includes("1x"));
+      }).sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height));
+      const target = candidates[0];
+      if (!target) return { ok: false, reason: "Generator settings button not found" };
+      target.el.click();
+      await wait(500);
+      return { ok: true, text: target.text };
+    };
     const clickMatch = async (needles, options = {}) => {
       const lowerNeedles = needles.map((needle) => needle.toLowerCase());
       const matches = controls().filter((item) => {
@@ -147,19 +169,30 @@ async function configureFlowVideo(page) {
       await wait(options.delay ?? 300);
       return { ok: true, text: match.text };
     };
-
-    if (!(bodyText().includes(labels.video) && bodyText().includes("9:16") && bodyText().includes("16:9"))) {
-      await clickMatch(["tune", "settings", "\uc124\uc815"], { delay: 600 });
-    }
+    const opened = await openGeneratorMenu();
+    if (!opened.ok) return { ok: false, results: [opened], summary: bodyText().slice(-500) };
 
     const results = [];
     results.push(await clickMatch([labels.video, "video"]));
+    await wait(300);
+    await openGeneratorMenu();
     results.push(await clickMatch([labels.asset, "asset"]));
+    await wait(300);
+    await openGeneratorMenu();
     results.push(await clickMatch(["9:16", "crop_9_16"]));
+    await wait(300);
+    await openGeneratorMenu();
     results.push(await clickMatch(["1x"], { exact: true }));
+    await wait(300);
+    await openGeneratorMenu();
+    if (bodyText().includes("Veo 3.1 - Lite")) {
+      results.push(await clickMatch(["Veo 3.1 - Lite"]));
+    }
     const text = bodyText();
-    const ok = text.includes(labels.video) && (text.includes("9:16") || text.includes("crop_9_16"));
-    return { ok: ok || results.some((item) => item.ok), results };
+    const ok = text.includes(labels.video)
+      && (text.includes("9:16") || text.includes("crop_9_16"))
+      && (text.includes("Veo") || !text.includes("Nano Banana"));
+    return { ok, results, summary: text.slice(-500) };
   });
 }
 
@@ -265,11 +298,14 @@ export async function generateGoogleFlowVideoFromPrompt({
   chromePath,
   profileDir,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  onProgress,
 }) {
   assertRuntime({ chromePath, profileDir, jobDir });
   await mkdir(jobDir, { recursive: true });
+  onProgress?.({ message: `장면 ${sceneOrder} Google Flow 프로필을 준비하는 중입니다.` });
   await releaseAppManagedAuthWindow(profileDir);
 
+  onProgress?.({ message: `장면 ${sceneOrder} Google Flow 브라우저를 여는 중입니다.` });
   const context = await chromium.launchPersistentContext(profileDir, {
     executablePath: chromePath,
     headless: false,
@@ -280,43 +316,73 @@ export async function generateGoogleFlowVideoFromPrompt({
   try {
     const page = await visiblePage(context);
     page.setDefaultTimeout(60000);
+    onProgress?.({ message: `장면 ${sceneOrder} Google Flow 프로젝트를 여는 중입니다.` });
     await ensureFlowProject(page);
+    onProgress?.({ message: `장면 ${sceneOrder} Google Flow 설정을 확인하는 중입니다.` });
     await configureFlowVideo(page);
 
     const before = await collectMediaUrls(page);
     const beforeVideos = new Set(before.videos);
     const positions = await findPromptAndCreate(page);
 
+    onProgress?.({ message: `장면 ${sceneOrder} 프롬프트를 입력하는 중입니다.` });
     await page.mouse.click(positions.textbox.x, positions.textbox.y);
     await page.keyboard.press("Control+A");
     await page.keyboard.press("Backspace");
     await page.keyboard.insertText(prompt);
     await delay(800);
+    onProgress?.({ message: `장면 ${sceneOrder} Google Flow 생성 버튼을 클릭하는 중입니다.` });
     await page.mouse.click(positions.create.x, positions.create.y);
+    await page.screenshot({ path: join(jobDir, `scene_${sceneOrder}_flow_submitted.png`), fullPage: true }).catch(() => {});
 
     const deadline = Date.now() + timeoutMs;
     let last = null;
     let newVideos = [];
+    let nextProgressAt = Date.now();
     while (Date.now() < deadline) {
       await delay(5000);
       last = await collectMediaUrls(page);
       newVideos = last.videos.filter((url) => !beforeVideos.has(url));
       const percents = Array.from(String(last.text || "").matchAll(/(\d+)%/g)).map((match) => Number(match[1]));
+      if (Date.now() >= nextProgressAt) {
+        const remainingSeconds = Math.max(0, Math.round((deadline - Date.now()) / 1000));
+        onProgress?.({
+          message: `장면 ${sceneOrder} Google Flow 생성 대기 중입니다. 감지된 진행률: ${percents.length ? `${Math.max(...percents)}%` : "없음"}`,
+          details: {
+            sceneOrder,
+            elapsedSeconds: Math.round((timeoutMs - (deadline - Date.now())) / 1000),
+            remainingSeconds,
+            detectedVideoCount: newVideos.length,
+            detectedPercents: percents,
+          },
+        });
+        await page.screenshot({ path: join(jobDir, `scene_${sceneOrder}_flow_waiting.png`), fullPage: true }).catch(() => {});
+        nextProgressAt = Date.now() + 15000;
+      }
       if (newVideos.length > 0 && percents.length === 0) break;
     }
 
     if (!newVideos.length) {
       const screenshotPath = join(jobDir, `scene_${sceneOrder}_flow_screen.png`);
       await page.screenshot({ path: screenshotPath, fullPage: true });
+      await writeFile(join(jobDir, `scene_${sceneOrder}_flow_status.json`), JSON.stringify({
+        ok: false,
+        reason: "no-new-video-url",
+        lastText: last?.text || "",
+        screenshotPath,
+        updatedAt: new Date().toISOString(),
+      }, null, 2), "utf8");
       throw new Error(`Flow did not expose a new video URL. Screenshot: ${screenshotPath}`);
     }
 
+    onProgress?.({ message: `장면 ${sceneOrder} Google Flow 영상을 다운로드하는 중입니다.`, details: { detectedVideoCount: newVideos.length } });
     const saved = await saveMedia({
       page,
       context,
       mediaUrl: newVideos[0],
       outputPathBase: join(jobDir, `scene_${sceneOrder}_flow`),
     });
+    onProgress?.({ message: `장면 ${sceneOrder} Google Flow 영상 다운로드가 완료되었습니다.`, details: saved });
     return saved;
   } catch (error) {
     if (/user data directory is already in use|ProcessSingleton|profile.*in use/i.test(error?.message || "")) {
