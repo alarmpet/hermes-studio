@@ -100,26 +100,36 @@ ipcMain.handle("app:openPath", async (_event, targetPath) => {
 
 ipcMain.handle("youtube:createJob", async (_event, input) => {
   sendJobEvent({ type: "desktop-job-submitted", input });
-  const result = await createYouTubeJob(input, {
-    paths,
-    emit: sendJobEvent,
-    outputDir: OUTPUT_DIR,
-    ffmpegBin: FFMPEG_BIN,
-  });
-  if (result.finalVideo?.jobDir) await writeDesktopResult(result.finalVideo.jobDir, result.finalVideo);
-  latestCompletedJob = result;
-  await upsertJob(paths.jobsDir, {
-    id: result.job.id,
-    title: result.assets?.draft?.title || result.job.sourceValue,
-    sourceValue: result.job.sourceValue,
-    status: "completed",
-    jobDir: result.assets.jobDir,
-    finalPath: result.finalVideo?.finalPath,
-    thumbnailPath: result.thumbnail?.path,
-    createdAt: result.job.createdAt,
-  });
-  sendJobEvent({ type: "desktop-job-finished", jobId: result.job.id, jobDir: result.assets.jobDir });
-  return result;
+  try {
+    const result = await createYouTubeJob(input, {
+      paths,
+      emit: sendJobEvent,
+      outputDir: OUTPUT_DIR,
+      ffmpegBin: FFMPEG_BIN,
+    });
+    if (result.finalVideo?.jobDir) await writeDesktopResult(result.finalVideo.jobDir, result.finalVideo);
+    latestCompletedJob = result;
+    await upsertJob(paths.jobsDir, {
+      id: result.job.id,
+      title: result.assets?.draft?.title || result.job.sourceValue,
+      sourceValue: result.job.sourceValue,
+      status: "completed",
+      jobDir: result.assets.jobDir,
+      finalPath: result.finalVideo?.finalPath,
+      thumbnailPath: result.thumbnail?.path,
+      createdAt: result.job.createdAt,
+    });
+    sendJobEvent({ type: "desktop-job-finished", jobId: result.job.id, jobDir: result.assets.jobDir });
+    return result;
+  } catch (error) {
+    sendJobEvent({
+      type: "desktop-job-failed",
+      message: error?.message || String(error),
+      input,
+      updatedAt: new Date().toISOString(),
+    });
+    throw error;
+  }
 });
 
 ipcMain.handle("youtube:approveUpload", async () => {

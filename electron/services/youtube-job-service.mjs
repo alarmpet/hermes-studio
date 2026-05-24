@@ -5,6 +5,7 @@ import { normalizeYouTubeJobRequest } from "../../youtube-job-schema.mjs";
 import { runYouTubeJob } from "../../youtube-job-runner.mjs";
 import { generateYouTubeWorkflowAssets, renderFinalYouTubeVideo } from "../../youtube-workflow.mjs";
 import { createThumbnailForJob } from "../../pipeline/youtube-thumbnail.mjs";
+import { emitJobProgress } from "./job-progress-events.mjs";
 
 export function buildDesktopJobRequest(input = {}) {
   return normalizeYouTubeJobRequest({
@@ -35,32 +36,96 @@ export function buildDesktopJobRequest(input = {}) {
 
 export async function createYouTubeJob(input, context = {}) {
   const job = buildDesktopJobRequest(input);
+  emitJobProgress(context.emit, {
+    jobId: job.id,
+    phase: "submitted",
+    message: "작업을 접수했습니다. 입력값을 정리하는 중입니다.",
+    details: { sourceType: job.sourceType, sourceValue: job.sourceValue },
+  });
+
   const jobDir = context.jobDir || join(context.outputDir, "desktop", job.id);
   await mkdir(jobDir, { recursive: true });
 
-  const generateSceneMedia = job.options.mockMediaMode
-    ? (args) => generateMockMedia(args, context)
-    : (args) => generateFlowMedia(args, context);
+  emitJobProgress(context.emit, {
+    jobId: job.id,
+    phase: "source-research",
+    message: job.sourceType === "url" ? "URL 자료를 확인하는 중입니다." : "키워드 기반 자료를 확인하는 중입니다.",
+  });
+
+  const progressContext = { ...context, job };
+  const generateSceneMedia = async (args) => {
+    emitJobProgress(context.emit, {
+      jobId: job.id,
+      phase: "flow-media",
+      message: `장면 ${args.scene.order} 영상을 생성하는 중입니다.`,
+      details: { sceneOrder: args.scene.order, narration: args.scene.narration },
+    });
+
+    return job.options.mockMediaMode
+      ? generateMockMedia(args, progressContext)
+      : generateFlowMedia(args, progressContext);
+  };
+
+  const renderFinalVideoWithProgress = async (runnerJob, assets, runnerContext) => {
+    emitJobProgress(context.emit, {
+      jobId: runnerJob.id,
+      phase: "render",
+      message: "TTS 음성, 자막, 최종 영상을 렌더링하는 중입니다.",
+      details: { jobDir: assets.jobDir },
+    });
+    return renderFinalYouTubeVideo(runnerJob, assets, runnerContext);
+  };
+
+  emitJobProgress(context.emit, {
+    jobId: job.id,
+    phase: "script-draft",
+    message: "대본 초안과 장면 구성 정보를 생성하는 중입니다.",
+  });
 
   const result = await runYouTubeJob(job, {
     ...context,
+    job,
     jobDir,
     generateYouTubeWorkflowAssets,
-    renderFinalYouTubeVideo,
+    renderFinalYouTubeVideo: renderFinalVideoWithProgress,
     generateSceneMedia,
     renderScriptPath: context.paths?.renderScriptPath,
     finalName: `desktop-${job.options.mockMediaMode ? "mock" : "flow"}-${Date.now()}.mp4`,
   });
+  emitJobProgress(context.emit, {
+    jobId: job.id,
+    phase: "thumbnail",
+    message: "최종 영상 맥락을 반영한 썸네일을 준비하는 중입니다.",
+  });
+
   const thumbnail = await createThumbnailForJob({
     draft: result.assets.draft,
     paths: context.paths,
     jobDir,
   });
+  emitJobProgress(context.emit, {
+    jobId: job.id,
+    phase: "completed",
+    status: "completed",
+    message: "최종 영상 생성이 완료되었습니다.",
+    details: { finalPath: result.finalVideo?.finalPath, thumbnailPath: thumbnail?.path },
+  });
   return { ...result, thumbnail };
 }
 
-export async function generateFlowMedia({ scene }) {
-  throw new Error(`Google Flow media generation is required for scene ${scene.order}, but the desktop Flow automation stage is not wired yet.`);
+export async function generateFlowMedia({ scene }, context = {}) {
+  emitJobProgress(context.emit, {
+    jobId: context.job?.id || "",
+    phase: "flow-media",
+    status: "action-required",
+    message: `장면 ${scene.order} Google Flow 영상 생성 단계에서 멈췄습니다.`,
+    details: { sceneOrder: scene.order, narration: scene.narration },
+    actionRequired: {
+      title: "Google Flow 자동화 연결 필요",
+      message: "현재 패키징 앱은 Google Flow 브라우저 자동 생성/다운로드 단계가 아직 연결되지 않았습니다. 이 단계가 구현되기 전까지 실제 최종 영상 생성은 진행할 수 없습니다.",
+    },
+  });
+  throw new Error(`Google Flow automation is not wired yet for scene ${scene.order}.`);
 }
 
 export async function generateMockMedia({ scene, jobDir }, context = {}) {
