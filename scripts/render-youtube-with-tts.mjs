@@ -13,6 +13,10 @@ const JOB_DIR = process.argv[2]
   ? resolve(process.argv[2])
   : `${ROOT}/outputs/youtube/1779594807781-8151113796-700001`;
 const FINAL_NAME = process.env.HERMES_YOUTUBE_FINAL_NAME || "final-youtube-ai-news-tts-subtitled-v2.mp4";
+const RENDER_OPTIONS_PATH = join(JOB_DIR, "render-options.json");
+const RENDER_OPTIONS = existsSync(RENDER_OPTIONS_PATH)
+  ? JSON.parse(readFileSync(RENDER_OPTIONS_PATH, "utf8"))
+  : {};
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -38,6 +42,22 @@ function ts(seconds) {
 
 function escapeFilterPath(path) {
   return path.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "\\'");
+}
+
+function subtitleForceStyle() {
+  const ass = RENDER_OPTIONS.subtitleAss || {};
+  const style = {
+    FontName: ass.fontName || "Malgun Gothic",
+    FontSize: Number(ass.fontSize || 18),
+    PrimaryColour: ass.primaryColour || "&H00FFFFFF",
+    OutlineColour: ass.outlineColour || "&H00000000",
+    BorderStyle: 1,
+    Outline: Number(ass.outline ?? 2),
+    Shadow: Number(ass.shadow ?? 1),
+    Alignment: Number(ass.alignment || 2),
+    MarginV: Number(ass.marginV || 60),
+  };
+  return Object.entries(style).map(([key, value]) => `${key}=${value}`).join(",");
 }
 
 function wrapSubtitle(text, maxChars = 24) {
@@ -218,7 +238,7 @@ run(ffmpegPath, [
   mergedPath,
 ]);
 
-const subtitleFilter = `subtitles='${escapeFilterPath(srtPath)}':force_style='FontName=Malgun Gothic,FontSize=18,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,Alignment=2,MarginV=60'`;
+const subtitleFilter = `subtitles='${escapeFilterPath(srtPath)}':force_style='${subtitleForceStyle()}'`;
 run(ffmpegPath, [
   "-y",
   "-i", mergedPath,

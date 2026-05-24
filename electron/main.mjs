@@ -62,6 +62,7 @@ function buildDesktopJobRequest(input = {}) {
       voiceId: input.voiceId,
       speechSpeed: Number(input.speechSpeed || 1.08),
       subtitleStyleId: input.subtitleStyleId,
+      subtitleStyle: input.subtitleStyle || {},
       thumbnailMode: input.thumbnailMode || "auto",
       sendIntermediateMedia: false,
     },

@@ -35,6 +35,7 @@ export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
   voiceId: "male_30_announcer",
   speechSpeed: 1.06,
   subtitleStyleId: "bold-shorts",
+  subtitleStyle: {},
   aspectRatio: "9:16",
   renderQuality: "shorts-hq",
   characterMode: "consistent-presenter",

@@ -230,6 +230,32 @@ output {
   font-weight: 700;
 }
 
+.subtitle-preview {
+  position: relative;
+  min-height: 150px;
+  border-radius: 8px;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.1), rgba(15, 23, 42, 0.8)),
+    linear-gradient(135deg, #2f6f6a, #2b3340 48%, #6b3f2a);
+}
+
+#subtitlePreviewText {
+  position: absolute;
+  left: 40px;
+  right: 40px;
+  bottom: 36px;
+  color: #fff;
+  font-weight: 900;
+  text-align: center;
+  line-height: 1.12;
+  text-shadow:
+    -2px -2px 0 #000,  2px -2px 0 #000,
+    -2px  2px 0 #000,  2px  2px 0 #000,
+     0px -2px 0 #000,  0px  2px 0 #000,
+    -2px  0px 0 #000,  2px  0px 0 #000;
+}
+
 .option-row {
   display: grid;
   gap: 10px;

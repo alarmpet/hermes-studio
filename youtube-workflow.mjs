@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { planScenesFromScript } from "./electron/services/script-planner.mjs";
 import { getVoicePreset } from "./electron/services/voice-presets.mjs";
-import { SCRIPT_LENGTH_PRESETS } from "./youtube-job-schema.mjs";
+import { SCRIPT_LENGTH_PRESETS, SUBTITLE_STYLE_PRESETS } from "./youtube-job-schema.mjs";
 
 const MIN_SCENES = 3;
 const ROOT = process.env.HERMES_ROOT || "C:/Users/amd/hermes";
@@ -130,6 +130,7 @@ export function resolveYouTubeJobDir(job, context = {}) {
 export function buildRenderOptions(job) {
   const preset = SCRIPT_LENGTH_PRESETS[job.options.scriptLengthPreset] || SCRIPT_LENGTH_PRESETS.standard;
   const voicePreset = getVoicePreset(job.options.voiceId);
+  const subtitlePreset = SUBTITLE_STYLE_PRESETS.find((item) => item.id === job.options.subtitleStyleId) || SUBTITLE_STYLE_PRESETS[0];
   const targetSeconds = job.options.scriptLengthMode === "custom"
     ? Number(job.options.customDurationSeconds || preset.targetSeconds)
     : preset.targetSeconds;
@@ -141,6 +142,7 @@ export function buildRenderOptions(job) {
     pitch: voicePreset.pitch,
     speechSpeed: Number(job.options.speechSpeed || voicePreset.speed),
     subtitleStyleId: job.options.subtitleStyleId,
+    subtitleAss: { ...subtitlePreset.ass, ...(job.options.subtitleStyle || {}) },
     aspectRatio: job.options.aspectRatio,
     renderQuality: job.options.renderQuality,
     scriptLengthPreset: job.options.scriptLengthPreset,

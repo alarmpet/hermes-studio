@@ -97,10 +97,29 @@
               </div>
 
               <div class="field-group">
+                <label for="subtitleFontSize">자막 크기</label>
+                <input id="subtitleFontSize" type="number" min="14" max="42" value="24">
+              </div>
+
+              <div class="field-group">
+                <label for="subtitleOutline">자막 테두리</label>
+                <input id="subtitleOutline" type="number" min="0" max="8" value="4">
+              </div>
+
+              <div class="field-group">
+                <label for="subtitleShadow">자막 그림자</label>
+                <input id="subtitleShadow" type="number" min="0" max="4" value="1">
+              </div>
+
+              <div class="field-group">
                 <label for="speechSpeed">음성 속도</label>
                 <input id="speechSpeed" type="range" min="0.9" max="1.2" value="1.08" step="0.01">
                 <output id="speedValue">1.08x</output>
               </div>
+            </div>
+
+            <div class="subtitle-preview" aria-label="Subtitle preview">
+              <div id="subtitlePreviewText">최신 AI 뉴스 핵심만 빠르게 정리합니다</div>
             </div>
 
             <div class="option-row">

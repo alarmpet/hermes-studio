@@ -10,6 +10,7 @@ const main = readFileSync(resolve(root, "electron/main.mjs"), "utf8");
 const preload = readFileSync(resolve(root, "electron/preload.mjs"), "utf8");
 const html = readFileSync(resolve(root, "electron/renderer/index.html"), "utf8");
 const renderer = readFileSync(resolve(root, "electron/renderer/app.js"), "utf8");
+const styles = readFileSync(resolve(root, "electron/renderer/styles.css"), "utf8");
 const authService = readFileSync(resolve(root, "electron/services/auth-service.mjs"), "utf8");
 const browserProfileService = readFileSync(resolve(root, "electron/services/browser-profile-service.mjs"), "utf8");
 const planner = readFileSync(resolve(root, "electron/services/script-planner.mjs"), "utf8");
@@ -17,6 +18,7 @@ const voicePresets = readFileSync(resolve(root, "electron/services/voice-presets
 const schema = readFileSync(resolve(root, "youtube-job-schema.mjs"), "utf8");
 const workflow = readFileSync(resolve(root, "youtube-workflow.mjs"), "utf8");
 const ttsScript = readFileSync(resolve(root, "scripts/make-scenes-tts.py"), "utf8");
+const renderScript = readFileSync(resolve(root, "scripts/render-youtube-with-tts.mjs"), "utf8");
 
 assert.match(pathResolver, /getRuntimePaths/, "path resolver should export getRuntimePaths");
 assert.match(pathResolver, /app\.getPath\("userData"\)/, "packaged app should use userData");
@@ -57,5 +59,11 @@ assert.match(renderer, /populateVoicePresets/, "renderer should populate voice p
 assert.match(workflow, /engineVoice/, "render options should include engine voice mapping");
 assert.match(ttsScript, /render-options\.json/, "TTS should read render options");
 assert.match(ttsScript, /inspect\.signature/, "TTS script should detect optional pitch support before passing pitch");
+assert.match(html, /subtitleFontSize/, "renderer should expose subtitle size control");
+assert.match(html, /subtitlePreviewText/, "renderer should include subtitle preview text");
+assert.match(renderer, /updateSubtitlePreview/, "renderer should update subtitle preview");
+assert.match(workflow, /subtitleAss/, "workflow should write subtitle ASS render options");
+assert.match(renderScript, /subtitleForceStyle/, "render script should derive ffmpeg subtitle style from options");
+assert.match(styles, /text-shadow:\s*[\s\S]*-2px -2px 0 #000/, "subtitle preview should use multi-direction outline shadow");
 
 console.log(JSON.stringify({ ok: true, checked: "local-studio-product" }));

@@ -12,7 +12,18 @@ const clearLogBtn = document.querySelector("#clearLogBtn");
 const generateBtn = document.querySelector("#generateBtn");
 const authStatusBox = document.querySelector("#authStatusBox");
 const authSummary = document.querySelector("#authSummary");
+const subtitleStyleId = document.querySelector("#subtitleStyleId");
+const subtitleFontSize = document.querySelector("#subtitleFontSize");
+const subtitleOutline = document.querySelector("#subtitleOutline");
+const subtitleShadow = document.querySelector("#subtitleShadow");
+const subtitlePreviewText = document.querySelector("#subtitlePreviewText");
 const thumbnailProviderName = "ChatGPT";
+
+const subtitlePresetDefaults = {
+  "clean-news": { fontSize: 18, outline: 2, shadow: 1, marginV: 60 },
+  "bold-shorts": { fontSize: 24, outline: 4, shadow: 1, marginV: 78 },
+  minimal: { fontSize: 17, outline: 1, shadow: 0, marginV: 54 },
+};
 
 let latestOutputPath = "";
 let outputDir = "";
@@ -43,7 +54,13 @@ function readJobInput() {
     customDurationSeconds: Number(document.querySelector("#customDurationSeconds").value || 90),
     sceneStrategy: "sentence-proportional",
     voiceId: voiceSelect.value,
-    subtitleStyleId: document.querySelector("#subtitleStyleId").value,
+    subtitleStyleId: subtitleStyleId.value,
+    subtitleStyle: {
+      fontSize: Number(subtitleFontSize.value || 24),
+      outline: Number(subtitleOutline.value || 4),
+      shadow: Number(subtitleShadow.value || 1),
+      marginV: subtitlePresetDefaults[subtitleStyleId.value]?.marginV || 78,
+    },
     speechSpeed: Number(speed.value),
     thumbnailMode: document.querySelector("#chatgptThumbnail").checked ? thumbnailProviderName.toLowerCase() : "auto",
     uploadEnabled: document.querySelector("#uploadEnabled").checked,
@@ -56,6 +73,7 @@ async function loadConfig() {
   outputDir = config.outputDir;
   rootPath.textContent = config.root;
   await populateVoicePresets();
+  updateSubtitlePreview();
   appendLog("App ready", config);
   await renderAuthStatus();
 }
@@ -96,6 +114,36 @@ voiceSelect.addEventListener("change", () => {
   speed.value = presetSpeed;
   speedValue.textContent = `${Number(speed.value).toFixed(2)}x`;
 });
+
+subtitleStyleId.addEventListener("change", () => {
+  const preset = subtitlePresetDefaults[subtitleStyleId.value] || subtitlePresetDefaults["bold-shorts"];
+  subtitleFontSize.value = preset.fontSize;
+  subtitleOutline.value = preset.outline;
+  subtitleShadow.value = preset.shadow;
+  updateSubtitlePreview();
+});
+
+for (const input of [subtitleFontSize, subtitleOutline, subtitleShadow]) {
+  input.addEventListener("input", updateSubtitlePreview);
+}
+
+function updateSubtitlePreview() {
+  const outline = Math.max(0, Number(subtitleOutline.value || 0));
+  const shadow = Math.max(0, Number(subtitleShadow.value || 0));
+  subtitlePreviewText.style.fontSize = `${Number(subtitleFontSize.value || 24)}px`;
+  subtitlePreviewText.style.textShadow = buildSubtitleShadow(outline, shadow);
+}
+
+function buildSubtitleShadow(outline, shadow) {
+  const shadows = [];
+  for (const x of [-outline, 0, outline]) {
+    for (const y of [-outline, 0, outline]) {
+      if (x || y) shadows.push(`${x}px ${y}px 0 #000`);
+    }
+  }
+  if (shadow) shadows.push(`0 ${shadow}px ${shadow}px rgba(0,0,0,.75)`);
+  return shadows.join(", ");
+}
 
 clearLogBtn.addEventListener("click", () => {
   consoleLog.replaceChildren();
