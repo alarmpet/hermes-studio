@@ -70,7 +70,7 @@ ipcMain.handle("auth:status", async () => {
 
 ipcMain.handle("auth:start", async (_event, target) => {
   const config = await loadConfig(paths.configPath);
-  const result = await startAuth(target, { config, paths });
+  const result = await startAuth(target, { config, paths, openExternal: (url) => shell.openExternal(url) });
   const nextConfig = {
     ...config,
     auth: {

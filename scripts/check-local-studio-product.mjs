@@ -97,6 +97,9 @@ assert.ok(packageJson.dependencies.googleapis, "googleapis should be a runtime d
 assert.match(pathResolver, /youtubeTokenPath/, "path resolver should define YouTube token path");
 assert.match(youtubeAuth, /YOUTUBE_SCOPES/, "YouTube auth should declare required scopes");
 assert.match(youtubeAuth, /waitForOAuthCode/, "YouTube auth should include loopback OAuth code receiver");
+assert.match(youtubeAuth, /startYouTubeOAuth/, "YouTube auth should start browser OAuth exchange");
+assert.match(youtubeAuth, /generateAuthUrl/, "YouTube auth should generate Google consent URL");
+assert.match(youtubeAuth, /getToken/, "YouTube auth should exchange code for token");
 assert.match(youtubeAuth, /127\.0\.0\.1/, "OAuth receiver should bind to localhost");
 assert.match(youtubeUpload, /uploadVideoToYouTube/, "YouTube upload service should expose upload function");
 assert.match(youtubeUpload, /containsSyntheticMedia/, "YouTube upload metadata should preserve synthetic media flag");
@@ -104,6 +107,7 @@ assert.match(preload, /youtubeApproveUpload/, "preload should expose upload appr
 assert.match(html, /approveUploadBtn/, "renderer should include upload approval button");
 assert.match(renderer, /youtubeApproveUpload/, "renderer should call upload approval IPC");
 assert.match(authService, /client_secrets\.json/, "YouTube auth should guide users to client_secrets.json");
+assert.match(authService, /startYouTubeOAuth/, "auth service should run YouTube OAuth when client secrets exist");
 assert.match(renderer, /handleYouTubeAuthResult/, "renderer should visibly handle YouTube auth setup results");
 assert.match(renderer, /openPath\(result\.setupDir\)/, "renderer should open setup folder when YouTube client secrets are missing");
 assert.match(healthCheck, /validateTtsPath/, "health check should validate external Supertonic TTS path");

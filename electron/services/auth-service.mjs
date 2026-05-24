@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { startYouTubeOAuth } from "../../pipeline/youtube-auth.mjs";
 import { claimBrowserProfile, findChromeExecutable, writeBrowserProfileLock } from "./browser-profile-service.mjs";
 
 export const AUTH_TARGETS = {
@@ -40,7 +41,7 @@ export function openPersistentChrome({ chromePath, profileDir, url }) {
   return { ok: true, pid: child.pid, profileDir, url };
 }
 
-export async function startAuth(target, { config, paths }) {
+export async function startAuth(target, { config, paths, openExternal }) {
   if (!AUTH_TARGETS[target]) throw new Error(`Unknown auth target: ${target}`);
   if (target === "youtube") {
     if (!existsSync(paths.youtubeClientSecretsPath)) {
@@ -53,14 +54,12 @@ export async function startAuth(target, { config, paths }) {
         message: "YouTube 업로드 인증을 시작하려면 Google OAuth client_secrets.json 파일을 앱 데이터 폴더에 넣어야 합니다.",
       };
     }
-    return {
-      ok: false,
-      target,
-      status: "oauth-not-configured",
+    if (typeof openExternal !== "function") throw new Error("openExternal is required for YouTube OAuth.");
+    return startYouTubeOAuth({
+      clientSecretsPath: paths.youtubeClientSecretsPath,
       tokenPath: paths.youtubeTokenPath,
-      setupDir: paths.userData,
-      message: "YouTube OAuth client secrets file was found. Browser OAuth exchange is the next setup step.",
-    };
+      openExternal,
+    });
   }
 
   const chromePath = config.chromePath || findChromeExecutable();

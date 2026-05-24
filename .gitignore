@@ -21,6 +21,8 @@ telegram-flow-news-config.json
 telegram.txt
 openrouter.txt.txt
 brave.txt
+client_secrets.json
+youtube-token.json
 *.secret
 *.token
 *.key
