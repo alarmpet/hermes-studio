@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Hermes YouTube Studio</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">H</div>
+          <div>
+            <h1>Hermes Studio</h1>
+            <p>YouTube automation console</p>
+          </div>
+        </div>
+        <nav class="nav-list" aria-label="Main">
+          <button class="nav-item active" type="button">Create</button>
+          <button class="nav-item" type="button">Jobs</button>
+          <button class="nav-item" type="button">Settings</button>
+        </nav>
+        <div class="system-box">
+          <span class="status-dot"></span>
+          <div>
+            <strong>Desktop Preview</strong>
+            <span id="rootPath">Loading paths...</span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <h2>YouTube Shorts Generator</h2>
+            <p>키워드나 URL을 입력하고 대본 길이, 음성, 자막 스타일을 선택하세요.</p>
+          </div>
+          <button id="openOutputBtn" class="icon-button" type="button" title="Open output folder" aria-label="Open output folder">
+            <span>⌕</span>
+          </button>
+        </header>
+
+        <section class="content-grid">
+          <form id="jobForm" class="panel">
+            <div class="field-group">
+              <label for="sourceType">입력 방식</label>
+              <div class="segmented">
+                <label><input type="radio" name="sourceType" value="keyword" checked><span>Keyword</span></label>
+                <label><input type="radio" name="sourceType" value="url"><span>URL</span></label>
+              </div>
+            </div>
+
+            <div class="field-group">
+              <label for="sourceValue">키워드 또는 URL</label>
+              <textarea id="sourceValue" rows="5" placeholder="예: 최신 AI 뉴스"></textarea>
+            </div>
+
+            <div class="form-grid">
+              <div class="field-group">
+                <label for="scriptLengthPreset">대본 분량</label>
+                <select id="scriptLengthPreset">
+                  <option value="micro">30초 / 3 scenes</option>
+                  <option value="short">45초 / 4 scenes</option>
+                  <option value="standard" selected>60초 / 5 scenes</option>
+                  <option value="extended">90초 / 6 scenes</option>
+                </select>
+              </div>
+
+              <div class="field-group">
+                <label for="voiceId">음성</label>
+                <select id="voiceId">
+                  <option value="M1" selected>남성 뉴스톤</option>
+                  <option value="F1">여성 뉴스톤</option>
+                  <option value="M2">남성 스토리톤</option>
+                </select>
+              </div>
+
+              <div class="field-group">
+                <label for="subtitleStyleId">자막 스타일</label>
+                <select id="subtitleStyleId">
+                  <option value="bold-shorts" selected>Bold Shorts</option>
+                  <option value="clean-news">Clean News</option>
+                  <option value="minimal">Minimal</option>
+                </select>
+              </div>
+
+              <div class="field-group">
+                <label for="speechSpeed">음성 속도</label>
+                <input id="speechSpeed" type="range" min="0.9" max="1.2" value="1.08" step="0.01">
+                <output id="speedValue">1.08x</output>
+              </div>
+            </div>
+
+            <div class="option-row">
+              <label class="switch">
+                <input id="uploadEnabled" type="checkbox">
+                <span></span>
+                YouTube 업로드 승인 단계 포함
+              </label>
+              <label class="switch">
+                <input id="chatgptThumbnail" type="checkbox" checked>
+                <span></span>
+                ChatGPT 썸네일 생성
+              </label>
+            </div>
+
+            <div class="actions">
+              <button id="generateBtn" class="primary-button" type="submit">Generate Final Video</button>
+              <button id="clearLogBtn" class="secondary-button" type="button">Clear Console</button>
+            </div>
+          </form>
+
+          <section class="panel console-panel">
+            <div class="panel-header">
+              <h3>Console</h3>
+              <span id="jobState">Idle</span>
+            </div>
+            <div id="consoleLog" class="console-log" aria-live="polite"></div>
+            <div class="result-box">
+              <span>Latest output</span>
+              <button id="latestOutput" type="button" disabled>No job yet</button>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>

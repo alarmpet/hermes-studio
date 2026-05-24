@@ -1,4 +1,5 @@
 node_modules/
+dist-electron/
 .aistudio-browser-profile/
 outputs/
 charts/
