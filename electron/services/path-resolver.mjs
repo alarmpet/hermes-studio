@@ -23,6 +23,8 @@ export function getRuntimePaths() {
     outputDir: join(runtimeRoot, "outputs"),
     configPath: join(userData, "config.json"),
     jobsDir: join(userData, "jobs"),
+    youtubeTokenPath: join(userData, "youtube-token.json"),
+    youtubeClientSecretsPath: join(userData, "client_secrets.json"),
     chatgptProfileDir: join(userData, "browser-profiles", "chatgpt-profile"),
     flowProfileDir: join(userData, "browser-profiles", "flow-profile"),
     geminiProfileDir: join(userData, "browser-profiles", "gemini-profile"),

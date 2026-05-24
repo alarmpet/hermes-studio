@@ -12,6 +12,7 @@ const rootPath = document.querySelector("#rootPath");
 const openOutputBtn = document.querySelector("#openOutputBtn");
 const clearLogBtn = document.querySelector("#clearLogBtn");
 const generateBtn = document.querySelector("#generateBtn");
+const approveUploadBtn = document.querySelector("#approveUploadBtn");
 const authStatusBox = document.querySelector("#authStatusBox");
 const authSummary = document.querySelector("#authSummary");
 const subtitleStyleId = document.querySelector("#subtitleStyleId");
@@ -169,6 +170,11 @@ openOutputBtn.addEventListener("click", async () => {
 latestOutput.addEventListener("click", async () => {
   if (!latestOutputPath) return;
   await window.hermes.openPath(latestOutputPath);
+});
+
+approveUploadBtn.addEventListener("click", async () => {
+  const result = await window.hermes.youtubeApproveUpload();
+  appendLog("Upload approval", result);
 });
 
 refreshJobsBtn.addEventListener("click", renderJobs);

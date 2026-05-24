@@ -24,6 +24,8 @@ const renderScript = readFileSync(resolve(root, "scripts/render-youtube-with-tts
 const thumbnail = readFileSync(resolve(root, "pipeline/youtube-thumbnail.mjs"), "utf8");
 const thumbnailPrompt = readFileSync(resolve(root, "pipeline/youtube-thumbnail-prompt.mjs"), "utf8");
 const chatgptThumbnail = readFileSync(resolve(root, "automation/chatgpt-thumbnail-source.mjs"), "utf8");
+const youtubeAuth = readFileSync(resolve(root, "pipeline/youtube-auth.mjs"), "utf8");
+const youtubeUpload = readFileSync(resolve(root, "pipeline/youtube-upload.mjs"), "utf8");
 const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 
 assert.match(pathResolver, /getRuntimePaths/, "path resolver should export getRuntimePaths");
@@ -90,5 +92,15 @@ assert.match(thumbnail, /sharp/, "thumbnail fallback should use sharp for local 
 assert.doesNotMatch(thumbnail, /Flow.*Korean text/i, "thumbnail pipeline should not rely on Flow for Korean text rendering");
 assert.match(jobService, /createThumbnailForJob/, "desktop job service should create a thumbnail after render");
 assert.ok(packageJson.dependencies.sharp, "sharp should be available for local thumbnail fallback");
+assert.ok(packageJson.dependencies.googleapis, "googleapis should be a runtime dependency for YouTube upload");
+assert.match(pathResolver, /youtubeTokenPath/, "path resolver should define YouTube token path");
+assert.match(youtubeAuth, /YOUTUBE_SCOPES/, "YouTube auth should declare required scopes");
+assert.match(youtubeAuth, /waitForOAuthCode/, "YouTube auth should include loopback OAuth code receiver");
+assert.match(youtubeAuth, /127\.0\.0\.1/, "OAuth receiver should bind to localhost");
+assert.match(youtubeUpload, /uploadVideoToYouTube/, "YouTube upload service should expose upload function");
+assert.match(youtubeUpload, /containsSyntheticMedia/, "YouTube upload metadata should preserve synthetic media flag");
+assert.match(preload, /youtubeApproveUpload/, "preload should expose upload approval");
+assert.match(html, /approveUploadBtn/, "renderer should include upload approval button");
+assert.match(renderer, /youtubeApproveUpload/, "renderer should call upload approval IPC");
 
 console.log(JSON.stringify({ ok: true, checked: "local-studio-product" }));

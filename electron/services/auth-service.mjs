@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { claimBrowserProfile, findChromeExecutable, writeBrowserProfileLock } from "./browser-profile-service.mjs";
 
 export const AUTH_TARGETS = {
@@ -42,11 +43,21 @@ export function openPersistentChrome({ chromePath, profileDir, url }) {
 export async function startAuth(target, { config, paths }) {
   if (!AUTH_TARGETS[target]) throw new Error(`Unknown auth target: ${target}`);
   if (target === "youtube") {
+    if (!existsSync(paths.youtubeClientSecretsPath)) {
+      return {
+        ok: false,
+        target,
+        status: "client-secrets-missing",
+        clientSecretsPath: paths.youtubeClientSecretsPath,
+        message: "Place Google OAuth client_secrets.json in the app data folder before YouTube authentication.",
+      };
+    }
     return {
       ok: false,
       target,
       status: "oauth-not-configured",
-      message: "YouTube OAuth will be enabled after client_secrets.json is configured.",
+      tokenPath: paths.youtubeTokenPath,
+      message: "YouTube OAuth loopback receiver is available; full browser exchange will be enabled after client credentials are verified.",
     };
   }
 

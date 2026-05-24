@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("hermes", {
   selectDirectory: () => ipcRenderer.invoke("app:selectDirectory"),
   openPath: (targetPath) => ipcRenderer.invoke("app:openPath", targetPath),
   youtubeCreateJob: (input) => ipcRenderer.invoke("youtube:createJob", input),
+  youtubeApproveUpload: () => ipcRenderer.invoke("youtube:approveUpload"),
   onYouTubeEvent: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("youtube:event", listener);

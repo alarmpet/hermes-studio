@@ -9,6 +9,7 @@ import { listJobs, readJob, upsertJob } from "./services/job-store.mjs";
 import { getRuntimePaths } from "./services/path-resolver.mjs";
 import { listVisibleVoicePresets } from "./services/voice-presets.mjs";
 import { createYouTubeJob, writeDesktopResult } from "./services/youtube-job-service.mjs";
+import { uploadVideoToYouTube } from "../pipeline/youtube-upload.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const paths = getRuntimePaths();
@@ -17,6 +18,7 @@ const FFMPEG_BIN = app.isPackaged ? ffmpegPath.replace("app.asar", "app.asar.unp
 const jobEvents = new EventEmitter();
 
 let mainWindow = null;
+let latestCompletedJob = null;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -106,6 +108,7 @@ ipcMain.handle("youtube:createJob", async (_event, input) => {
     ffmpegBin: FFMPEG_BIN,
   });
   if (result.finalVideo?.jobDir) await writeDesktopResult(result.finalVideo.jobDir, result.finalVideo);
+  latestCompletedJob = result;
   await upsertJob(paths.jobsDir, {
     id: result.job.id,
     title: result.assets?.draft?.title || result.job.sourceValue,
@@ -113,10 +116,28 @@ ipcMain.handle("youtube:createJob", async (_event, input) => {
     status: "completed",
     jobDir: result.assets.jobDir,
     finalPath: result.finalVideo?.finalPath,
+    thumbnailPath: result.thumbnail?.path,
     createdAt: result.job.createdAt,
   });
   sendJobEvent({ type: "desktop-job-finished", jobId: result.job.id, jobDir: result.assets.jobDir });
   return result;
+});
+
+ipcMain.handle("youtube:approveUpload", async () => {
+  if (!latestCompletedJob?.finalVideo?.finalPath) {
+    return { ok: false, status: "no-completed-video", message: "No completed video is available for upload approval." };
+  }
+  return uploadVideoToYouTube({
+    videoPath: latestCompletedJob.finalVideo.finalPath,
+    thumbnailPath: latestCompletedJob.thumbnail?.path,
+    tokenPath: paths.youtubeTokenPath,
+    metadata: {
+      title: latestCompletedJob.assets?.draft?.title || latestCompletedJob.job.sourceValue,
+      description: latestCompletedJob.assets?.draft?.script || "",
+      privacyStatus: latestCompletedJob.job.upload?.privacyStatus || "private",
+      containsSyntheticMedia: true,
+    },
+  });
 });
 
 app.whenReady().then(() => {
