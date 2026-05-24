@@ -37,7 +37,10 @@ function readJobInput() {
   return {
     sourceType: getSourceType(),
     sourceValue: sourceValue.value.trim(),
+    scriptLengthMode: document.querySelector("#scriptLengthMode").value,
     scriptLengthPreset: document.querySelector("#scriptLengthPreset").value,
+    customDurationSeconds: Number(document.querySelector("#customDurationSeconds").value || 90),
+    sceneStrategy: "sentence-proportional",
     voiceId: document.querySelector("#voiceId").value,
     subtitleStyleId: document.querySelector("#subtitleStyleId").value,
     speechSpeed: Number(speed.value),

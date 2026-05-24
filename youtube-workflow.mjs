@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { planScenesFromScript } from "./electron/services/script-planner.mjs";
 import { SCRIPT_LENGTH_PRESETS } from "./youtube-job-schema.mjs";
 
 const MIN_SCENES = 3;
@@ -127,6 +128,9 @@ export function resolveYouTubeJobDir(job, context = {}) {
 
 export function buildRenderOptions(job) {
   const preset = SCRIPT_LENGTH_PRESETS[job.options.scriptLengthPreset] || SCRIPT_LENGTH_PRESETS.standard;
+  const targetSeconds = job.options.scriptLengthMode === "custom"
+    ? Number(job.options.customDurationSeconds || preset.targetSeconds)
+    : preset.targetSeconds;
   return {
     jobId: job.id,
     voiceId: job.options.voiceId,
@@ -135,7 +139,7 @@ export function buildRenderOptions(job) {
     aspectRatio: job.options.aspectRatio,
     renderQuality: job.options.renderQuality,
     scriptLengthPreset: job.options.scriptLengthPreset,
-    targetSeconds: preset.targetSeconds,
+    targetSeconds,
     sceneCount: preset.sceneCount,
     characterMode: job.options.characterMode,
   };
@@ -149,8 +153,21 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
   const draftInput = context.draft
     || (typeof context.buildDraft === "function" ? await context.buildDraft(job, context) : null)
     || fallbackDraftFromJob(job);
-  const draft = normalizeYouTubeDraft(draftInput);
   const renderOptions = buildRenderOptions(job);
+  let draft = normalizeYouTubeDraft(draftInput);
+  if (job.options.sceneStrategy === "sentence-proportional") {
+    draft = {
+      ...draft,
+      duration_seconds: renderOptions.targetSeconds,
+      scenes: planScenesFromScript({
+        script: draft.script,
+        title: draft.title,
+        targetSeconds: renderOptions.targetSeconds,
+        customDurationSeconds: job.options.scriptLengthMode === "custom" ? job.options.customDurationSeconds : undefined,
+        characterProfile: draft.character_profile,
+      }),
+    };
+  }
 
   const requestPath = join(jobDir, "job-request.json");
   const draftPath = join(jobDir, "draft.json");

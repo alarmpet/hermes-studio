@@ -44,7 +44,7 @@
         <section class="content-grid">
           <form id="jobForm" class="panel">
             <div class="field-group">
-              <label for="sourceType">입력 방식</label>
+              <label for="sourceValue">입력 방식</label>
               <div class="segmented">
                 <label><input type="radio" name="sourceType" value="keyword" checked><span>Keyword</span></label>
                 <label><input type="radio" name="sourceType" value="url"><span>URL</span></label>
@@ -58,13 +58,26 @@
 
             <div class="form-grid">
               <div class="field-group">
+                <label for="scriptLengthMode">대본 길이 방식</label>
+                <select id="scriptLengthMode">
+                  <option value="preset" selected>프리셋</option>
+                  <option value="custom">수동 초 입력</option>
+                </select>
+              </div>
+
+              <div class="field-group">
                 <label for="scriptLengthPreset">대본 분량</label>
                 <select id="scriptLengthPreset">
-                  <option value="micro">30초 / 3 scenes</option>
-                  <option value="short">45초 / 4 scenes</option>
-                  <option value="standard" selected>60초 / 5 scenes</option>
-                  <option value="extended">90초 / 6 scenes</option>
+                  <option value="micro">30초</option>
+                  <option value="short">45초</option>
+                  <option value="standard" selected>60초</option>
+                  <option value="extended">90초</option>
                 </select>
+              </div>
+
+              <div class="field-group">
+                <label for="customDurationSeconds">수동 길이(초)</label>
+                <input id="customDurationSeconds" type="number" min="15" max="600" value="120">
               </div>
 
               <div class="field-group">

@@ -30,7 +30,10 @@ export const SUBTITLE_STYLE_PRESETS = [
 ];
 
 export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
+  scriptLengthMode: "preset",
   scriptLengthPreset: "standard",
+  customDurationSeconds: 90,
+  sceneStrategy: "sentence-proportional",
   voiceId: "M1",
   speechSpeed: 1.08,
   subtitleStyleId: "bold-shorts",
@@ -69,6 +72,10 @@ export function normalizeYouTubeJobRequest(input = {}) {
   const options = { ...DEFAULT_YOUTUBE_JOB_OPTIONS, ...(input.options || {}) };
   if (!SCRIPT_LENGTH_PRESETS[options.scriptLengthPreset]) {
     throw new Error(`Unknown scriptLengthPreset: ${options.scriptLengthPreset}`);
+  }
+  options.customDurationSeconds = Math.max(15, Math.min(600, Number(options.customDurationSeconds || 90)));
+  if (!["preset", "sentence-proportional"].includes(options.sceneStrategy)) {
+    throw new Error(`Unknown sceneStrategy: ${options.sceneStrategy}`);
   }
   if (!hasPreset(VOICE_PRESETS, options.voiceId)) {
     throw new Error(`Unknown voiceId: ${options.voiceId}`);

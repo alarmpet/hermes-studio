@@ -11,6 +11,7 @@ import { runYouTubeJob } from "../youtube-job-runner.mjs";
 import { getAuthStatus, startAuth } from "./services/auth-service.mjs";
 import { loadConfig, saveConfig } from "./services/config-store.mjs";
 import { getRuntimePaths } from "./services/path-resolver.mjs";
+import { planScenesFromScript } from "./services/script-planner.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const paths = getRuntimePaths();
@@ -54,6 +55,9 @@ function buildDesktopJobRequest(input = {}) {
     requestedBy: "desktop",
     options: {
       scriptLengthPreset: input.scriptLengthPreset,
+      scriptLengthMode: input.scriptLengthMode || "preset",
+      customDurationSeconds: input.customDurationSeconds,
+      sceneStrategy: input.sceneStrategy || "sentence-proportional",
       voiceId: input.voiceId,
       speechSpeed: Number(input.speechSpeed || 1.08),
       subtitleStyleId: input.subtitleStyleId,
@@ -87,10 +91,11 @@ async function createSyntheticSceneVideo({ jobDir, scene, index }) {
   const colors = ["0f766e", "334155", "7c2d12", "4338ca", "166534", "9f1239"];
   const color = colors[index % colors.length];
   const outputPath = join(jobDir, `scene_${scene.order}.mp4`);
+  const duration = Math.max(4, Number(scene.duration_seconds || 8));
   runCommand(FFMPEG_BIN, [
     "-y",
     "-f", "lavfi",
-    "-i", `color=c=0x${color}:s=720x1280:d=8:r=30`,
+    "-i", `color=c=0x${color}:s=720x1280:d=${duration}:r=30`,
     "-vf", "drawbox=x=54:y=96:w=612:h=260:color=black@0.28:t=fill",
     "-an",
     "-c:v", "libx264",
@@ -120,6 +125,17 @@ async function createDesktopPreviewJob(input = {}) {
       const requestPath = join(jobDir, "job-request.json");
       const draftPath = join(jobDir, "draft.json");
       const keyword = normalizedJob.sourceValue;
+      const targetSeconds = normalizedJob.options.scriptLengthMode === "custom"
+        ? Number(normalizedJob.options.customDurationSeconds || 90)
+        : normalizedJob.options.scriptLengthPreset === "extended" ? 90 : 60;
+      const script = [
+        `${keyword}의 핵심 흐름을 빠르게 정리해보겠습니다.`,
+        "첫 번째로, 지금 가장 중요한 변화는 기술 자체보다 실제 업무에 적용되는 속도입니다.",
+        "두 번째로, 기업과 개인은 비용을 줄이면서도 더 많은 콘텐츠와 분석을 만들 수 있게 됐습니다.",
+        "하지만 자동화가 강해질수록 저작권, 개인정보, 합성 콘텐츠 표시는 반드시 확인해야 합니다.",
+        "결국 좋은 도구를 고르는 기준은 유행이 아니라 시간을 얼마나 줄이고 결과를 얼마나 안정적으로 만드는지입니다.",
+        "Hermes는 이 흐름을 대본, 영상, 음성, 자막, 검수 단계까지 하나로 연결하는 방향으로 발전하고 있습니다.",
+      ].join(" ");
       const previewDraft = {
         title: `${keyword} Shorts`,
         duration_seconds: normalizedJob.options.scriptLengthPreset === "extended" ? 90 : 60,
@@ -163,6 +179,15 @@ async function createDesktopPreviewJob(input = {}) {
           },
         ],
       };
+      previewDraft.duration_seconds = targetSeconds;
+      previewDraft.script = script;
+      previewDraft.scenes = planScenesFromScript({
+        script,
+        title: previewDraft.title,
+        targetSeconds,
+        customDurationSeconds: normalizedJob.options.scriptLengthMode === "custom" ? normalizedJob.options.customDurationSeconds : undefined,
+        characterProfile: "same recurring Korean female presenter in her early 30s, shoulder-length black hair, teal blazer over a white top",
+      });
       await writeFile(requestPath, JSON.stringify(normalizedJob, null, 2), "utf8");
       await writeFile(draftPath, JSON.stringify(previewDraft, null, 2), "utf8");
       const sceneMedia = [];

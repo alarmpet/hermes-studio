@@ -24,6 +24,8 @@ assert.equal(keywordJob.sourceType, "keyword");
 assert.equal(keywordJob.options.voiceId, "M1");
 assert.equal(keywordJob.options.subtitleStyleId, "bold-shorts");
 assert.equal(keywordJob.options.scriptLengthPreset, "standard");
+assert.equal(keywordJob.options.sceneStrategy, "sentence-proportional");
+assert.equal(keywordJob.options.customDurationSeconds, 90);
 assert.equal(keywordJob.options.sendIntermediateMedia, false);
 assert.equal(keywordJob.upload.enabled, false);
 assert.equal(keywordJob.upload.containsSyntheticMedia, true);
@@ -37,6 +39,15 @@ const urlJob = normalizeYouTubeJobRequest({
 
 assert.equal(urlJob.sourceType, "url");
 assert.match(urlJob.sourceValue, /^https:\/\//);
+
+const customJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "custom length",
+  options: { scriptLengthMode: "custom", customDurationSeconds: 180 },
+});
+
+assert.equal(customJob.options.scriptLengthMode, "custom");
+assert.equal(customJob.options.customDurationSeconds, 180);
 
 assert.throws(
   () => normalizeYouTubeJobRequest({ sourceType: "keyword", sourceValue: "", options: {} }),

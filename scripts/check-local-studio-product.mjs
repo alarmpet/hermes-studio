@@ -12,6 +12,9 @@ const html = readFileSync(resolve(root, "electron/renderer/index.html"), "utf8")
 const renderer = readFileSync(resolve(root, "electron/renderer/app.js"), "utf8");
 const authService = readFileSync(resolve(root, "electron/services/auth-service.mjs"), "utf8");
 const browserProfileService = readFileSync(resolve(root, "electron/services/browser-profile-service.mjs"), "utf8");
+const planner = readFileSync(resolve(root, "electron/services/script-planner.mjs"), "utf8");
+const schema = readFileSync(resolve(root, "youtube-job-schema.mjs"), "utf8");
+const workflow = readFileSync(resolve(root, "youtube-workflow.mjs"), "utf8");
 
 assert.match(pathResolver, /getRuntimePaths/, "path resolver should export getRuntimePaths");
 assert.match(pathResolver, /app\.getPath\("userData"\)/, "packaged app should use userData");
@@ -37,5 +40,12 @@ assert.match(authService, /getAuthStatus/, "auth service should export getAuthSt
 assert.match(browserProfileService, /findChromeExecutable/, "browser profile service should discover Chrome paths");
 assert.match(browserProfileService, /claimBrowserProfile/, "browser profile service should guard profile locks");
 assert.doesNotMatch(authService, /C:\/Program Files\/Google\/Chrome\/Application\/chrome\.exe"\s*\}/, "auth service should not rely only on one Chrome path");
+assert.match(planner, /planScenesFromScript/, "planner should export planScenesFromScript");
+assert.match(planner, /customDurationSeconds/, "planner should support manual duration");
+assert.match(planner, /totalSyllables/, "scene planner should weight duration by narration length");
+assert.match(planner, /Math\.max\(4/, "scene planner should enforce a minimum scene duration");
+assert.match(schema, /customDurationSeconds/, "job schema should accept manual duration");
+assert.match(schema, /sceneStrategy/, "job schema should accept dynamic scene strategy");
+assert.match(workflow, /planScenesFromScript/, "workflow should use dynamic scene planner");
 
 console.log(JSON.stringify({ ok: true, checked: "local-studio-product" }));
