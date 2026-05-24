@@ -28,9 +28,9 @@ const progressActionRequired = document.querySelector("#progressActionRequired")
 const thumbnailProviderName = "ChatGPT";
 
 const subtitlePresetDefaults = {
-  "clean-news": { fontSize: 18, outline: 2, shadow: 1, marginV: 60 },
-  "bold-shorts": { fontSize: 24, outline: 4, shadow: 1, marginV: 78 },
-  minimal: { fontSize: 17, outline: 1, shadow: 0, marginV: 54 },
+  "clean-news": { fontSize: 10, outline: 2, shadow: 1, marginV: 80, maxLineChars: 12, maxLines: 2 },
+  "bold-shorts": { fontSize: 11, outline: 2, shadow: 1, marginV: 90, maxLineChars: 10, maxLines: 2 },
+  minimal: { fontSize: 9, outline: 1, shadow: 0, marginV: 80, maxLineChars: 13, maxLines: 2 },
 };
 
 const PROGRESS_PERCENT_BY_PHASE = {
@@ -82,6 +82,8 @@ function readJobInput() {
       outline: Number(subtitleOutline.value || 4),
       shadow: Number(subtitleShadow.value || 1),
       marginV: subtitlePresetDefaults[subtitleStyleId.value]?.marginV || 78,
+      maxLineChars: subtitlePresetDefaults[subtitleStyleId.value]?.maxLineChars || 11,
+      maxLines: subtitlePresetDefaults[subtitleStyleId.value]?.maxLines || 2,
     },
     speechSpeed: Number(speed.value),
     mockMediaMode: !appIsPackaged && mockMediaModeInput.checked,

@@ -13,17 +13,17 @@ export const SUBTITLE_STYLE_PRESETS = [
   {
     id: "clean-news",
     label: "클린 뉴스",
-    ass: { fontName: "Malgun Gothic", fontSize: 18, outline: 2, shadow: 1, marginV: 60, primaryColour: "&H00FFFFFF" },
+    ass: { fontName: "Malgun Gothic", fontSize: 10, outline: 2, shadow: 1, marginV: 80, primaryColour: "&H00FFFFFF", maxLineChars: 12, maxLines: 2 },
   },
   {
     id: "bold-shorts",
     label: "볼드 쇼츠",
-    ass: { fontName: "Malgun Gothic", fontSize: 24, outline: 4, shadow: 1, marginV: 78, primaryColour: "&H00FFFFFF" },
+    ass: { fontName: "Malgun Gothic", fontSize: 11, outline: 2, shadow: 1, marginV: 90, primaryColour: "&H00FFFFFF", maxLineChars: 10, maxLines: 2 },
   },
   {
     id: "minimal",
     label: "미니멀",
-    ass: { fontName: "Malgun Gothic", fontSize: 17, outline: 1, shadow: 0, marginV: 54, primaryColour: "&H00FFFFFF" },
+    ass: { fontName: "Malgun Gothic", fontSize: 9, outline: 1, shadow: 0, marginV: 80, primaryColour: "&H00FFFFFF", maxLineChars: 13, maxLines: 2 },
   },
 ];
 

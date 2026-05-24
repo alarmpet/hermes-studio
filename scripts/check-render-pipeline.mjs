@@ -33,5 +33,13 @@ assert.ok(sceneDuration >= 7.9 && sceneDuration <= 8.1, `scene_1 duration should
 const scriptText = readFileSync(resolve(ROOT, "scripts/render-youtube-with-tts.mjs"), "utf8");
 assert.ok(!scriptText.includes("\"-shortest\""), "renderer must not depend on ffmpeg -shortest");
 assert.ok(scriptText.includes("scene_audio_manifest.json"), "renderer should use scene-level TTS manifest");
+assert.match(scriptText, /splitSubtitleChunks/, "renderer should split long narration into shorter subtitle cues");
+assert.match(scriptText, /subtitleCueBlocks/, "renderer should create multiple timed subtitle blocks per scene");
+assert.match(scriptText, /Math\.min\(12,\s*Number\(ass\.fontSize/, "renderer should cap subtitle font size for readable lower-third captions");
+assert.match(scriptText, /MarginV:\s*Math\.max\(60,\s*Math\.min\(150/, "renderer should keep subtitles in a lower-middle safe zone");
+
+const schemaText = readFileSync(resolve(ROOT, "youtube-job-schema.mjs"), "utf8");
+assert.match(schemaText, /maxLineChars:\s*10/, "bold shorts preset should keep each subtitle line short");
+assert.match(schemaText, /marginV:\s*90/, "bold shorts preset should place captions in the lower-middle safe zone");
 
 console.log(JSON.stringify({ ok: true, checked: "render-pipeline" }));
