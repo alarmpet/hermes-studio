@@ -5,6 +5,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import { appendFile, mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { basename, extname, join, resolve } from "node:path";
 import { Codex } from "@openai/codex-sdk";
+import ffmpegPath from "ffmpeg-static";
 import {
   buildFlowPromptFromDraft as ytBuildFlowPromptFromDraft,
   buildYouTubeDraftPrompt as ytBuildYouTubeDraftPrompt,
@@ -15,6 +16,8 @@ import {
   parseJsonMarkdown as ytParseJsonMarkdown,
 } from "./youtube-workflow.mjs";
 import { runYouTubeJob } from "./youtube-job-runner.mjs";
+import { createDefaultYouTubeStages } from "./youtube-workflow-stages.mjs";
+import { mirrorWorkflowEventToDb } from "./workflow-db-events.mjs";
 
 const ROOT = "C:/Users/amd/hermes";
 const OPENCLAW_CONFIG = "C:/Users/amd/.openclaw/openclaw.json";
@@ -44,6 +47,7 @@ const CODEX_AUTH_BLOCK_MS = Number(process.env.HERMES_CODEX_AUTH_BLOCK_MS || 30 
 const CODEX_CLI_JS = process.env.HERMES_CODEX_CLI_JS || `${ROOT}/node_modules/@openai/codex/bin/codex.js`;
 const FLOW_URL = "https://labs.google/fx/ko/tools/flow";
 const PROFILE_DIR = `${ROOT}/.aistudio-browser-profile`;
+const GEMINI_PROFILE_DIR = `${ROOT}/.gemini-browser-profile`;
 const CDP_PORT = 9227;
 const SIMULATE_NO_SEND = process.argv.includes("--simulate-no-send");
 const WARN_PLAINTEXT_SECRETS = /^(1|true|yes)$/i.test(process.env.HERMES_WARN_PLAINTEXT_SECRETS || "");
@@ -2394,6 +2398,28 @@ function findBrowser() {
   const browser = candidates.find((candidate) => existsSync(candidate));
   if (!browser) throw new Error("Chrome/Edge/Brave executable not found.");
   return browser;
+}
+
+function buildTelegramYouTubeStageContext({ chatId, replyToMessageId } = {}) {
+  return {
+    paths: {
+      appRoot: ROOT,
+      runtimeRoot: ROOT,
+      outputDir: OUTPUT_DIR,
+      flowProfileDir: PROFILE_DIR,
+      geminiProfileDir: GEMINI_PROFILE_DIR,
+    },
+    chromePath: findBrowser(),
+    ffmpegBin: ffmpegPath,
+    emit: (event) => {
+      if (event.type === "workflow-warning") {
+        sendMessage(chatId, `주의: ${event.message}`, replyToMessageId).catch(() => {});
+      }
+    },
+    onFlowProgress: ({ message }) => {
+      if (message) setJobPhase(message);
+    },
+  };
 }
 
 async function waitForCdp(timeoutMs = 30000) {
@@ -5457,11 +5483,21 @@ async function handleYouTubeWorkflowMessage(message) {
   const targetInput = normalizeYoutubeInput(rawText);
   const jobRequest = buildTelegramYouTubeJobRequest(message);
   const jobDir = `${OUTPUT_DIR}/youtube/${currentJob.jobId}`;
+  const sharedStages = createDefaultYouTubeStages(buildTelegramYouTubeStageContext({ chatId, replyToMessageId: replyTo }));
 
   await runYouTubeJob(jobRequest, {
+    ...sharedStages,
     jobDir,
     outputDir: OUTPUT_DIR,
-    emit: emitYouTubeRunnerEvent,
+    emit: (event) => {
+      mirrorWorkflowEventToDb(event, {
+        dbHelper: DB_HELPER,
+        chatId,
+        messageId: replyTo,
+        taskName: "youtube-workflow",
+      });
+      emitYouTubeRunnerEvent(event);
+    },
     buildDraft: async () => {
       let draft = null;
       if (isUrl) {

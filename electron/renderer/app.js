@@ -35,12 +35,14 @@ const subtitlePresetDefaults = {
 
 const PROGRESS_PERCENT_BY_PHASE = {
   "submitted": 5,
-  "source-research": 12,
-  "script-draft": 24,
+  "research": 12,
+  "draft": 24,
   "scene-planning": 34,
-  "flow-media": 56,
+  "flow-submit": 45,
+  "flow-media": 62,
   "render": 82,
   "thumbnail": 92,
+  "upload": 96,
   "completed": 100,
 };
 

@@ -10,6 +10,7 @@ import { getRuntimePaths } from "./services/path-resolver.mjs";
 import { listVisibleVoicePresets } from "./services/voice-presets.mjs";
 import { createYouTubeJob, writeDesktopResult } from "./services/youtube-job-service.mjs";
 import { uploadVideoToYouTube } from "../pipeline/youtube-upload.mjs";
+import { mirrorWorkflowEventToDb } from "../workflow-db-events.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const paths = getRuntimePaths();
@@ -40,6 +41,12 @@ function createWindow() {
 }
 
 function sendJobEvent(event) {
+  mirrorWorkflowEventToDb(event, {
+    dbHelper: join(paths.appRoot, "bot_db_helper.py"),
+    chatId: "desktop",
+    messageId: "0",
+    taskName: "youtube-workflow",
+  });
   jobEvents.emit("event", event);
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send("youtube:event", event);

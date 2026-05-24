@@ -223,7 +223,13 @@ async function findPromptAndCreate(page) {
             || text.includes("\ub9cc\ub4e4\uae30")
             || text.includes("\uc0dd\uc131");
         })
-        .sort((a, b) => (b.r.y - a.r.y) || (b.r.x - a.r.x))[0];
+        .sort((a, b) => {
+          const aArrow = a.text.includes("arrow_forward") ? 1 : 0;
+          const bArrow = b.text.includes("arrow_forward") ? 1 : 0;
+          const aBottom = a.r.y > window.innerHeight * 0.65 ? 1 : 0;
+          const bBottom = b.r.y > window.innerHeight * 0.65 ? 1 : 0;
+          return bArrow - aArrow || bBottom - aBottom || (b.r.x - a.r.x) || (b.r.y - a.r.y);
+        })[0];
       return {
         textbox: textbox ? { x: Math.round(textbox.r.x + textbox.r.width / 2), y: Math.round(textbox.r.y + textbox.r.height / 2) } : null,
         create: create ? { x: Math.round(create.r.x + create.r.width / 2), y: Math.round(create.r.y + create.r.height / 2), text: create.text } : null,
@@ -241,6 +247,107 @@ async function collectMediaUrls(page) {
     images: Array.from(new Set(Array.from(document.images).map((item) => item.currentSrc || item.src).filter(Boolean))),
     text: document.body?.innerText?.slice(0, 1500) || "",
   }));
+}
+
+async function probeFlowSubmitState(page) {
+  return page.evaluate(() => {
+    const text = document.body?.innerText || "";
+    const textboxes = Array.from(document.querySelectorAll("[contenteditable='true'], textarea"))
+      .map((el) => ({
+        text: (el.innerText || el.value || el.textContent || "").trim(),
+        rect: el.getBoundingClientRect(),
+      }))
+      .filter((item) => item.rect.width > 100 && item.rect.height > 10);
+    const buttons = Array.from(document.querySelectorAll("button,[role='button']"))
+      .map((el) => ({
+        text: [el.innerText, el.textContent, el.getAttribute("aria-label"), el.getAttribute("title")]
+          .filter(Boolean).join(" ").replace(/\s+/g, " ").trim(),
+        disabled: el.disabled || el.getAttribute("aria-disabled") === "true",
+        rect: el.getBoundingClientRect(),
+      }))
+      .filter((item) => item.rect.width > 10 && item.rect.height > 10);
+    const percents = Array.from(text.matchAll(/(\d+)%/g)).map((match) => Number(match[1]));
+    const createButton = buttons
+      .filter((item) => /arrow_forward|create|generate|만들기|생성/i.test(item.text))
+      .sort((a, b) => {
+        const aArrow = a.text.includes("arrow_forward") ? 1 : 0;
+        const bArrow = b.text.includes("arrow_forward") ? 1 : 0;
+        const aBottom = a.rect.y > window.innerHeight * 0.65 ? 1 : 0;
+        const bBottom = b.rect.y > window.innerHeight * 0.65 ? 1 : 0;
+        return bArrow - aArrow || bBottom - aBottom || (b.rect.x - a.rect.x) || (b.rect.y - a.rect.y);
+      })[0];
+    return {
+      promptStillVisible: textboxes.some((item) => item.text.length > 20),
+      createButtonVisible: Boolean(createButton && !createButton.disabled),
+      createButtonText: createButton?.text || "",
+      hasProgressPercent: percents.length > 0,
+      maxPercent: percents.length ? Math.max(...percents) : null,
+      hasVideo: document.querySelectorAll("video").length > 0,
+      textTail: text.slice(-1000),
+    };
+  });
+}
+
+async function verifyFlowSubmissionStarted(page, jobDir, sceneOrder) {
+  let lastState = null;
+  for (let i = 0; i < 20; i += 1) {
+    await delay(1000);
+    lastState = await probeFlowSubmitState(page);
+    if (!lastState.promptStillVisible || !lastState.createButtonVisible || lastState.hasProgressPercent || lastState.hasVideo) {
+      await writeFile(join(jobDir, `scene_${sceneOrder}_flow_submit_state.json`), JSON.stringify({
+        ok: true,
+        state: lastState,
+        updatedAt: new Date().toISOString(),
+      }, null, 2), "utf8");
+      return lastState;
+    }
+  }
+
+  const screenshotPath = join(jobDir, `scene_${sceneOrder}_flow_submit_failed.png`);
+  await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+  await writeFile(join(jobDir, `scene_${sceneOrder}_flow_submit_state.json`), JSON.stringify({
+    ok: false,
+    reason: "flow-submit-did-not-start",
+    state: lastState,
+    screenshotPath,
+    updatedAt: new Date().toISOString(),
+  }, null, 2), "utf8");
+  throw new Error(`Google Flow did not start generation after clicking create. Screenshot: ${screenshotPath}`);
+}
+
+async function clickVisibleCreateButton(page) {
+  return page.evaluate(() => {
+    const visible = (el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return !el.disabled
+        && el.getAttribute("aria-disabled") !== "true"
+        && style.display !== "none"
+        && style.visibility !== "hidden"
+        && rect.width > 10
+        && rect.height > 10;
+    };
+    const candidates = Array.from(document.querySelectorAll("button,[role='button']"))
+      .filter(visible)
+      .map((el) => ({
+        el,
+        text: [el.innerText, el.textContent, el.getAttribute("aria-label"), el.getAttribute("title")]
+          .filter(Boolean).join(" ").replace(/\s+/g, " ").trim(),
+        rect: el.getBoundingClientRect(),
+      }))
+      .filter((item) => /arrow_forward|create|generate|만들기|생성/i.test(item.text))
+      .sort((a, b) => {
+        const aArrow = a.text.includes("arrow_forward") ? 1 : 0;
+        const bArrow = b.text.includes("arrow_forward") ? 1 : 0;
+        const aBottom = a.rect.y > window.innerHeight * 0.65 ? 1 : 0;
+        const bBottom = b.rect.y > window.innerHeight * 0.65 ? 1 : 0;
+        return bArrow - aArrow || bBottom - aBottom || (b.rect.x - a.rect.x) || (b.rect.y - a.rect.y);
+      });
+    const target = candidates[0];
+    if (!target) return { ok: false, reason: "create button not found" };
+    target.el.click();
+    return { ok: true, text: target.text };
+  });
 }
 
 async function blobOrDataUrlToBuffer(page, mediaUrl) {
@@ -272,12 +379,12 @@ async function httpUrlToBuffer(context, mediaUrl) {
 }
 
 function mediaExtension(contentType, mediaUrl) {
-  const existing = extname(new URL(mediaUrl, "https://labs.google").pathname).replace(".", "");
-  if (existing) return existing;
   if (contentType.includes("webm")) return "webm";
   if (contentType.includes("mp4")) return "mp4";
   if (contentType.includes("jpeg")) return "jpg";
   if (contentType.includes("png")) return "png";
+  const existing = extname(new URL(mediaUrl, "https://labs.google").pathname).replace(".", "");
+  if (existing && !/redirect|url/i.test(existing)) return existing;
   return "mp4";
 }
 
@@ -333,7 +440,16 @@ export async function generateGoogleFlowVideoFromPrompt({
     await delay(800);
     onProgress?.({ message: `장면 ${sceneOrder} Google Flow 생성 버튼을 클릭하는 중입니다.` });
     await page.mouse.click(positions.create.x, positions.create.y);
+    await delay(500);
+    const domClick = await clickVisibleCreateButton(page);
     await page.screenshot({ path: join(jobDir, `scene_${sceneOrder}_flow_submitted.png`), fullPage: true }).catch(() => {});
+    onProgress?.({ message: `장면 ${sceneOrder} Google Flow 생성 시작 여부를 확인하는 중입니다.` });
+    await writeFile(join(jobDir, `scene_${sceneOrder}_flow_click_state.json`), JSON.stringify({
+      mouseClick: { x: positions.create.x, y: positions.create.y, text: positions.create.text },
+      domClick,
+      updatedAt: new Date().toISOString(),
+    }, null, 2), "utf8");
+    await verifyFlowSubmissionStarted(page, jobDir, sceneOrder);
 
     const deadline = Date.now() + timeoutMs;
     let last = null;

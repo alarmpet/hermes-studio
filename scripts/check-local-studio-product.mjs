@@ -91,7 +91,7 @@ assert.match(thumbnail, /generateChatGptThumbnail/, "thumbnail pipeline should k
 assert.match(thumbnail, /createLocalCompositedThumbnail/, "thumbnail pipeline should provide local sharp fallback");
 assert.match(thumbnail, /sharp/, "thumbnail fallback should use sharp for local image composition");
 assert.doesNotMatch(thumbnail, /Flow.*Korean text/i, "thumbnail pipeline should not rely on Flow for Korean text rendering");
-assert.match(jobService, /createThumbnailForJob/, "desktop job service should create a thumbnail after render");
+assert.match(jobService, /generateThumbnail/, "desktop job service should create a thumbnail after render through shared stages");
 assert.ok(packageJson.dependencies.sharp, "sharp should be available for local thumbnail fallback");
 assert.ok(packageJson.dependencies.googleapis, "googleapis should be a runtime dependency for YouTube upload");
 assert.match(pathResolver, /youtubeTokenPath/, "path resolver should define YouTube token path");
