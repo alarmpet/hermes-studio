@@ -1,0 +1,97 @@
+[
+  {
+    "name": "architecture_system_flow_not_google_flow",
+    "text": "시스템 플로우와 오케스트레이터가 포함된 멀티 에이전트 자동매매 시스템 계획서 만들어",
+    "expected": "generic-codex"
+  },
+  {
+    "name": "long_trading_architecture_not_chart_annotation",
+    "text": "너는 월스트리트 헤지펀드의 시니어 퀀트 개발자이자 AI 아키텍트다. 멀티 에이전트 기반 패턴 매칭 자동매매 시스템의 백테스트 코드와 아키텍처를 설계하고 결과 리포팅 차트와 히트맵까지 포함한 계획서 만들어",
+    "expected": "generic-codex"
+  },
+  {
+    "name": "long_plan_not_status",
+    "text": "진행 상태 정의 에이전트와 백테스트 엔진을 포함한 자동매매 시스템 설계 계획서 작성해",
+    "expected": "generic-codex"
+  },
+  {
+    "name": "short_status_question",
+    "text": "멈춘거야?",
+    "expected": "status"
+  },
+  {
+    "name": "slash_status",
+    "text": "/status",
+    "expected": "status"
+  },
+  {
+    "name": "explicit_flow_news",
+    "text": "/flownews 최신 AI 뉴스 쇼츠 영상 만들어줘",
+    "expected": "flow-news"
+  },
+  {
+    "name": "explicit_google_flow_video",
+    "text": "구글 플로우에서 영상 생성해줘",
+    "expected": "flow-video"
+  },
+  {
+    "name": "annotated_chart_followup",
+    "text": "차트로 보기좋게 표시해서 이미지 파일로 보내줘",
+    "expected": "chart-annotation-followup"
+  },
+  {
+    "name": "latest_image_resend",
+    "text": "방금 만든 차트 이미지 보내줘",
+    "expected": "send-latest-images"
+  },
+  {
+    "name": "ai_news_summary",
+    "text": "오늘자 AI 뉴스 3개 요약해",
+    "expected": "news-summary"
+  },
+  {
+    "name": "korean_stock_ytd_top10_chart",
+    "text": "연초대비 상승률 1위부터 10위까지 종목 다 3년 일봉차트 생성해서 전송해줘",
+    "expected": "krx-ytd-top10-charts"
+  },
+  {
+    "name": "numbered_backtest_followup_not_news",
+    "text": "2번 새로작성. Bybit Linear 1h 백테스트 엔진 인터페이스 스펙과 코드 스텁 작성해",
+    "expected": "generic-codex"
+  },
+  {
+    "name": "pasted_backtest_plan_not_news_followup",
+    "text": "1) 설계 확정 v1\n- 목적: Bybit Linear 1h 단순 전략 멀티 에이전트 백테스트\n3) 파일 책임 정리\n- signal_adapter.py\n- backtest_runner.py\n4) 테스트 기준치: summary + trades + equity 산출\n작성해",
+    "expected": "generic-codex"
+  },
+  {
+    "name": "explicit_numbered_news_followup_still_news",
+    "text": "2번 뉴스를 저작권에 위배되지 않게 각색해서 대본과 이미지 프롬프트 생성해",
+    "expected": "news-followup"
+  },
+  {
+    "name": "bybit_natural_backtest_workflow",
+    "text": "Bybit BTCUSDT 1h recent 1000 candles trend breakout backtest run",
+    "expected": "bybit-backtest"
+  },
+  {
+    "name": "bybit_reverse_long_short_compare",
+    "text": "same previous data compare long entries as short reverse results",
+    "expected": "bybit-backtest"
+  },
+  {
+    "name": "krx_near_3y_high",
+    "text": "KRX stocks current price closest to 3 year high top 10",
+    "expected": "krx-near-3y-high"
+  },
+  {
+    "name": "krx_target_reclaim_10000",
+    "text": "3년동안 계속 1만원 미만이다가 최근 1개월 이내에 1만원 근처에 종가가 위치한 종목들 찾아줘",
+    "expected": "krx-target-reclaim"
+  },
+  {
+    "name": "krx_target_reclaim_5000",
+    "text": "3년동안 계속 5천원 미만이다가 최근 1개월 이내에 5천원 근처에 종가가 위치한 종목들 찾아줘",
+    "expected": "krx-target-reclaim"
+  }
+]

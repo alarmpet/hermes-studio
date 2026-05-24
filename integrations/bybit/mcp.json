@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "bybit": {
+      "command": "npx",
+      "args": ["-y", "bybit-official-trading-server@latest"],
+      "env": {
+        "BYBIT_TESTNET": "true"
+      }
+    }
+  }
+}

@@ -1,0 +1,31 @@
+node_modules/
+.aistudio-browser-profile/
+outputs/
+charts/
+__pycache__/
+*.pyc
+_tmp_agent_skills_repo/
+
+# Local generated artifacts
+*.tmp
+tmp_*
+temp_*
+extracted_*.js
+capture_test.png
+kosdaq_*.csv
+kosdaq_*.png
+
+# Local credentials and bot state
+telegram-flow-news-config.json
+telegram.txt
+openrouter.txt.txt
+brave.txt
+*.secret
+*.token
+*.key
+
+# Runtime state
+telegram-flow-offset.json
+telegram-flow-state.json
+bot_data.db
+bot_data.db-*
