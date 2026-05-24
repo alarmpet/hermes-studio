@@ -203,11 +203,23 @@ for (const target of ["chatgpt", "gemini", "googleFlow", "youtube"]) {
     try {
       const result = await window.hermes.authStart(target);
       appendLog(`${target} authentication`, result);
+      if (target === "youtube") await handleYouTubeAuthResult(result);
       await renderAuthStatus();
     } catch (error) {
       appendLog(`${target} authentication failed`, error?.message || String(error));
     }
   });
+}
+
+async function handleYouTubeAuthResult(result) {
+  if (result.status === "client-secrets-missing") {
+    appendLog("YouTube 인증 준비 필요", `Google Cloud Console에서 받은 client_secrets.json 파일을 여기에 넣어주세요: ${result.clientSecretsPath}`);
+    if (result.setupDir) await window.hermes.openPath(result.setupDir);
+    return;
+  }
+  if (result.status === "oauth-not-configured") {
+    appendLog("YouTube OAuth 준비됨", result.message || "client_secrets.json 파일을 확인했습니다.");
+  }
 }
 
 form.addEventListener("submit", async (event) => {

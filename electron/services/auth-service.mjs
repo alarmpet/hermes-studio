@@ -49,7 +49,8 @@ export async function startAuth(target, { config, paths }) {
         target,
         status: "client-secrets-missing",
         clientSecretsPath: paths.youtubeClientSecretsPath,
-        message: "Place Google OAuth client_secrets.json in the app data folder before YouTube authentication.",
+        setupDir: paths.userData,
+        message: "YouTube 업로드 인증을 시작하려면 Google OAuth client_secrets.json 파일을 앱 데이터 폴더에 넣어야 합니다.",
       };
     }
     return {
@@ -57,7 +58,8 @@ export async function startAuth(target, { config, paths }) {
       target,
       status: "oauth-not-configured",
       tokenPath: paths.youtubeTokenPath,
-      message: "YouTube OAuth loopback receiver is available; full browser exchange will be enabled after client credentials are verified.",
+      setupDir: paths.userData,
+      message: "YouTube OAuth client secrets file was found. Browser OAuth exchange is the next setup step.",
     };
   }
 

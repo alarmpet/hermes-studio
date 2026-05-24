@@ -76,8 +76,7 @@ ipcMain.handle("auth:start", async (_event, target) => {
     auth: {
       ...(config.auth || {}),
       [target]: {
-        status: result.status,
-        profileDir: result.profileDir,
+        ...result,
         updatedAt: new Date().toISOString(),
       },
     },

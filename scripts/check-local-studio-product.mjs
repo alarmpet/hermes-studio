@@ -103,6 +103,9 @@ assert.match(youtubeUpload, /containsSyntheticMedia/, "YouTube upload metadata s
 assert.match(preload, /youtubeApproveUpload/, "preload should expose upload approval");
 assert.match(html, /approveUploadBtn/, "renderer should include upload approval button");
 assert.match(renderer, /youtubeApproveUpload/, "renderer should call upload approval IPC");
+assert.match(authService, /client_secrets\.json/, "YouTube auth should guide users to client_secrets.json");
+assert.match(renderer, /handleYouTubeAuthResult/, "renderer should visibly handle YouTube auth setup results");
+assert.match(renderer, /openPath\(result\.setupDir\)/, "renderer should open setup folder when YouTube client secrets are missing");
 assert.match(healthCheck, /validateTtsPath/, "health check should validate external Supertonic TTS path");
 assert.match(healthCheck, /supertonic3_engine\.py/, "health check should verify Supertonic engine source");
 
