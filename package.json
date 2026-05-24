@@ -26,6 +26,10 @@
       "scripts/**/*",
       "package.json"
     ],
+    "asarUnpack": [
+      "scripts/**/*",
+      "node_modules/ffmpeg-static/**/*"
+    ],
     "win": {
       "target": "nsis"
     }

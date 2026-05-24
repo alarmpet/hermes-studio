@@ -31,6 +31,13 @@ assert.match(main, /BrowserWindow/, "Main process should create a BrowserWindow"
 assert.match(main, /ipcMain\.handle\("youtube:createJob"/, "Main process should handle YouTube job creation");
 assert.match(main, /runYouTubeJob/, "Main process should call the shared YouTube runner");
 assert.match(main, /normalizeYouTubeJobRequest/, "Main process should normalize desktop job requests");
+assert.match(main, /app\.isPackaged/, "Main process should branch packaged runtime paths");
+assert.match(main, /app\.getPath\("userData"\)/, "Packaged app should write outputs to userData");
+assert.match(main, /process\.resourcesPath/, "Packaged app should read bundled scripts from resources");
+assert.match(main, /app\.asar\.unpacked/, "Packaged app should execute unpacked binaries");
+assert.match(main, /FFMPEG_BIN/, "Packaged render process should receive executable ffmpeg path");
+assert.ok(packageJson.build.asarUnpack?.includes("scripts/**/*"), "Render scripts should be unpacked for external node execution");
+assert.ok(packageJson.build.asarUnpack?.includes("node_modules/ffmpeg-static/**/*"), "ffmpeg-static should be unpacked for packaged execution");
 assert.match(preload, /contextBridge/, "Preload should use contextBridge");
 assert.match(preload, /youtubeCreateJob/, "Preload should expose youtubeCreateJob");
 assert.match(preload, /onYouTubeEvent/, "Preload should expose YouTube event subscription");

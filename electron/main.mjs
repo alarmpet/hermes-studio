@@ -10,8 +10,14 @@ import { normalizeYouTubeJobRequest } from "../youtube-job-schema.mjs";
 import { runYouTubeJob } from "../youtube-job-runner.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const ROOT = resolve(__dirname, "..");
-const OUTPUT_DIR = process.env.HERMES_OUTPUT_DIR || join(ROOT, "outputs");
+const APP_ROOT = resolve(__dirname, "..");
+const PROJECT_ROOT = process.env.HERMES_PROJECT_ROOT || "C:/Users/amd/hermes";
+const RUNTIME_ROOT = app.isPackaged ? app.getPath("userData") : APP_ROOT;
+const OUTPUT_DIR = process.env.HERMES_OUTPUT_DIR || join(RUNTIME_ROOT, "outputs");
+const RENDER_SCRIPT = app.isPackaged
+  ? join(process.resourcesPath, "app.asar.unpacked", "scripts", "render-youtube-with-tts.mjs")
+  : join(APP_ROOT, "scripts", "render-youtube-with-tts.mjs");
+const FFMPEG_BIN = app.isPackaged ? ffmpegPath.replace("app.asar", "app.asar.unpacked") : ffmpegPath;
 const jobEvents = new EventEmitter();
 
 let mainWindow = null;
@@ -65,7 +71,7 @@ function buildDesktopJobRequest(input = {}) {
 
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
-    cwd: options.cwd || ROOT,
+    cwd: options.cwd || PROJECT_ROOT,
     encoding: "utf8",
     env: { ...process.env, PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8", ...(options.env || {}) },
     maxBuffer: 40 * 1024 * 1024,
@@ -81,7 +87,7 @@ async function createSyntheticSceneVideo({ jobDir, scene, index }) {
   const colors = ["0f766e", "334155", "7c2d12", "4338ca", "166534", "9f1239"];
   const color = colors[index % colors.length];
   const outputPath = join(jobDir, `scene_${scene.order}.mp4`);
-  runCommand(ffmpegPath, [
+  runCommand(FFMPEG_BIN, [
     "-y",
     "-f", "lavfi",
     "-i", `color=c=0x${color}:s=720x1280:d=8:r=30`,
@@ -174,10 +180,10 @@ async function createDesktopPreviewJob(input = {}) {
       const finalName = `desktop-test-${Date.now()}.mp4`;
       sendJobEvent({ type: "desktop-render-started", jobId: normalizedJob.id, jobDir: assets.jobDir });
       const result = runCommand(process.env.npm_node_execpath || "node", [
-        join(ROOT, "scripts", "render-youtube-with-tts.mjs"),
+        RENDER_SCRIPT,
         assets.jobDir,
       ], {
-        env: { HERMES_YOUTUBE_FINAL_NAME: finalName },
+        env: { HERMES_YOUTUBE_FINAL_NAME: finalName, FFMPEG_BIN },
         timeoutMs: 20 * 60 * 1000,
       });
       const parsed = parseLastJson(result.stdout);
@@ -192,7 +198,8 @@ async function createDesktopPreviewJob(input = {}) {
 }
 
 ipcMain.handle("app:getConfig", async () => ({
-  root: ROOT,
+  root: APP_ROOT,
+  runtimeRoot: RUNTIME_ROOT,
   outputDir: OUTPUT_DIR,
   ttsRoot: process.env.HERMES_TTS_ROOT || "C:/Users/amd/supertonic3-local-tts-20260517-r4",
 }));
