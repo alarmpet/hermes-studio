@@ -1219,6 +1219,505 @@ git commit -m "chore: add packaged local studio acceptance check"
 
 ## Self-Review
 
+## Review Incorporation From `2026-05-24-local-studio-plan-review-and-improvements.md`
+
+The review document was checked against the current codebase and this plan. The following items are accepted as technically valid and must be treated as amendments to the implementation tasks above.
+
+### Accepted Amendment 1: Remove User-Specific Hardcoded Runtime Defaults
+
+Applies to Task 1 and Task 10.
+
+The review is correct that `C:/Users/amd/...` paths must not be product defaults for a distributable app. `path-resolver.mjs` must import `node:os` and expose a user-relative default TTS candidate instead of embedding the developer machine path as the only default.
+
+Replace the `path-resolver.mjs` snippet in Task 1 with this version:
+
+```js
+import { app } from "electron";
+import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
+import os from "node:os";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+export function getRuntimePaths() {
+  const appRoot = resolve(__dirname, "..", "..");
+  const userData = app.getPath("userData");
+  const runtimeRoot = app.isPackaged ? userData : appRoot;
+  const resourcesRoot = app.isPackaged ? process.resourcesPath : appRoot;
+  const unpackedRoot = app.isPackaged ? join(process.resourcesPath, "app.asar.unpacked") : appRoot;
+  const defaultTtsRoot = join(os.homedir(), "supertonic3-local-tts");
+
+  return {
+    appRoot,
+    userData,
+    runtimeRoot,
+    resourcesRoot,
+    unpackedRoot,
+    defaultTtsRoot,
+    outputDir: join(runtimeRoot, "outputs"),
+    configPath: join(userData, "config.json"),
+    jobsDir: join(userData, "jobs"),
+    chatgptProfileDir: join(userData, "browser-profiles", "chatgpt-profile"),
+    flowProfileDir: join(userData, "browser-profiles", "flow-profile"),
+    geminiProfileDir: join(userData, "browser-profiles", "gemini-profile"),
+    renderScriptPath: join(unpackedRoot, "scripts", "render-youtube-with-tts.mjs"),
+  };
+}
+```
+
+Update `DEFAULT_CONFIG` in Task 1 so `ttsRoot` is empty until the setup wizard confirms it:
+
+```js
+export const DEFAULT_CONFIG = {
+  version: 1,
+  ttsRoot: "",
+  chromePath: "",
+  auth: {
+    chatgpt: { status: "unknown" },
+    gemini: { status: "unknown" },
+    googleFlow: { status: "unknown" },
+    youtube: { status: "unknown" },
+  },
+  defaults: {
+    scriptLengthMode: "preset",
+    scriptLengthPreset: "standard",
+    customDurationSeconds: 90,
+    voiceId: "male_30_announcer",
+    subtitleStyleId: "bold_shorts",
+    mockMediaMode: true,
+  },
+};
+```
+
+Add this check to `scripts/check-local-studio-product.mjs`:
+
+```js
+assert.match(pathResolver, /defaultTtsRoot/, "path resolver should expose a user-relative default TTS candidate");
+assert.doesNotMatch(configStore, /C:\/Users\/amd\/supertonic3-local-tts-20260517-r4/, "config defaults must not hardcode the developer TTS path");
+```
+
+### Accepted Amendment 2: Chrome Discovery And Profile Lock Handling
+
+Applies to Task 2.
+
+The review is correct that hardcoding Chrome to `C:/Program Files/Google/Chrome/Application/chrome.exe` is fragile. Add a browser profile service that searches common Chrome paths and tracks per-profile lock files before launching an auth browser.
+
+Create `electron/services/browser-profile-service.mjs`:
+
+```js
+import { existsSync } from "node:fs";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+
+export function findChromeExecutable(env = process.env) {
+  const candidates = [
+    env.HERMES_CHROME_PATH,
+    "C:/Program Files/Google/Chrome/Application/chrome.exe",
+    "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
+    env.LOCALAPPDATA ? join(env.LOCALAPPDATA, "Google/Chrome/Application/chrome.exe") : "",
+  ].filter(Boolean);
+  return candidates.find((candidate) => existsSync(candidate)) || "";
+}
+
+export async function claimBrowserProfile(profileDir) {
+  await mkdir(profileDir, { recursive: true });
+  const lockPath = join(profileDir, "hermes-profile.lock.json");
+  if (existsSync(lockPath)) {
+    const lock = JSON.parse(await readFile(lockPath, "utf8").catch(() => "{}"));
+    if (lock.pid && isProcessRunning(lock.pid)) {
+      throw new Error(`Browser profile is already in use by process ${lock.pid}: ${profileDir}`);
+    }
+  }
+  await writeFile(lockPath, JSON.stringify({ pid: process.pid, updatedAt: new Date().toISOString() }, null, 2), "utf8");
+  return lockPath;
+}
+
+export async function releaseBrowserProfile(lockPath) {
+  if (lockPath) await rm(lockPath, { force: true });
+}
+
+function isProcessRunning(pid) {
+  try {
+    process.kill(Number(pid), 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+```
+
+Modify `auth-service.mjs` from Task 2 to use `findChromeExecutable()` instead of a hardcoded Chrome path:
+
+```js
+import { claimBrowserProfile, findChromeExecutable } from "./browser-profile-service.mjs";
+
+const chromePath = config.chromePath || findChromeExecutable();
+if (!chromePath) throw new Error("Chrome executable was not found. Set Chrome path in Settings.");
+await claimBrowserProfile(profileDir);
+```
+
+Add static checks:
+
+```js
+const browserProfileService = readFileSync(resolve(root, "electron/services/browser-profile-service.mjs"), "utf8");
+assert.match(browserProfileService, /findChromeExecutable/, "browser profile service should discover Chrome paths");
+assert.match(browserProfileService, /claimBrowserProfile/, "browser profile service should guard profile locks");
+assert.doesNotMatch(authService, /C:\/Program Files\/Google\/Chrome\/Application\/chrome\.exe"\s*\}/, "auth service should not rely only on one Chrome path");
+```
+
+### Accepted Amendment 3: Dynamic Scene Durations Must Be Weighted By Text Length
+
+Applies to Task 3.
+
+The review is correct that equal `duration_seconds` per scene causes audio/video sync risk when narration length varies. Replace the `planScenesFromScript()` implementation in Task 3 with syllable-weighted duration allocation:
+
+```js
+export function planScenesFromScript({ script, title, targetSeconds, customDurationSeconds, characterProfile }) {
+  const totalDuration = Number(customDurationSeconds || targetSeconds || 60);
+  const sentences = splitKoreanSentences(script);
+  const count = targetSceneCount({ sentenceCount: sentences.length, targetSeconds: totalDuration });
+  const perScene = Math.max(1, Math.ceil(sentences.length / count));
+  const tempScenes = [];
+  let totalSyllables = 0;
+
+  for (let index = 0; index < count; index += 1) {
+    const narration = sentences.slice(index * perScene, (index + 1) * perScene).join(" ") || script;
+    const syllables = narration.replace(/\s+/g, "").length;
+    totalSyllables += syllables;
+    tempScenes.push({ order: index + 1, narration, syllables });
+  }
+
+  let allocatedSeconds = 0;
+  const scenes = tempScenes.map((scene) => {
+    let duration = Math.round((scene.syllables / Math.max(1, totalSyllables)) * totalDuration);
+    duration = Math.max(4, duration);
+    allocatedSeconds += duration;
+    return {
+      order: scene.order,
+      narration: scene.narration,
+      duration_seconds: duration,
+      image_prompt: [
+        "9:16 cinematic YouTube shorts scene.",
+        `Title: ${title}.`,
+        `Narration context: ${scene.narration}.`,
+        characterProfile ? `Consistent character: ${characterProfile}.` : "",
+        "No subtitles, no readable text, no logos, no watermarks.",
+      ].filter(Boolean).join(" "),
+    };
+  });
+
+  const diff = totalDuration - allocatedSeconds;
+  if (diff !== 0 && scenes.length > 0) {
+    const last = scenes[scenes.length - 1];
+    last.duration_seconds = Math.max(4, last.duration_seconds + diff);
+  }
+
+  return scenes;
+}
+```
+
+Also improve sentence splitting to avoid depending only on punctuation followed by whitespace:
+
+```js
+export function splitKoreanSentences(script = "") {
+  const normalized = String(script).replace(/\s+/g, " ").trim();
+  const matches = normalized.match(/[^.!?。！？]+[.!?。！？]?/gu) || [];
+  return matches.map((item) => item.trim()).filter(Boolean);
+}
+```
+
+Add checks:
+
+```js
+assert.match(planner, /totalSyllables/, "scene planner should weight duration by narration length");
+assert.match(planner, /Math\.max\(4/, "scene planner should enforce a minimum scene duration");
+```
+
+### Accepted Amendment 4: Voice Pitch Must Be Treated As Capability-Dependent
+
+Applies to Task 4.
+
+The review is correct that defining `pitch` in voice presets is not enough. However, the current `Supertonic3Engine.synthesize_to_file()` capability must be verified before blindly passing `pitch`. Update Task 4 with this safer rule:
+
+```python
+import inspect
+
+kwargs = {
+    "text": text,
+    "output_path": out_wav,
+    "voice": voice,
+    "lang": "ko",
+    "speed": speed,
+    "total_step": 8,
+    "max_chunk_length": 130,
+    "silence_duration": 0.25,
+    "verbose": False,
+}
+signature = inspect.signature(engine.synthesize_to_file)
+if "pitch" in signature.parameters and "pitch" in render_options:
+    kwargs["pitch"] = float(render_options["pitch"])
+info = engine.synthesize_to_file(**kwargs)
+```
+
+Add checks:
+
+```js
+const ttsScript = readFileSync(resolve(root, "scripts/make-scenes-tts.py"), "utf8");
+assert.match(ttsScript, /inspect\.signature/, "TTS script should detect optional pitch support before passing pitch");
+```
+
+### Accepted Amendment 5: Subtitle Preview Must Match Render More Closely
+
+Applies to Task 5.
+
+The review is correct that CSS `-webkit-text-stroke` does not visually match ASS outline perfectly. Use multi-direction `text-shadow` for the live preview and keep ASS style generation as the render source of truth.
+
+Replace the preview CSS in Task 5 with:
+
+```css
+#subtitlePreviewText {
+  position: absolute;
+  left: 40px;
+  right: 40px;
+  bottom: 36px;
+  color: #fff;
+  font-weight: 900;
+  text-align: center;
+  line-height: 1.12;
+  text-shadow:
+    -2px -2px 0 #000,  2px -2px 0 #000,
+    -2px  2px 0 #000,  2px  2px 0 #000,
+     0px -2px 0 #000,  0px  2px 0 #000,
+    -2px  0px 0 #000,  2px  0px 0 #000;
+}
+```
+
+Add a font packaging requirement to Task 5:
+
+```json
+"extraResources": [
+  {
+    "from": "assets/fonts",
+    "to": "fonts",
+    "filter": ["**/*.ttf", "**/*.otf"]
+  }
+]
+```
+
+Add check:
+
+```js
+assert.match(styles, /text-shadow:\s*[\s\S]*-2px -2px 0 #000/, "subtitle preview should use multi-direction outline shadow");
+assert.match(JSON.stringify(packageJson.build), /assets\/fonts/, "packaged app should include subtitle fonts");
+```
+
+### Accepted Amendment 6: Keep Mock Media Mode, But Make It Explicit
+
+Applies to Task 6.
+
+The review is correct that removing mock rendering entirely would slow down UI and subtitle development. The product path must use real Flow by default, but a clearly labeled `Mock Media Mode` toggle should remain for development and diagnostics.
+
+Change Task 6 static guard from “no synthetic generator anywhere” to “no synthetic generator in default product path”:
+
+```js
+assert.match(jobService, /mockMediaMode/, "desktop job service should support explicit mock media mode");
+assert.match(jobService, /generateFlowMedia|flow/i, "desktop job service should call Flow stage by default");
+assert.match(renderer, /mockMediaMode/, "renderer should expose explicit Mock Media Mode for development");
+```
+
+The UI label must be:
+
+```html
+<label class="switch">
+  <input id="mockMediaMode" type="checkbox">
+  <span></span>
+  Mock Media Mode
+</label>
+```
+
+Default must be `false` for packaged builds:
+
+```js
+const mockMediaMode = !window.hermes.isPackaged && document.querySelector("#mockMediaMode").checked;
+```
+
+### Accepted Amendment 7: Job History Needs An Index
+
+Applies to Task 7.
+
+The review is correct that scanning many full job JSON files can freeze the UI. Replace the simple `appendJob()` design with an index plus lazy detail loading.
+
+Use this job-store shape:
+
+```js
+import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+
+const INDEX_FILE = "jobs-index.json";
+
+export async function listJobs(jobsDir) {
+  const indexPath = join(jobsDir, INDEX_FILE);
+  if (!existsSync(indexPath)) return [];
+  return JSON.parse(await readFile(indexPath, "utf8"));
+}
+
+export async function upsertJob(jobsDir, job) {
+  await mkdir(jobsDir, { recursive: true });
+  const indexPath = join(jobsDir, INDEX_FILE);
+  const current = await listJobs(jobsDir);
+  const summary = {
+    id: job.id,
+    title: job.title || job.sourceValue || job.id,
+    status: job.status || "unknown",
+    jobDir: job.jobDir,
+    updatedAt: new Date().toISOString(),
+  };
+  const next = [summary, ...current.filter((item) => item.id !== job.id)].slice(0, 500);
+  await writeFile(indexPath, JSON.stringify(next, null, 2), "utf8");
+  await writeFile(join(jobsDir, `${job.id}.json`), JSON.stringify(job, null, 2), "utf8");
+  return summary;
+}
+
+export async function readJob(jobsDir, jobId) {
+  return JSON.parse(await readFile(join(jobsDir, `${jobId}.json`), "utf8"));
+}
+```
+
+Add check:
+
+```js
+const jobStore = readFileSync(resolve(root, "electron/services/job-store.mjs"), "utf8");
+assert.match(jobStore, /jobs-index\.json/, "job store should maintain an index file");
+assert.match(jobStore, /listJobs/, "job store should list summaries without loading every job body");
+```
+
+### Accepted Amendment 8: Thumbnail Strategy Should Be Robust, But ChatGPT Remains Primary
+
+Applies to Task 8.
+
+The review is right that ChatGPT browser automation can break due to UI or anti-abuse changes. However, replacing ChatGPT with Google Flow image mode as the primary thumbnail generator conflicts with the product requirement because Google Flow Korean text rendering is unreliable. Therefore:
+
+- Primary: authenticated ChatGPT image generation with Korean headline text.
+- Secondary: if ChatGPT image generation fails, extract or generate a clean background image and compose Korean headline locally with `sharp`.
+- Do not use Google Flow to render Korean text inside thumbnail images.
+
+Update `pipeline/youtube-thumbnail.mjs` contract:
+
+```js
+export async function createThumbnailForJob({ draft, paths, jobDir }) {
+  const prompt = buildThumbnailPrompt({ title: draft.title, script: draft.script });
+  const chatgpt = await generateChatGptThumbnail({
+    prompt,
+    profileDir: paths.chatgptProfileDir,
+    outputDir: jobDir,
+  }).catch((error) => ({ ok: false, error: error.message }));
+  if (chatgpt.ok) return chatgpt;
+  return createLocalCompositedThumbnail({
+    title: draft.title,
+    script: draft.script,
+    jobDir,
+    reason: chatgpt.error || "ChatGPT thumbnail generation failed",
+  });
+}
+```
+
+Add static checks:
+
+```js
+const thumbnail = readFileSync(resolve(root, "pipeline/youtube-thumbnail.mjs"), "utf8");
+assert.match(thumbnail, /generateChatGptThumbnail/, "thumbnail pipeline should keep ChatGPT as primary");
+assert.match(thumbnail, /createLocalCompositedThumbnail/, "thumbnail pipeline should provide local sharp fallback");
+assert.doesNotMatch(thumbnail, /Flow.*Korean text/i, "thumbnail pipeline should not rely on Flow for Korean text rendering");
+```
+
+### Accepted Amendment 9: YouTube OAuth Needs `googleapis` And Loopback Receiver
+
+Applies to Task 9.
+
+The review is correct that the plan must explicitly add `googleapis` and a temporary loopback HTTP receiver for OAuth redirects.
+
+Update Task 9 with:
+
+```powershell
+npm.cmd install googleapis
+```
+
+Update `pipeline/youtube-auth.mjs` with a loopback receiver contract:
+
+```js
+import http from "node:http";
+
+export function waitForOAuthCode({ port = 0 } = {}) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      try {
+        const url = new URL(req.url, `http://127.0.0.1:${server.address().port}`);
+        const code = url.searchParams.get("code");
+        if (!code) throw new Error("OAuth code missing");
+        res.end("Hermes YouTube authentication complete. You can close this window.");
+        server.close();
+        resolve({ code, redirectUri: `http://127.0.0.1:${server.address().port}` });
+      } catch (error) {
+        res.statusCode = 400;
+        res.end(error.message);
+        reject(error);
+      }
+    });
+    server.listen(port, "127.0.0.1");
+  });
+}
+```
+
+Add checks:
+
+```js
+assert.ok(packageJson.dependencies.googleapis, "googleapis should be a runtime dependency for YouTube upload");
+const youtubeAuth = readFileSync(resolve(root, "pipeline/youtube-auth.mjs"), "utf8");
+assert.match(youtubeAuth, /waitForOAuthCode/, "YouTube auth should include loopback OAuth code receiver");
+assert.match(youtubeAuth, /127\.0\.0\.1/, "OAuth receiver should bind to localhost");
+```
+
+### Accepted Amendment 10: Installer Must Validate External TTS Instead Of Pretending It Is Bundled
+
+Applies to Task 10.
+
+The review is correct that the Supertonic runtime and model files are too large and environment-specific to assume they are bundled. The local product must include a setup wizard step that validates:
+
+- TTS root exists.
+- `.venv-win/Scripts/python.exe` exists under the selected Supertonic directory.
+- `src/supertonic3_engine.py` exists.
+- A 1-sentence sample synthesis succeeds before enabling production generation.
+
+Add this setup validation contract:
+
+```js
+export function validateTtsPath(ttsRoot) {
+  const pythonPath = join(ttsRoot, "supertonic3-local-tts", ".venv-win", "Scripts", "python.exe");
+  const enginePath = join(ttsRoot, "supertonic3-local-tts", "src", "supertonic3_engine.py");
+  return {
+    ok: existsSync(pythonPath) && existsSync(enginePath),
+    pythonPath,
+    enginePath,
+  };
+}
+```
+
+Add check:
+
+```js
+const healthCheck = readFileSync(resolve(root, "electron/services/health-check.mjs"), "utf8");
+assert.match(healthCheck, /validateTtsPath/, "health check should validate external Supertonic TTS path");
+assert.match(healthCheck, /supertonic3_engine\.py/, "health check should verify Supertonic engine source");
+```
+
+### Rejected Or Modified Review Items
+
+- Rejected as primary strategy: using Google Flow image mode as the main thumbnail generator. Reason: previous product decision says Flow Korean text is unreliable. The accepted version keeps ChatGPT as primary and adds a local `sharp` fallback.
+- Modified: removing mock rendering entirely. The accepted version keeps explicit `Mock Media Mode` for development, but requires real Flow as the packaged default.
+- Modified: passing `pitch` blindly to Supertonic. The accepted version checks whether the installed engine supports the `pitch` argument before using it.
+
 Spec coverage:
 - Button-based ChatGPT/Gemini/Google Flow/YouTube auth: Task 2 and Task 9.
 - Persistent auth reuse: Task 1 and Task 2 profile/config storage.
