@@ -21,6 +21,8 @@
     },
     "files": [
       "electron/**/*",
+      "automation/**/*",
+      "pipeline/**/*",
       "youtube-job-*.mjs",
       "youtube-workflow.mjs",
       "scripts/**/*",
@@ -28,7 +30,8 @@
     ],
     "asarUnpack": [
       "scripts/**/*",
-      "node_modules/ffmpeg-static/**/*"
+      "node_modules/ffmpeg-static/**/*",
+      "node_modules/sharp/**/*"
     ],
     "win": {
       "target": "nsis"
@@ -37,7 +40,8 @@
   "dependencies": {
     "@openai/codex-sdk": "^0.132.0",
     "ffmpeg-static": "^5.3.0",
-    "playwright": "^1.60.0"
+    "playwright": "^1.60.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "electron": "^42.2.0",

@@ -21,6 +21,10 @@ const schema = readFileSync(resolve(root, "youtube-job-schema.mjs"), "utf8");
 const workflow = readFileSync(resolve(root, "youtube-workflow.mjs"), "utf8");
 const ttsScript = readFileSync(resolve(root, "scripts/make-scenes-tts.py"), "utf8");
 const renderScript = readFileSync(resolve(root, "scripts/render-youtube-with-tts.mjs"), "utf8");
+const thumbnail = readFileSync(resolve(root, "pipeline/youtube-thumbnail.mjs"), "utf8");
+const thumbnailPrompt = readFileSync(resolve(root, "pipeline/youtube-thumbnail-prompt.mjs"), "utf8");
+const chatgptThumbnail = readFileSync(resolve(root, "automation/chatgpt-thumbnail-source.mjs"), "utf8");
+const packageJson = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8"));
 
 assert.match(pathResolver, /getRuntimePaths/, "path resolver should export getRuntimePaths");
 assert.match(pathResolver, /app\.getPath\("userData"\)/, "packaged app should use userData");
@@ -78,5 +82,13 @@ assert.match(main, /jobs:list/, "main should expose job listing IPC");
 assert.match(preload, /jobsList/, "preload should expose job listing");
 assert.match(html, /refreshJobsBtn/, "renderer should include job refresh button");
 assert.match(renderer, /renderJobs/, "renderer should render local job history");
+assert.match(thumbnailPrompt, /Use Korean headline text directly/, "thumbnail prompt should ask ChatGPT for Korean headline text");
+assert.match(chatgptThumbnail, /generateChatGptThumbnail/, "ChatGPT thumbnail automation contract should exist");
+assert.match(thumbnail, /generateChatGptThumbnail/, "thumbnail pipeline should keep ChatGPT as primary");
+assert.match(thumbnail, /createLocalCompositedThumbnail/, "thumbnail pipeline should provide local sharp fallback");
+assert.match(thumbnail, /sharp/, "thumbnail fallback should use sharp for local image composition");
+assert.doesNotMatch(thumbnail, /Flow.*Korean text/i, "thumbnail pipeline should not rely on Flow for Korean text rendering");
+assert.match(jobService, /createThumbnailForJob/, "desktop job service should create a thumbnail after render");
+assert.ok(packageJson.dependencies.sharp, "sharp should be available for local thumbnail fallback");
 
 console.log(JSON.stringify({ ok: true, checked: "local-studio-product" }));

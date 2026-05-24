@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { normalizeYouTubeJobRequest } from "../../youtube-job-schema.mjs";
 import { runYouTubeJob } from "../../youtube-job-runner.mjs";
 import { generateYouTubeWorkflowAssets, renderFinalYouTubeVideo } from "../../youtube-workflow.mjs";
+import { createThumbnailForJob } from "../../pipeline/youtube-thumbnail.mjs";
 
 export function buildDesktopJobRequest(input = {}) {
   return normalizeYouTubeJobRequest({
@@ -41,7 +42,7 @@ export async function createYouTubeJob(input, context = {}) {
     ? (args) => generateMockMedia(args, context)
     : (args) => generateFlowMedia(args, context);
 
-  return runYouTubeJob(job, {
+  const result = await runYouTubeJob(job, {
     ...context,
     jobDir,
     generateYouTubeWorkflowAssets,
@@ -50,6 +51,12 @@ export async function createYouTubeJob(input, context = {}) {
     renderScriptPath: context.paths?.renderScriptPath,
     finalName: `desktop-${job.options.mockMediaMode ? "mock" : "flow"}-${Date.now()}.mp4`,
   });
+  const thumbnail = await createThumbnailForJob({
+    draft: result.assets.draft,
+    paths: context.paths,
+    jobDir,
+  });
+  return { ...result, thumbnail };
 }
 
 export async function generateFlowMedia({ scene }) {
