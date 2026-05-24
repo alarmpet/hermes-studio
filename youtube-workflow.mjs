@@ -1,4 +1,12 @@
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { SCRIPT_LENGTH_PRESETS } from "./youtube-job-schema.mjs";
+
 const MIN_SCENES = 3;
+const ROOT = process.env.HERMES_ROOT || "C:/Users/amd/hermes";
+const OUTPUT_DIR = process.env.HERMES_OUTPUT_DIR || `${ROOT}/outputs`;
 const DEFAULT_CHARACTER_PROFILE = "same recurring Korean female presenter in her early 30s, shoulder-length black hair, warm professional expression, teal blazer over a white top; keep the same ethnicity, gender, age, hairstyle, face, and outfit across every scene; background people may appear only as secondary blurred extras";
 
 export function extractTargetUrl(text = "") {
@@ -111,6 +119,119 @@ export function buildFlowPromptFromDraft(draft, sceneLimit = 3) {
   ].join(" ");
 }
 
+export function resolveYouTubeJobDir(job, context = {}) {
+  if (context.jobDir) return resolve(context.jobDir);
+  const outputDir = context.outputDir || OUTPUT_DIR;
+  return resolve(outputDir, "youtube", job.id);
+}
+
+export function buildRenderOptions(job) {
+  const preset = SCRIPT_LENGTH_PRESETS[job.options.scriptLengthPreset] || SCRIPT_LENGTH_PRESETS.standard;
+  return {
+    jobId: job.id,
+    voiceId: job.options.voiceId,
+    speechSpeed: job.options.speechSpeed,
+    subtitleStyleId: job.options.subtitleStyleId,
+    aspectRatio: job.options.aspectRatio,
+    renderQuality: job.options.renderQuality,
+    scriptLengthPreset: job.options.scriptLengthPreset,
+    targetSeconds: preset.targetSeconds,
+    sceneCount: preset.sceneCount,
+    characterMode: job.options.characterMode,
+  };
+}
+
+export async function generateYouTubeWorkflowAssets(job, context = {}) {
+  const emit = context.emit || (() => {});
+  const jobDir = resolveYouTubeJobDir(job, context);
+  await mkdir(jobDir, { recursive: true });
+
+  const draftInput = context.draft
+    || (typeof context.buildDraft === "function" ? await context.buildDraft(job, context) : null)
+    || fallbackDraftFromJob(job);
+  const draft = normalizeYouTubeDraft(draftInput);
+  const renderOptions = buildRenderOptions(job);
+
+  const requestPath = join(jobDir, "job-request.json");
+  const draftPath = join(jobDir, "draft.json");
+  const renderOptionsPath = join(jobDir, "render-options.json");
+  const metadataPath = join(jobDir, "metadata.json");
+
+  await writeFile(requestPath, JSON.stringify(job, null, 2), "utf8");
+  await writeFile(draftPath, JSON.stringify(draft, null, 2), "utf8");
+  await writeFile(renderOptionsPath, JSON.stringify(renderOptions, null, 2), "utf8");
+
+  const sceneMedia = [];
+  if (typeof context.generateSceneMedia === "function") {
+    for (const scene of draft.scenes) {
+      emit({ type: "flow-scene-started", jobId: job.id, scene });
+      const media = await context.generateSceneMedia({ job, draft, scene, jobDir, renderOptions });
+      sceneMedia.push({ order: scene.order, ...media });
+      emit({ type: "flow-scene-completed", jobId: job.id, scene, media });
+    }
+  }
+
+  const metadata = {
+    ok: true,
+    jobId: job.id,
+    jobDir,
+    sourceType: job.sourceType,
+    sourceValue: job.sourceValue,
+    draft,
+    renderOptions,
+    sceneMedia,
+    createdAt: new Date().toISOString(),
+  };
+  await writeFile(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
+
+  return {
+    jobDir,
+    draft,
+    renderOptions,
+    requestPath,
+    draftPath,
+    renderOptionsPath,
+    metadataPath,
+    sceneMedia,
+  };
+}
+
+export async function renderFinalYouTubeVideo(job, assets = {}, context = {}) {
+  if (typeof context.renderFinalVideo === "function") {
+    return context.renderFinalVideo(job, assets, context);
+  }
+
+  const jobDir = resolve(assets.jobDir || resolveYouTubeJobDir(job, context));
+  const finalName = context.finalName || process.env.HERMES_YOUTUBE_FINAL_NAME || `final-youtube-${Date.now()}.mp4`;
+  const scriptPath = context.renderScriptPath || join(ROOT, "scripts/render-youtube-with-tts.mjs");
+  const result = spawnSync(process.execPath, [scriptPath, jobDir], {
+    cwd: ROOT,
+    encoding: "utf8",
+    env: { ...process.env, HERMES_YOUTUBE_FINAL_NAME: finalName, ...(context.env || {}) },
+    maxBuffer: 40 * 1024 * 1024,
+    timeout: Number(context.timeoutMs || process.env.HERMES_YOUTUBE_RENDER_TIMEOUT_MS || 15 * 60 * 1000),
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`YouTube final render failed\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`);
+  }
+
+  const renderOutput = result.stdout.trim().match(/\{[\s\S]*\}\s*$/)?.[0] || "{}";
+  let parsed = {};
+  try {
+    parsed = JSON.parse(renderOutput);
+  } catch {
+    parsed = {};
+  }
+
+  const finalPath = parsed.finalPath || join(jobDir, finalName);
+  if (!existsSync(finalPath)) {
+    throw new Error(`Final rendered video was not found: ${finalPath}`);
+  }
+
+  return { ...parsed, finalPath, jobDir };
+}
+
 function normalizeScene(scene = {}, index, title, characterProfile) {
   const imagePrompt = cleanText(scene.image_prompt || scene.imagePrompt || scene.prompt || fallbackImagePrompt(title, index + 1));
   return {
@@ -140,4 +261,14 @@ function fallbackImagePrompt(title, order) {
 
 function cleanText(value = "") {
   return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function fallbackDraftFromJob(job) {
+  const preset = SCRIPT_LENGTH_PRESETS[job.options.scriptLengthPreset] || SCRIPT_LENGTH_PRESETS.standard;
+  return normalizeYouTubeDraft({
+    title: cleanText(job.sourceValue) || "YouTube shorts draft",
+    duration_seconds: preset.targetSeconds,
+    script: cleanText(job.sourceValue) || "YouTube shorts narration",
+    scenes: [],
+  });
 }
