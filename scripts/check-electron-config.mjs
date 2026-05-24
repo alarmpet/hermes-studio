@@ -10,6 +10,7 @@ const preload = readFileSync(resolve(root, "electron/preload.mjs"), "utf8");
 const html = readFileSync(resolve(root, "electron/renderer/index.html"), "utf8");
 const renderer = readFileSync(resolve(root, "electron/renderer/app.js"), "utf8");
 const styles = readFileSync(resolve(root, "electron/renderer/styles.css"), "utf8");
+const pathResolver = readFileSync(resolve(root, "electron/services/path-resolver.mjs"), "utf8");
 
 assert.equal(packageJson.main, "electron/main.mjs", "Electron main entry should be configured");
 assert.ok(packageJson.scripts["electron:dev"], "electron:dev script should exist");
@@ -31,9 +32,10 @@ assert.match(main, /BrowserWindow/, "Main process should create a BrowserWindow"
 assert.match(main, /ipcMain\.handle\("youtube:createJob"/, "Main process should handle YouTube job creation");
 assert.match(main, /runYouTubeJob/, "Main process should call the shared YouTube runner");
 assert.match(main, /normalizeYouTubeJobRequest/, "Main process should normalize desktop job requests");
-assert.match(main, /app\.isPackaged/, "Main process should branch packaged runtime paths");
-assert.match(main, /app\.getPath\("userData"\)/, "Packaged app should write outputs to userData");
-assert.match(main, /process\.resourcesPath/, "Packaged app should read bundled scripts from resources");
+assert.match(main, /getRuntimePaths/, "Main process should use centralized runtime paths");
+assert.match(pathResolver, /app\.isPackaged/, "Path resolver should branch packaged runtime paths");
+assert.match(pathResolver, /app\.getPath\("userData"\)/, "Packaged app should write outputs to userData");
+assert.match(pathResolver, /process\.resourcesPath/, "Packaged app should read bundled scripts from resources");
 assert.match(main, /app\.asar\.unpacked/, "Packaged app should execute unpacked binaries");
 assert.match(main, /FFMPEG_BIN/, "Packaged render process should receive executable ffmpeg path");
 assert.ok(packageJson.build.asarUnpack?.includes("scripts/**/*"), "Render scripts should be unpacked for external node execution");

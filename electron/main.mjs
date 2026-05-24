@@ -3,20 +3,19 @@ import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ffmpegPath from "ffmpeg-static";
 import { normalizeYouTubeJobRequest } from "../youtube-job-schema.mjs";
 import { runYouTubeJob } from "../youtube-job-runner.mjs";
+import { loadConfig, saveConfig } from "./services/config-store.mjs";
+import { getRuntimePaths } from "./services/path-resolver.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const APP_ROOT = resolve(__dirname, "..");
+const paths = getRuntimePaths();
 const PROJECT_ROOT = process.env.HERMES_PROJECT_ROOT || "C:/Users/amd/hermes";
-const RUNTIME_ROOT = app.isPackaged ? app.getPath("userData") : APP_ROOT;
-const OUTPUT_DIR = process.env.HERMES_OUTPUT_DIR || join(RUNTIME_ROOT, "outputs");
-const RENDER_SCRIPT = app.isPackaged
-  ? join(process.resourcesPath, "app.asar.unpacked", "scripts", "render-youtube-with-tts.mjs")
-  : join(APP_ROOT, "scripts", "render-youtube-with-tts.mjs");
+const OUTPUT_DIR = process.env.HERMES_OUTPUT_DIR || paths.outputDir;
+const RENDER_SCRIPT = paths.renderScriptPath;
 const FFMPEG_BIN = app.isPackaged ? ffmpegPath.replace("app.asar", "app.asar.unpacked") : ffmpegPath;
 const jobEvents = new EventEmitter();
 
@@ -198,11 +197,15 @@ async function createDesktopPreviewJob(input = {}) {
 }
 
 ipcMain.handle("app:getConfig", async () => ({
-  root: APP_ROOT,
-  runtimeRoot: RUNTIME_ROOT,
+  root: paths.appRoot,
+  runtimeRoot: paths.runtimeRoot,
   outputDir: OUTPUT_DIR,
-  ttsRoot: process.env.HERMES_TTS_ROOT || "C:/Users/amd/supertonic3-local-tts-20260517-r4",
+  ttsRoot: process.env.HERMES_TTS_ROOT || (await loadConfig(paths.configPath)).ttsRoot || paths.defaultTtsRoot,
 }));
+
+ipcMain.handle("config:get", async () => loadConfig(paths.configPath));
+
+ipcMain.handle("config:save", async (_event, config) => saveConfig(paths.configPath, config));
 
 ipcMain.handle("app:selectDirectory", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
