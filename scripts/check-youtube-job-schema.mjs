@@ -12,6 +12,8 @@ import {
 assert.ok(SCRIPT_LENGTH_PRESETS.short.sceneCount >= 3, "short preset should create multiple scenes");
 assert.ok(SCRIPT_LENGTH_PRESETS.standard.targetSeconds >= 60, "standard preset should support normal shorts length");
 assert.ok(VOICE_PRESETS.some((voice) => voice.id === "M1"), "Supertonic M1 voice preset should exist");
+assert.ok(VOICE_PRESETS.some((voice) => voice.id === "male_30_announcer"), "professional male announcer preset should exist");
+assert.ok(VOICE_PRESETS.some((voice) => voice.id === "female_60_low"), "professional older low female preset should exist");
 assert.ok(SUBTITLE_STYLE_PRESETS.some((style) => style.id === "bold-shorts"), "bold shorts subtitle preset should exist");
 
 const keywordJob = normalizeYouTubeJobRequest({
@@ -48,6 +50,15 @@ const customJob = normalizeYouTubeJobRequest({
 
 assert.equal(customJob.options.scriptLengthMode, "custom");
 assert.equal(customJob.options.customDurationSeconds, 180);
+
+const professionalVoiceJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "voice preset",
+  options: { voiceId: "female_60_low" },
+});
+
+assert.equal(professionalVoiceJob.options.voiceId, "female_60_low");
+assert.equal(professionalVoiceJob.options.speechSpeed, 0.94);
 
 assert.throws(
   () => normalizeYouTubeJobRequest({ sourceType: "keyword", sourceValue: "", options: {} }),

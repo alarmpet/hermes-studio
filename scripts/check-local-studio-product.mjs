@@ -13,8 +13,10 @@ const renderer = readFileSync(resolve(root, "electron/renderer/app.js"), "utf8")
 const authService = readFileSync(resolve(root, "electron/services/auth-service.mjs"), "utf8");
 const browserProfileService = readFileSync(resolve(root, "electron/services/browser-profile-service.mjs"), "utf8");
 const planner = readFileSync(resolve(root, "electron/services/script-planner.mjs"), "utf8");
+const voicePresets = readFileSync(resolve(root, "electron/services/voice-presets.mjs"), "utf8");
 const schema = readFileSync(resolve(root, "youtube-job-schema.mjs"), "utf8");
 const workflow = readFileSync(resolve(root, "youtube-workflow.mjs"), "utf8");
+const ttsScript = readFileSync(resolve(root, "scripts/make-scenes-tts.py"), "utf8");
 
 assert.match(pathResolver, /getRuntimePaths/, "path resolver should export getRuntimePaths");
 assert.match(pathResolver, /app\.getPath\("userData"\)/, "packaged app should use userData");
@@ -47,5 +49,13 @@ assert.match(planner, /Math\.max\(4/, "scene planner should enforce a minimum sc
 assert.match(schema, /customDurationSeconds/, "job schema should accept manual duration");
 assert.match(schema, /sceneStrategy/, "job schema should accept dynamic scene strategy");
 assert.match(workflow, /planScenesFromScript/, "workflow should use dynamic scene planner");
+assert.match(voicePresets, /male_30_announcer/, "voice presets should include professional male announcer");
+assert.match(voicePresets, /female_60_low/, "voice presets should include older female low voice");
+assert.match(main, /presets:voices/, "main should expose voice preset IPC");
+assert.match(preload, /voicePresets/, "preload should expose voice presets");
+assert.match(renderer, /populateVoicePresets/, "renderer should populate voice presets dynamically");
+assert.match(workflow, /engineVoice/, "render options should include engine voice mapping");
+assert.match(ttsScript, /render-options\.json/, "TTS should read render options");
+assert.match(ttsScript, /inspect\.signature/, "TTS script should detect optional pitch support before passing pitch");
 
 console.log(JSON.stringify({ ok: true, checked: "local-studio-product" }));

@@ -16,7 +16,7 @@ export const DEFAULT_CONFIG = {
     scriptLengthPreset: "standard",
     customDurationSeconds: 90,
     voiceId: "male_30_announcer",
-    subtitleStyleId: "bold_shorts",
+    subtitleStyleId: "bold-shorts",
     mockMediaMode: true,
   },
 };

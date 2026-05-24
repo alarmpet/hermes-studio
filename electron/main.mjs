@@ -12,6 +12,7 @@ import { getAuthStatus, startAuth } from "./services/auth-service.mjs";
 import { loadConfig, saveConfig } from "./services/config-store.mjs";
 import { getRuntimePaths } from "./services/path-resolver.mjs";
 import { planScenesFromScript } from "./services/script-planner.mjs";
+import { listVisibleVoicePresets } from "./services/voice-presets.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const paths = getRuntimePaths();
@@ -232,6 +233,8 @@ ipcMain.handle("app:getConfig", async () => ({
 ipcMain.handle("config:get", async () => loadConfig(paths.configPath));
 
 ipcMain.handle("config:save", async (_event, config) => saveConfig(paths.configPath, config));
+
+ipcMain.handle("presets:voices", async () => listVisibleVoicePresets());
 
 ipcMain.handle("auth:status", async () => {
   const config = await loadConfig(paths.configPath);

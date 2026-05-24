@@ -1,15 +1,13 @@
+import { VOICE_PRESETS } from "./electron/services/voice-presets.mjs";
+
+export { VOICE_PRESETS };
+
 export const SCRIPT_LENGTH_PRESETS = {
   micro: { id: "micro", label: "30초", targetSeconds: 30, sceneCount: 3, wordsMin: 75, wordsMax: 95 },
   short: { id: "short", label: "45초", targetSeconds: 45, sceneCount: 4, wordsMin: 105, wordsMax: 130 },
   standard: { id: "standard", label: "60초", targetSeconds: 60, sceneCount: 5, wordsMin: 140, wordsMax: 170 },
   extended: { id: "extended", label: "90초", targetSeconds: 90, sceneCount: 6, wordsMin: 205, wordsMax: 250 },
 };
-
-export const VOICE_PRESETS = [
-  { id: "M1", label: "남성 뉴스톤", engine: "supertonic", defaultSpeed: 1.08 },
-  { id: "F1", label: "여성 뉴스톤", engine: "supertonic", defaultSpeed: 1.06 },
-  { id: "M2", label: "남성 다큐톤", engine: "supertonic", defaultSpeed: 1.0 },
-];
 
 export const SUBTITLE_STYLE_PRESETS = [
   {
@@ -34,8 +32,8 @@ export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
   scriptLengthPreset: "standard",
   customDurationSeconds: 90,
   sceneStrategy: "sentence-proportional",
-  voiceId: "M1",
-  speechSpeed: 1.08,
+  voiceId: "male_30_announcer",
+  speechSpeed: 1.06,
   subtitleStyleId: "bold-shorts",
   aspectRatio: "9:16",
   renderQuality: "shorts-hq",
@@ -77,8 +75,12 @@ export function normalizeYouTubeJobRequest(input = {}) {
   if (!["preset", "sentence-proportional"].includes(options.sceneStrategy)) {
     throw new Error(`Unknown sceneStrategy: ${options.sceneStrategy}`);
   }
-  if (!hasPreset(VOICE_PRESETS, options.voiceId)) {
+  const voicePreset = VOICE_PRESETS.find((voice) => voice.id === options.voiceId);
+  if (!voicePreset) {
     throw new Error(`Unknown voiceId: ${options.voiceId}`);
+  }
+  if (input.options?.speechSpeed == null && voicePreset.speed) {
+    options.speechSpeed = voicePreset.speed;
   }
   if (!hasPreset(SUBTITLE_STYLE_PRESETS, options.subtitleStyleId)) {
     throw new Error(`Unknown subtitleStyleId: ${options.subtitleStyleId}`);

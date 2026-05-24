@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { planScenesFromScript } from "./electron/services/script-planner.mjs";
+import { getVoicePreset } from "./electron/services/voice-presets.mjs";
 import { SCRIPT_LENGTH_PRESETS } from "./youtube-job-schema.mjs";
 
 const MIN_SCENES = 3;
@@ -128,13 +129,17 @@ export function resolveYouTubeJobDir(job, context = {}) {
 
 export function buildRenderOptions(job) {
   const preset = SCRIPT_LENGTH_PRESETS[job.options.scriptLengthPreset] || SCRIPT_LENGTH_PRESETS.standard;
+  const voicePreset = getVoicePreset(job.options.voiceId);
   const targetSeconds = job.options.scriptLengthMode === "custom"
     ? Number(job.options.customDurationSeconds || preset.targetSeconds)
     : preset.targetSeconds;
   return {
     jobId: job.id,
     voiceId: job.options.voiceId,
-    speechSpeed: job.options.speechSpeed,
+    voiceLabel: voicePreset.label,
+    engineVoice: voicePreset.engineVoice,
+    pitch: voicePreset.pitch,
+    speechSpeed: Number(job.options.speechSpeed || voicePreset.speed),
     subtitleStyleId: job.options.subtitleStyleId,
     aspectRatio: job.options.aspectRatio,
     renderQuality: job.options.renderQuality,

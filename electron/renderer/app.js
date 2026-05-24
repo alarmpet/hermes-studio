@@ -2,6 +2,7 @@ const form = document.querySelector("#jobForm");
 const sourceValue = document.querySelector("#sourceValue");
 const speed = document.querySelector("#speechSpeed");
 const speedValue = document.querySelector("#speedValue");
+const voiceSelect = document.querySelector("#voiceId");
 const consoleLog = document.querySelector("#consoleLog");
 const jobState = document.querySelector("#jobState");
 const latestOutput = document.querySelector("#latestOutput");
@@ -41,7 +42,7 @@ function readJobInput() {
     scriptLengthPreset: document.querySelector("#scriptLengthPreset").value,
     customDurationSeconds: Number(document.querySelector("#customDurationSeconds").value || 90),
     sceneStrategy: "sentence-proportional",
-    voiceId: document.querySelector("#voiceId").value,
+    voiceId: voiceSelect.value,
     subtitleStyleId: document.querySelector("#subtitleStyleId").value,
     speechSpeed: Number(speed.value),
     thumbnailMode: document.querySelector("#chatgptThumbnail").checked ? thumbnailProviderName.toLowerCase() : "auto",
@@ -54,8 +55,25 @@ async function loadConfig() {
   const config = await window.hermes.getConfig();
   outputDir = config.outputDir;
   rootPath.textContent = config.root;
+  await populateVoicePresets();
   appendLog("App ready", config);
   await renderAuthStatus();
+}
+
+async function populateVoicePresets() {
+  const voices = await window.hermes.voicePresets();
+  voiceSelect.replaceChildren(...voices.map((voice) => {
+    const option = document.createElement("option");
+    option.value = voice.id;
+    option.textContent = voice.label;
+    option.dataset.speed = String(voice.speed || "");
+    return option;
+  }));
+  const first = voices[0];
+  if (first?.speed) {
+    speed.value = String(first.speed);
+    speedValue.textContent = `${Number(speed.value).toFixed(2)}x`;
+  }
 }
 
 async function renderAuthStatus() {
@@ -69,6 +87,13 @@ async function renderAuthStatus() {
 }
 
 speed.addEventListener("input", () => {
+  speedValue.textContent = `${Number(speed.value).toFixed(2)}x`;
+});
+
+voiceSelect.addEventListener("change", () => {
+  const presetSpeed = voiceSelect.selectedOptions[0]?.dataset.speed;
+  if (!presetSpeed) return;
+  speed.value = presetSpeed;
   speedValue.textContent = `${Number(speed.value).toFixed(2)}x`;
 });
 
