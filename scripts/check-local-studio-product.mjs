@@ -15,6 +15,7 @@ const authService = readFileSync(resolve(root, "electron/services/auth-service.m
 const browserProfileService = readFileSync(resolve(root, "electron/services/browser-profile-service.mjs"), "utf8");
 const jobService = readFileSync(resolve(root, "electron/services/youtube-job-service.mjs"), "utf8");
 const jobStore = readFileSync(resolve(root, "electron/services/job-store.mjs"), "utf8");
+const healthCheck = readFileSync(resolve(root, "electron/services/health-check.mjs"), "utf8");
 const planner = readFileSync(resolve(root, "electron/services/script-planner.mjs"), "utf8");
 const voicePresets = readFileSync(resolve(root, "electron/services/voice-presets.mjs"), "utf8");
 const schema = readFileSync(resolve(root, "youtube-job-schema.mjs"), "utf8");
@@ -102,5 +103,7 @@ assert.match(youtubeUpload, /containsSyntheticMedia/, "YouTube upload metadata s
 assert.match(preload, /youtubeApproveUpload/, "preload should expose upload approval");
 assert.match(html, /approveUploadBtn/, "renderer should include upload approval button");
 assert.match(renderer, /youtubeApproveUpload/, "renderer should call upload approval IPC");
+assert.match(healthCheck, /validateTtsPath/, "health check should validate external Supertonic TTS path");
+assert.match(healthCheck, /supertonic3_engine\.py/, "health check should verify Supertonic engine source");
 
 console.log(JSON.stringify({ ok: true, checked: "local-studio-product" }));
