@@ -25,15 +25,16 @@ export function waitForOAuthCode({ port = 0 } = {}) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
       try {
-        const url = new URL(req.url, `http://127.0.0.1:${server.address().port}`);
+        const redirectUri = `http://127.0.0.1:${server.address().port}`;
+        const url = new URL(req.url, redirectUri);
         const code = url.searchParams.get("code");
         if (!code) throw new Error("OAuth code missing");
         res.end("Hermes YouTube authentication complete. You can close this window.");
         server.close();
-        resolve({ code, redirectUri: `http://127.0.0.1:${server.address().port}` });
+        resolve({ code, redirectUri });
       } catch (error) {
         res.statusCode = 400;
-        res.end(error.message);
+        if (!res.writableEnded) res.end(error.message);
         server.close();
         reject(error);
       }
@@ -52,7 +53,8 @@ export async function startOAuthCodeReceiver({ port = 0 } = {}) {
   });
   const server = http.createServer((req, res) => {
     try {
-      const url = new URL(req.url, `http://127.0.0.1:${server.address().port}`);
+      const redirectUri = `http://127.0.0.1:${server.address().port}`;
+      const url = new URL(req.url, redirectUri);
       const code = url.searchParams.get("code");
       const error = url.searchParams.get("error");
       if (error) throw new Error(error);
@@ -60,10 +62,10 @@ export async function startOAuthCodeReceiver({ port = 0 } = {}) {
       settled = true;
       res.end("Hermes YouTube authentication complete. You can close this window.");
       server.close();
-      resolveCode({ code, redirectUri: `http://127.0.0.1:${server.address().port}` });
+      resolveCode({ code, redirectUri });
     } catch (err) {
       res.statusCode = 400;
-      res.end(err.message);
+      if (!res.writableEnded) res.end(err.message);
       if (!settled) {
         settled = true;
         server.close();
