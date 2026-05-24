@@ -309,7 +309,9 @@ window.hermes.onYouTubeEvent((event) => {
   if (event?.type === "job-progress") updateProgressUi(event);
   if (event?.type === "desktop-job-failed") {
     jobState.textContent = "Failed";
-    currentProgressMessage.textContent = event.message || "작업이 실패했습니다.";
+    if (progressActionRequired.hidden) {
+      currentProgressMessage.textContent = event.message || "작업이 실패했습니다.";
+    }
   }
   appendLog(event.type || "youtube:event", event);
 });
