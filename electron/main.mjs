@@ -101,11 +101,13 @@ ipcMain.handle("app:openPath", async (_event, targetPath) => {
 ipcMain.handle("youtube:createJob", async (_event, input) => {
   sendJobEvent({ type: "desktop-job-submitted", input });
   try {
+    const config = await loadConfig(paths.configPath);
     const result = await createYouTubeJob(input, {
       paths,
       emit: sendJobEvent,
       outputDir: OUTPUT_DIR,
       ffmpegBin: FFMPEG_BIN,
+      chromePath: config.chromePath,
     });
     if (result.finalVideo?.jobDir) await writeDesktopResult(result.finalVideo.jobDir, result.finalVideo);
     latestCompletedJob = result;

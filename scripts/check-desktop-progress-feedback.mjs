@@ -6,6 +6,7 @@ const html = readFileSync(new URL("../electron/renderer/index.html", import.meta
 const service = readFileSync(new URL("../electron/services/youtube-job-service.mjs", import.meta.url), "utf8");
 const main = readFileSync(new URL("../electron/main.mjs", import.meta.url), "utf8");
 const progress = readFileSync(new URL("../electron/services/job-progress-events.mjs", import.meta.url), "utf8");
+const flowAutomation = readFileSync(new URL("../automation/google-flow-media.mjs", import.meta.url), "utf8");
 
 assert.match(progress, /JOB_PROGRESS_PHASES/, "progress contract should define phases");
 assert.match(html, /id="progressSteps"/, "renderer should contain progress steps");
@@ -16,8 +17,12 @@ assert.match(renderer, /event\?\.type === "job-progress"/, "renderer should cons
 assert.match(renderer, /Generating\.\.\./, "generate button should change label while running");
 assert.match(service, /progressContext = \{ \.\.\.context, job \}/, "job service should pass job into progress context");
 assert.match(service, /emitJobProgress/, "job service should emit structured progress events");
-assert.match(service, /status:\s*"action-required"/, "Flow stub should emit action-required state");
+assert.match(service, /status:\s*"action-required"/, "Flow failures should emit action-required state");
 assert.match(service, /renderFinalVideoWithProgress/, "render stage should emit progress before final render");
+assert.match(service, /generateGoogleFlowVideoFromPrompt/, "desktop service should call the real Google Flow automation module");
+assert.doesNotMatch(service, /not wired yet/, "desktop Flow media generation must not remain a not-wired stub");
+assert.match(flowAutomation, /launchPersistentContext/, "Flow automation should use the authenticated persistent profile");
+assert.match(flowAutomation, /Flow did not expose a new video URL/, "Flow automation should save diagnostic evidence when no video is exposed");
 assert.match(main, /desktop-job-failed/, "main process should emit desktop-job-failed events");
 
 console.log("Desktop progress feedback contract OK");

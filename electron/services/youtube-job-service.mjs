@@ -5,6 +5,8 @@ import { normalizeYouTubeJobRequest } from "../../youtube-job-schema.mjs";
 import { runYouTubeJob } from "../../youtube-job-runner.mjs";
 import { generateYouTubeWorkflowAssets, renderFinalYouTubeVideo } from "../../youtube-workflow.mjs";
 import { createThumbnailForJob } from "../../pipeline/youtube-thumbnail.mjs";
+import { generateGoogleFlowVideoFromPrompt } from "../../automation/google-flow-media.mjs";
+import { findChromeExecutable } from "./browser-profile-service.mjs";
 import { emitJobProgress } from "./job-progress-events.mjs";
 
 export function buildDesktopJobRequest(input = {}) {
@@ -113,19 +115,37 @@ export async function createYouTubeJob(input, context = {}) {
   return { ...result, thumbnail };
 }
 
-export async function generateFlowMedia({ scene }, context = {}) {
+export async function generateFlowMedia({ scene, jobDir }, context = {}) {
   emitJobProgress(context.emit, {
     jobId: context.job?.id || "",
     phase: "flow-media",
-    status: "action-required",
-    message: `장면 ${scene.order} Google Flow 영상 생성 단계에서 멈췄습니다.`,
+    message: `장면 ${scene.order} Google Flow 브라우저 자동화를 실행하는 중입니다.`,
     details: { sceneOrder: scene.order, narration: scene.narration },
-    actionRequired: {
-      title: "Google Flow 자동화 연결 필요",
-      message: "현재 패키징 앱은 Google Flow 브라우저 자동 생성/다운로드 단계가 아직 연결되지 않았습니다. 이 단계가 구현되기 전까지 실제 최종 영상 생성은 진행할 수 없습니다.",
-    },
   });
-  throw new Error(`Google Flow automation is not wired yet for scene ${scene.order}.`);
+  try {
+    const media = await generateGoogleFlowVideoFromPrompt({
+      prompt: scene.image_prompt,
+      jobDir,
+      sceneOrder: scene.order,
+      chromePath: context.chromePath || findChromeExecutable(),
+      profileDir: context.paths?.flowProfileDir,
+      timeoutMs: context.flowTimeoutMs,
+    });
+    return { path: media.path, bytes: media.bytes, contentType: media.contentType };
+  } catch (error) {
+    emitJobProgress(context.emit, {
+      jobId: context.job?.id || "",
+      phase: "flow-media",
+      status: "action-required",
+      message: `장면 ${scene.order} Google Flow 영상 생성 단계에서 멈췄습니다.`,
+      details: { sceneOrder: scene.order, narration: scene.narration, error: error?.message || String(error) },
+      actionRequired: {
+        title: "Google Flow 자동화 확인 필요",
+        message: error?.message || "Google Flow에서 새 영상 URL을 찾지 못했습니다. 열린 Flow 화면과 저장된 스크린샷을 확인해 주세요.",
+      },
+    });
+    throw error;
+  }
 }
 
 export async function generateMockMedia({ scene, jobDir }, context = {}) {
