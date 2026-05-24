@@ -14,6 +14,7 @@ import {
   normalizeYoutubeInput as ytNormalizeYoutubeInput,
   parseJsonMarkdown as ytParseJsonMarkdown,
 } from "./youtube-workflow.mjs";
+import { runYouTubeJob } from "./youtube-job-runner.mjs";
 
 const ROOT = "C:/Users/amd/hermes";
 const OPENCLAW_CONFIG = "C:/Users/amd/.openclaw/openclaw.json";
@@ -5420,173 +5421,186 @@ async function handleYouTubeFinalConfirmMessage(message) {
   });
 }
 
+function buildTelegramYouTubeJobRequest(message) {
+  const rawText = messageText(message);
+  const url = extractTargetUrl(rawText);
+  const targetInput = normalizeYoutubeInput(rawText) || url || rawText.trim() || "YouTube Shorts";
+  const isUrl = isYouTubeUrlRequest(rawText) && Boolean(url);
+  return {
+    id: currentJob?.jobId,
+    sourceType: isUrl ? "url" : "keyword",
+    sourceValue: isUrl ? url : targetInput,
+    originalText: rawText,
+    requestedBy: "telegram",
+    options: {
+      scriptLengthPreset: "standard",
+      voiceId: "M1",
+      speechSpeed: 1.08,
+      subtitleStyleId: "bold-shorts",
+      thumbnailMode: "auto",
+      sendIntermediateMedia: false,
+    },
+  };
+}
+
+function emitYouTubeRunnerEvent(event = {}) {
+  if (event.type === "job-started") setJobPhase(`YouTube runner started: ${event.job?.id || "pending"}`);
+  if (event.type === "assets-ready") setJobPhase(`YouTube assets ready: ${event.jobId || "unknown"}`);
+  if (event.type === "job-completed") setJobPhase(`YouTube runner completed: ${event.jobId || "unknown"}`);
+}
+
 async function handleYouTubeWorkflowMessage(message) {
-  const chatId = message.chat.id;
-  const replyTo = message.message_id;
-  const rawText = messageText(message);
-  
-  const isUrl = isYouTubeUrlRequest(rawText);
-  const targetInput = normalizeYoutubeInput(rawText);
-  
-  let draft = null;
-  
-  if (isUrl) {
-    const url = extractTargetUrl(rawText);
-    if (!url) {
-      await sendJobAck(chatId, "URL 모드로 진입했으나 유효한 링크를 찾지 못했습니다. 일반 키워드 모드로 대본을 생성합니다.", replyTo);
-      setJobPhase("Fallback: keyword draft generation start");
-      draft = await buildYouTubeDraftFromKeyword({ keyword: targetInput });
-    } else {
-      await sendJobAck(chatId, `링크를 확인하였습니다: ${url}\n기사를 요약하고 대본/씬 프롬프트를 구성합니다.`, replyTo);
-      setJobPhase(`Fetching article from: ${url}`);
-      try {
-        const article = await fetchArticleByUrl(url);
-        setJobPhase("Rewriting article into YouTube Shorts draft");
-        draft = await buildYouTubeDraftFromArticle({ title: article.title, sourceUrl: url, body: article.body });
-      } catch (error) {
-        console.error(`Article scraping failed: ${error.message}. Falling back to keyword mode.`);
-        await sendMessage(chatId, `기사 수집에 실패했습니다 (${error.message}). 입력한 주소의 텍스트를 분석하여 키워드 모드로 대본을 생성합니다.`, replyTo);
-        setJobPhase("Fallback: keyword draft generation after fetch error");
-        draft = await buildYouTubeDraftFromKeyword({ keyword: targetInput });
-      }
-    }
-  } else {
-    await sendJobAck(chatId, `키워드를 기반으로 YouTube Shorts 대본을 생성합니다: "${targetInput}"`, replyTo);
-    setJobPhase(`Generating keyword draft for: ${targetInput}`);
-    draft = await buildYouTubeDraftFromKeyword({ keyword: targetInput });
-  }
-
-  if (!draft || !draft.scenes || !draft.scenes.length) {
-    throw new Error("YouTube Shorts 대본 생성 결과가 올바르지 않거나 씬 목록이 비어있습니다.");
-  }
-  draft = ytApplyConsistentCharacterProfile(draft);
-  
-  await logTaskEvent({
-    type: "youtube_draft_created",
-    taskName: "youtube-workflow",
-    chatId,
-    messageId: replyTo,
-    draft,
-  });
-
-  const jobDir = `${OUTPUT_DIR}/youtube/${currentJob.jobId}`;
-  await mkdir(jobDir, { recursive: true });
-  await writeFile(`${jobDir}/draft.json`, JSON.stringify(draft, null, 2));
-
-  const scriptMsg = [
-    `🎬 **YouTube Shorts 대본 초안 생성 완료**`,
-    `제목: ${draft.title}`,
-    `예상 길이: ${draft.duration_seconds}초`,
-    `총 장면 수: ${draft.scenes.length}개`,
-    `---`,
-    `📝 **대본 전체 내용:**\n${draft.script}`,
-    `---`,
-    `이제 Google Flow를 통해 각 장면의 비디오 생성을 시작합니다...`
-  ].join("\n");
-  await sendMessage(chatId, scriptMsg, replyTo);
-
-  const mediaFiles = [];
-  
-  for (let i = 0; i < draft.scenes.length; i++) {
-    const scene = draft.scenes[i];
-    const progressText = `Flow 씬 ${i + 1}/${draft.scenes.length} 생성 중... (프롬프트: ${scene.image_prompt.slice(0, 60)}...)`;
-    setJobPhase(progressText);
-    
-    await logTaskEvent({
-      type: "flow_scene_started",
-      taskName: "youtube-workflow",
-      chatId,
-      messageId: replyTo,
-      sceneOrder: scene.order,
-    });
-    
-    let sceneError = null;
-    for (let sceneAttempt = 1; sceneAttempt <= 2; sceneAttempt += 1) {
-      try {
-        const prefix = `youtube-${currentJob.jobId}-scene-${scene.order}-attempt-${sceneAttempt}`;
-        const results = await generateFlowMedia(scene.image_prompt, "video", prefix);
-        if (!results || results.length === 0) {
-          throw new Error(`Scene ${scene.order} did not return any media files.`);
+  const chatId = message.chat.id;
+  const replyTo = message.message_id;
+  const rawText = messageText(message);
+  const isUrl = isYouTubeUrlRequest(rawText);
+  const targetInput = normalizeYoutubeInput(rawText);
+  const jobRequest = buildTelegramYouTubeJobRequest(message);
+  const jobDir = `${OUTPUT_DIR}/youtube/${currentJob.jobId}`;
+
+  await runYouTubeJob(jobRequest, {
+    jobDir,
+    outputDir: OUTPUT_DIR,
+    emit: emitYouTubeRunnerEvent,
+    buildDraft: async () => {
+      let draft = null;
+      if (isUrl) {
+        const url = extractTargetUrl(rawText);
+        if (!url) {
+          await sendJobAck(chatId, "URL 모드로 진입했으나 유효한 링크를 찾지 못했습니다. 일반 키워드 모드로 대본을 생성합니다.", replyTo);
+          setJobPhase("Fallback: keyword draft generation start");
+          draft = await buildYouTubeDraftFromKeyword({ keyword: targetInput });
+        } else {
+          await sendJobAck(chatId, `링크를 확인하였습니다: ${url}\n기사를 요약하고 대본/씬 프롬프트를 구성합니다.`, replyTo);
+          setJobPhase(`Fetching article from: ${url}`);
+          try {
+            const article = await fetchArticleByUrl(url);
+            setJobPhase("Rewriting article into YouTube Shorts draft");
+            draft = await buildYouTubeDraftFromArticle({ title: article.title, sourceUrl: url, body: article.body });
+          } catch (error) {
+            console.error(`Article scraping failed: ${error.message}. Falling back to keyword mode.`);
+            await sendMessage(chatId, `기사 수집에 실패했습니다 (${error.message}). 입력한 주소의 텍스트를 분석하여 키워드 모드로 대본을 생성합니다.`, replyTo);
+            setJobPhase("Fallback: keyword draft generation after fetch error");
+            draft = await buildYouTubeDraftFromKeyword({ keyword: targetInput });
+          }
         }
+      } else {
+        await sendJobAck(chatId, `키워드를 기반으로 YouTube Shorts 대본을 생성합니다: "${targetInput}"`, replyTo);
+        setJobPhase(`Generating keyword draft for: ${targetInput}`);
+        draft = await buildYouTubeDraftFromKeyword({ keyword: targetInput });
+      }
 
-        const fileInfo = results[0];
-        const destPath = `${jobDir}/scene_${scene.order}${extname(fileInfo.path)}`;
-        await rename(fileInfo.path, destPath);
+      if (!draft || !draft.scenes || !draft.scenes.length) {
+        throw new Error("YouTube Shorts 대본 생성 결과가 올바르지 않거나 씬 목록이 비어있습니다.");
+      }
+      draft = ytApplyConsistentCharacterProfile(draft);
 
-        mediaFiles.push({
-          order: scene.order,
-          path: destPath,
-          narration: scene.narration,
-        });
+      await logTaskEvent({
+        type: "youtube_draft_created",
+        taskName: "youtube-workflow",
+        chatId,
+        messageId: replyTo,
+        draft,
+      });
 
-        await logTaskEvent({
-          type: "flow_scene_completed",
-          taskName: "youtube-workflow",
-          chatId,
-          messageId: replyTo,
-          sceneOrder: scene.order,
-          savedPath: destPath,
-          attempt: sceneAttempt,
-        });
-        sceneError = null;
-        break;
-      } catch (error) {
-        sceneError = error;
-        console.error(`Error generating scene ${scene.order} attempt ${sceneAttempt}: ${error.message}`);
-        await logTaskEvent({
-          type: "flow_scene_failed",
-          taskName: "youtube-workflow",
-          chatId,
-          messageId: replyTo,
-          sceneOrder: scene.order,
-          attempt: sceneAttempt,
-          error: safeErrorMessage(error).slice(0, 1000),
-        });
-        if (sceneAttempt < 2) {
-          await sendMessage(chatId, `⚠️ 장면 ${scene.order} 생성 오류가 발생하여 무음 설정을 다시 적용하고 재시도합니다: ${safeErrorMessage(error).slice(0, 300)}`, replyTo);
-          await delay(2000);
+      const scriptMsg = [
+        `🎬 **YouTube Shorts 대본 초안 생성 완료**`,
+        `제목: ${draft.title}`,
+        `예상 길이: ${draft.duration_seconds}초`,
+        `총 장면 수: ${draft.scenes.length}개`,
+        `---`,
+        `📝 **대본 전체 내용:**\n${draft.script}`,
+        `---`,
+        `이제 Google Flow를 통해 각 장면의 비디오 생성을 시작합니다...`,
+      ].join("\n");
+      await sendMessage(chatId, scriptMsg, replyTo);
+      return draft;
+    },
+    generateSceneMedia: async ({ scene, draft }) => {
+      const progressText = `Flow 씬 ${scene.order}/${draft.scenes.length} 생성 중... (프롬프트: ${scene.image_prompt.slice(0, 60)}...)`;
+      setJobPhase(progressText);
+
+      await logTaskEvent({
+        type: "flow_scene_started",
+        taskName: "youtube-workflow",
+        chatId,
+        messageId: replyTo,
+        sceneOrder: scene.order,
+      });
+
+      let sceneError = null;
+      for (let sceneAttempt = 1; sceneAttempt <= 2; sceneAttempt += 1) {
+        try {
+          const prefix = `youtube-${currentJob.jobId}-scene-${scene.order}-attempt-${sceneAttempt}`;
+          const results = await generateFlowMedia(scene.image_prompt, "video", prefix);
+          if (!results || results.length === 0) {
+            throw new Error(`Scene ${scene.order} did not return any media files.`);
+          }
+
+          const fileInfo = results[0];
+          const destPath = `${jobDir}/scene_${scene.order}${extname(fileInfo.path)}`;
+          await rename(fileInfo.path, destPath);
+
+          await logTaskEvent({
+            type: "flow_scene_completed",
+            taskName: "youtube-workflow",
+            chatId,
+            messageId: replyTo,
+            sceneOrder: scene.order,
+            savedPath: destPath,
+            attempt: sceneAttempt,
+          });
+          return {
+            path: destPath,
+            narration: scene.narration,
+            attempt: sceneAttempt,
+          };
+        } catch (error) {
+          sceneError = error;
+          console.error(`Error generating scene ${scene.order} attempt ${sceneAttempt}: ${error.message}`);
+          await logTaskEvent({
+            type: "flow_scene_failed",
+            taskName: "youtube-workflow",
+            chatId,
+            messageId: replyTo,
+            sceneOrder: scene.order,
+            attempt: sceneAttempt,
+            error: safeErrorMessage(error).slice(0, 1000),
+          });
+          if (sceneAttempt < 2) {
+            await sendMessage(chatId, `⚠️ 장면 ${scene.order} 생성 오류가 발생하여 무음 설정을 다시 적용하고 재시도합니다: ${safeErrorMessage(error).slice(0, 300)}`, replyTo);
+            await delay(2000);
+          }
         }
       }
-    }
-    if (sceneError) {
       await sendMessage(chatId, `⚠️ 장면 ${scene.order} 생성 중 오류가 반복되어 건너뜁니다: ${safeErrorMessage(sceneError).slice(0, 500)}`, replyTo);
-    }
-  }
-
-  const metadata = {
-    jobId: currentJob.jobId,
-    chatId,
-    draft,
-    mediaFiles,
-    generatedAt: new Date().toISOString(),
-  };
-  await writeFile(`${jobDir}/metadata.json`, JSON.stringify(metadata, null, 2));
-
-  await logTaskEvent({
-    type: "youtube_workflow_completed",
-    taskName: "youtube-workflow",
-    chatId,
-    messageId: replyTo,
-    jobDir,
-  });
-
-  if (mediaFiles.length === 0) {
-    throw new Error("생성 완료된 장면 미디어가 단 하나도 없습니다. 워크플로우를 종료합니다.");
-  }
-
-  const mediaStatus = await getYouTubeJobMediaStatus(jobDir);
-  if (!mediaStatus.ok) {
-    const missing = mediaStatus.missingScenes.length ? mediaStatus.missingScenes.join(", ") : "확인 필요";
-    throw new Error(`YouTube scene generation incomplete. Missing scenes: ${missing}`);
-  }
+      return { skipped: true, error: safeErrorMessage(sceneError) };
+    },
+    renderFinalVideo: async (_job, assets) => {
+      await logTaskEvent({
+        type: "youtube_workflow_completed",
+        taskName: "youtube-workflow",
+        chatId,
+        messageId: replyTo,
+        jobDir: assets.jobDir,
+      });
 
-  await sendMessage(chatId, "모든 장면 생성이 완료되었습니다. 최종 영상 렌더링을 시작합니다.", replyTo);
-  await renderAndSendYouTubeFinalVideo({
-    chatId,
-    replyTo,
-    jobId: currentJob.jobId,
-    jobDir,
-    taskName: "youtube-workflow",
+      const mediaStatus = await getYouTubeJobMediaStatus(assets.jobDir);
+      if (!mediaStatus.ok) {
+        const missing = mediaStatus.missingScenes.length ? mediaStatus.missingScenes.join(", ") : "확인 필요";
+        throw new Error(`YouTube scene generation incomplete. Missing scenes: ${missing}`);
+      }
+
+      await sendMessage(chatId, "모든 장면 생성이 완료되었습니다. 최종 영상 렌더링을 시작합니다.", replyTo);
+      await renderAndSendYouTubeFinalVideo({
+        chatId,
+        replyTo,
+        jobId: currentJob.jobId,
+        jobDir: assets.jobDir,
+        taskName: "youtube-workflow",
+      });
+      return { sentToTelegram: true, jobDir: assets.jobDir };
+    },
   });
 }
 async function initializeOffsetIfMissing() {
