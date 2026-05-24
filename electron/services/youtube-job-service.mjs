@@ -8,6 +8,7 @@ import { createThumbnailForJob } from "../../pipeline/youtube-thumbnail.mjs";
 import { generateGoogleFlowVideoFromPrompt } from "../../automation/google-flow-media.mjs";
 import { findChromeExecutable } from "./browser-profile-service.mjs";
 import { emitJobProgress } from "./job-progress-events.mjs";
+import { buildDesktopYouTubeDraft } from "./youtube-draft-service.mjs";
 
 export function buildDesktopJobRequest(input = {}) {
   return normalizeYouTubeJobRequest({
@@ -78,10 +79,27 @@ export async function createYouTubeJob(input, context = {}) {
     return renderFinalYouTubeVideo(runnerJob, assets, runnerContext);
   };
 
+  const buildDraftWithProgress = async (runnerJob, runnerContext) => {
+    emitJobProgress(context.emit, {
+      jobId: runnerJob.id,
+      phase: "script-draft",
+      message: runnerJob.sourceType === "url" ? "기사 내용을 각색해 대본을 생성하는 중입니다." : "키워드를 바탕으로 대본을 생성하는 중입니다.",
+      details: { sourceType: runnerJob.sourceType, sourceValue: runnerJob.sourceValue },
+    });
+    const draft = await buildDesktopYouTubeDraft(runnerJob, runnerContext);
+    emitJobProgress(context.emit, {
+      jobId: runnerJob.id,
+      phase: "scene-planning",
+      message: `대본을 ${draft.scenes?.length || 0}개 장면으로 구성했습니다.`,
+      details: { title: draft.title, sceneCount: draft.scenes?.length || 0 },
+    });
+    return draft;
+  };
+
   emitJobProgress(context.emit, {
     jobId: job.id,
     phase: "script-draft",
-    message: "대본 초안과 장면 구성 정보를 생성하는 중입니다.",
+    message: "대본 생성 요청을 준비하는 중입니다.",
   });
 
   const result = await runYouTubeJob(job, {
@@ -90,6 +108,7 @@ export async function createYouTubeJob(input, context = {}) {
     jobDir,
     generateYouTubeWorkflowAssets,
     renderFinalYouTubeVideo: renderFinalVideoWithProgress,
+    buildDraft: buildDraftWithProgress,
     generateSceneMedia,
     renderScriptPath: context.paths?.renderScriptPath,
     finalName: `desktop-${job.options.mockMediaMode ? "mock" : "flow"}-${Date.now()}.mp4`,
