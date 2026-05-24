@@ -488,6 +488,81 @@ output {
   text-overflow: ellipsis;
 }
 
+.progress-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.progress-message {
+  min-height: 24px;
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.progress-steps {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progress-steps li {
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.progress-steps li::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--line);
+  flex: 0 0 auto;
+}
+
+.progress-steps li.is-complete {
+  color: var(--ink);
+}
+
+.progress-steps li.is-complete::before {
+  background: #16a34a;
+}
+
+.progress-steps li.is-current {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.progress-steps li.is-current::before {
+  background: var(--accent);
+}
+
+.progress-steps li.is-action-required,
+.progress-steps li.is-failed {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.progress-steps li.is-action-required::before,
+.progress-steps li.is-failed::before {
+  background: var(--danger);
+}
+
+.progress-action {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #991b1b;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 @media (max-width: 980px) {
   .app-shell {
     grid-template-columns: 1fr;

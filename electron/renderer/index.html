@@ -147,6 +147,25 @@
             </div>
           </form>
 
+          <section class="panel progress-panel" aria-live="polite">
+            <div class="panel-header">
+              <h3>Progress</h3>
+              <span id="jobProgressPercent">0%</span>
+            </div>
+            <div id="currentProgressMessage" class="progress-message">대기 중입니다.</div>
+            <ol id="progressSteps" class="progress-steps">
+              <li data-phase="submitted">작업 접수</li>
+              <li data-phase="source-research">자료 확인</li>
+              <li data-phase="script-draft">대본 생성</li>
+              <li data-phase="scene-planning">장면 구성</li>
+              <li data-phase="flow-media">Google Flow 영상 생성</li>
+              <li data-phase="render">TTS/자막/최종 렌더</li>
+              <li data-phase="thumbnail">썸네일 생성</li>
+              <li data-phase="completed">완료</li>
+            </ol>
+            <div id="progressActionRequired" class="progress-action" hidden></div>
+          </section>
+
           <section class="panel auth-panel">
             <div class="panel-header">
               <h3>Authentication</h3>

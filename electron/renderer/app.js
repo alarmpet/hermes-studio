@@ -21,12 +21,27 @@ const subtitleOutline = document.querySelector("#subtitleOutline");
 const subtitleShadow = document.querySelector("#subtitleShadow");
 const subtitlePreviewText = document.querySelector("#subtitlePreviewText");
 const mockMediaModeInput = document.querySelector("#mockMediaMode");
+const jobProgressPercent = document.querySelector("#jobProgressPercent");
+const currentProgressMessage = document.querySelector("#currentProgressMessage");
+const progressSteps = Array.from(document.querySelectorAll("#progressSteps [data-phase]"));
+const progressActionRequired = document.querySelector("#progressActionRequired");
 const thumbnailProviderName = "ChatGPT";
 
 const subtitlePresetDefaults = {
   "clean-news": { fontSize: 18, outline: 2, shadow: 1, marginV: 60 },
   "bold-shorts": { fontSize: 24, outline: 4, shadow: 1, marginV: 78 },
   minimal: { fontSize: 17, outline: 1, shadow: 0, marginV: 54 },
+};
+
+const PROGRESS_PERCENT_BY_PHASE = {
+  "submitted": 5,
+  "source-research": 12,
+  "script-draft": 24,
+  "scene-planning": 34,
+  "flow-media": 56,
+  "render": 82,
+  "thumbnail": 92,
+  "completed": 100,
 };
 
 let latestOutputPath = "";
@@ -222,6 +237,36 @@ async function handleYouTubeAuthResult(result) {
   }
 }
 
+function resetProgressUi() {
+  jobProgressPercent.textContent = "0%";
+  currentProgressMessage.textContent = "작업을 기다리는 중입니다.";
+  progressActionRequired.hidden = true;
+  progressActionRequired.textContent = "";
+  for (const step of progressSteps) {
+    step.classList.remove("is-current", "is-complete", "is-failed", "is-action-required");
+  }
+}
+
+function updateProgressUi(event) {
+  if (!event || event.type !== "job-progress") return;
+  const percent = Number(event.percent || 0);
+  jobProgressPercent.textContent = `${percent}%`;
+  currentProgressMessage.textContent = event.message || event.label || "진행 중입니다.";
+
+  for (const step of progressSteps) {
+    const stepPercent = PROGRESS_PERCENT_BY_PHASE[step.dataset.phase] || 0;
+    step.classList.toggle("is-complete", stepPercent > 0 && stepPercent < percent);
+    step.classList.toggle("is-current", step.dataset.phase === event.phase && event.status === "running");
+    step.classList.toggle("is-failed", step.dataset.phase === event.phase && event.status === "failed");
+    step.classList.toggle("is-action-required", step.dataset.phase === event.phase && event.status === "action-required");
+  }
+
+  if (event.actionRequired) {
+    progressActionRequired.hidden = false;
+    progressActionRequired.textContent = `${event.actionRequired.title}: ${event.actionRequired.message}`;
+  }
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   const input = readJobInput();
@@ -231,7 +276,16 @@ form.addEventListener("submit", async (event) => {
     return;
   }
 
+  resetProgressUi();
+  updateProgressUi({
+    type: "job-progress",
+    phase: "submitted",
+    status: "running",
+    percent: 5,
+    message: "작업을 접수했습니다. 곧 자료 확인을 시작합니다.",
+  });
   generateBtn.disabled = true;
+  generateBtn.textContent = "Generating...";
   jobState.textContent = "Running";
   appendLog("Submitting YouTube job", input);
   try {
@@ -246,11 +300,17 @@ form.addEventListener("submit", async (event) => {
     jobState.textContent = "Failed";
     appendLog("Job failed", error?.message || String(error));
   } finally {
+    generateBtn.textContent = "Generate Final Video";
     generateBtn.disabled = false;
   }
 });
 
 window.hermes.onYouTubeEvent((event) => {
+  if (event?.type === "job-progress") updateProgressUi(event);
+  if (event?.type === "desktop-job-failed") {
+    jobState.textContent = "Failed";
+    currentProgressMessage.textContent = event.message || "작업이 실패했습니다.";
+  }
   appendLog(event.type || "youtube:event", event);
 });
 
