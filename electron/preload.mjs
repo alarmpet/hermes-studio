@@ -7,6 +7,8 @@ contextBridge.exposeInMainWorld("hermes", {
   voicePresets: () => ipcRenderer.invoke("presets:voices"),
   authStatus: () => ipcRenderer.invoke("auth:status"),
   authStart: (target) => ipcRenderer.invoke("auth:start", target),
+  jobsList: () => ipcRenderer.invoke("jobs:list"),
+  jobsRead: (jobId) => ipcRenderer.invoke("jobs:read", jobId),
   selectDirectory: () => ipcRenderer.invoke("app:selectDirectory"),
   openPath: (targetPath) => ipcRenderer.invoke("app:openPath", targetPath),
   youtubeCreateJob: (input) => ipcRenderer.invoke("youtube:createJob", input),

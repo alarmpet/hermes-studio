@@ -6,6 +6,8 @@ const voiceSelect = document.querySelector("#voiceId");
 const consoleLog = document.querySelector("#consoleLog");
 const jobState = document.querySelector("#jobState");
 const latestOutput = document.querySelector("#latestOutput");
+const refreshJobsBtn = document.querySelector("#refreshJobsBtn");
+const jobsList = document.querySelector("#jobsList");
 const rootPath = document.querySelector("#rootPath");
 const openOutputBtn = document.querySelector("#openOutputBtn");
 const clearLogBtn = document.querySelector("#clearLogBtn");
@@ -84,6 +86,7 @@ async function loadConfig() {
   updateSubtitlePreview();
   appendLog("App ready", config);
   await renderAuthStatus();
+  await renderJobs();
 }
 
 async function populateVoicePresets() {
@@ -168,6 +171,26 @@ latestOutput.addEventListener("click", async () => {
   await window.hermes.openPath(latestOutputPath);
 });
 
+refreshJobsBtn.addEventListener("click", renderJobs);
+
+async function renderJobs() {
+  const jobs = await window.hermes.jobsList();
+  if (!jobs.length) {
+    jobsList.textContent = "No jobs yet";
+    return;
+  }
+  jobsList.replaceChildren(...jobs.map((job) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "job-item";
+    item.innerHTML = `<small>${job.status}</small><span>${job.title || job.id}</span>`;
+    item.addEventListener("click", () => {
+      if (job.jobDir) window.hermes.openPath(job.jobDir);
+    });
+    return item;
+  }));
+}
+
 for (const target of ["chatgpt", "gemini", "googleFlow", "youtube"]) {
   document.querySelector(`#auth-${target}`)?.addEventListener("click", async () => {
     appendLog(`Starting ${target} authentication`);
@@ -200,6 +223,7 @@ form.addEventListener("submit", async (event) => {
     latestOutput.textContent = latestOutputPath || "No output";
     jobState.textContent = "Preview Complete";
     appendLog("Job finished", result.finalVideo || result);
+    await renderJobs();
   } catch (error) {
     jobState.textContent = "Failed";
     appendLog("Job failed", error?.message || String(error));

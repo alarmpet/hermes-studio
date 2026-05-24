@@ -14,6 +14,7 @@ const styles = readFileSync(resolve(root, "electron/renderer/styles.css"), "utf8
 const authService = readFileSync(resolve(root, "electron/services/auth-service.mjs"), "utf8");
 const browserProfileService = readFileSync(resolve(root, "electron/services/browser-profile-service.mjs"), "utf8");
 const jobService = readFileSync(resolve(root, "electron/services/youtube-job-service.mjs"), "utf8");
+const jobStore = readFileSync(resolve(root, "electron/services/job-store.mjs"), "utf8");
 const planner = readFileSync(resolve(root, "electron/services/script-planner.mjs"), "utf8");
 const voicePresets = readFileSync(resolve(root, "electron/services/voice-presets.mjs"), "utf8");
 const schema = readFileSync(resolve(root, "youtube-job-schema.mjs"), "utf8");
@@ -71,5 +72,11 @@ assert.match(jobService, /mockMediaMode/, "desktop job service should support ex
 assert.match(jobService, /generateFlowMedia|flow/i, "desktop job service should call Flow stage by default");
 assert.match(renderer, /mockMediaMode/, "renderer should expose explicit Mock Media Mode for development");
 assert.doesNotMatch(main, /createSyntheticSceneVideo/, "main should not contain synthetic scene generator in product path");
+assert.match(jobStore, /jobs-index\.json/, "job store should maintain an index file");
+assert.match(jobStore, /listJobs/, "job store should list summaries without loading every job body");
+assert.match(main, /jobs:list/, "main should expose job listing IPC");
+assert.match(preload, /jobsList/, "preload should expose job listing");
+assert.match(html, /refreshJobsBtn/, "renderer should include job refresh button");
+assert.match(renderer, /renderJobs/, "renderer should render local job history");
 
 console.log(JSON.stringify({ ok: true, checked: "local-studio-product" }));

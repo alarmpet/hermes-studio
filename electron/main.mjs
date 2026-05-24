@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import ffmpegPath from "ffmpeg-static";
 import { getAuthStatus, startAuth } from "./services/auth-service.mjs";
 import { loadConfig, saveConfig } from "./services/config-store.mjs";
+import { listJobs, readJob, upsertJob } from "./services/job-store.mjs";
 import { getRuntimePaths } from "./services/path-resolver.mjs";
 import { listVisibleVoicePresets } from "./services/voice-presets.mjs";
 import { createYouTubeJob, writeDesktopResult } from "./services/youtube-job-service.mjs";
@@ -56,6 +57,10 @@ ipcMain.handle("config:save", async (_event, config) => saveConfig(paths.configP
 
 ipcMain.handle("presets:voices", async () => listVisibleVoicePresets());
 
+ipcMain.handle("jobs:list", async () => listJobs(paths.jobsDir));
+
+ipcMain.handle("jobs:read", async (_event, jobId) => readJob(paths.jobsDir, jobId));
+
 ipcMain.handle("auth:status", async () => {
   const config = await loadConfig(paths.configPath);
   return getAuthStatus(config);
@@ -101,6 +106,15 @@ ipcMain.handle("youtube:createJob", async (_event, input) => {
     ffmpegBin: FFMPEG_BIN,
   });
   if (result.finalVideo?.jobDir) await writeDesktopResult(result.finalVideo.jobDir, result.finalVideo);
+  await upsertJob(paths.jobsDir, {
+    id: result.job.id,
+    title: result.assets?.draft?.title || result.job.sourceValue,
+    sourceValue: result.job.sourceValue,
+    status: "completed",
+    jobDir: result.assets.jobDir,
+    finalPath: result.finalVideo?.finalPath,
+    createdAt: result.job.createdAt,
+  });
   sendJobEvent({ type: "desktop-job-finished", jobId: result.job.id, jobDir: result.assets.jobDir });
   return result;
 });
