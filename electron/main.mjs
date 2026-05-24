@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import ffmpegPath from "ffmpeg-static";
 import { normalizeYouTubeJobRequest } from "../youtube-job-schema.mjs";
 import { runYouTubeJob } from "../youtube-job-runner.mjs";
+import { getAuthStatus, startAuth } from "./services/auth-service.mjs";
 import { loadConfig, saveConfig } from "./services/config-store.mjs";
 import { getRuntimePaths } from "./services/path-resolver.mjs";
 
@@ -206,6 +207,29 @@ ipcMain.handle("app:getConfig", async () => ({
 ipcMain.handle("config:get", async () => loadConfig(paths.configPath));
 
 ipcMain.handle("config:save", async (_event, config) => saveConfig(paths.configPath, config));
+
+ipcMain.handle("auth:status", async () => {
+  const config = await loadConfig(paths.configPath);
+  return getAuthStatus(config);
+});
+
+ipcMain.handle("auth:start", async (_event, target) => {
+  const config = await loadConfig(paths.configPath);
+  const result = await startAuth(target, { config, paths });
+  const nextConfig = {
+    ...config,
+    auth: {
+      ...(config.auth || {}),
+      [target]: {
+        status: result.status,
+        profileDir: result.profileDir,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  };
+  await saveConfig(paths.configPath, nextConfig);
+  return result;
+});
 
 ipcMain.handle("app:selectDirectory", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {

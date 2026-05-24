@@ -24,7 +24,7 @@
         <div class="system-box">
           <span class="status-dot"></span>
           <div>
-            <strong>Desktop Preview</strong>
+            <strong>Desktop Studio</strong>
             <span id="rootPath">Loading paths...</span>
           </div>
         </div>
@@ -37,7 +37,7 @@
             <p>키워드나 URL을 입력하고 대본 길이, 음성, 자막 스타일을 선택하세요.</p>
           </div>
           <button id="openOutputBtn" class="icon-button" type="button" title="Open output folder" aria-label="Open output folder">
-            <span>⌕</span>
+            <span>↗</span>
           </button>
         </header>
 
@@ -110,6 +110,20 @@
               <button id="clearLogBtn" class="secondary-button" type="button">Clear Console</button>
             </div>
           </form>
+
+          <section class="panel auth-panel">
+            <div class="panel-header">
+              <h3>Authentication</h3>
+              <span id="authSummary">Not checked</span>
+            </div>
+            <div class="auth-grid">
+              <button id="auth-chatgpt" type="button">Authenticate ChatGPT</button>
+              <button id="auth-gemini" type="button">Authenticate Gemini</button>
+              <button id="auth-googleFlow" type="button">Authenticate Google Flow</button>
+              <button id="auth-youtube" type="button">Authenticate YouTube Upload</button>
+            </div>
+            <pre id="authStatusBox"></pre>
+          </section>
 
           <section class="panel console-panel">
             <div class="panel-header">

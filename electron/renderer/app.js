@@ -9,6 +9,8 @@ const rootPath = document.querySelector("#rootPath");
 const openOutputBtn = document.querySelector("#openOutputBtn");
 const clearLogBtn = document.querySelector("#clearLogBtn");
 const generateBtn = document.querySelector("#generateBtn");
+const authStatusBox = document.querySelector("#authStatusBox");
+const authSummary = document.querySelector("#authSummary");
 const thumbnailProviderName = "ChatGPT";
 
 let latestOutputPath = "";
@@ -50,6 +52,17 @@ async function loadConfig() {
   outputDir = config.outputDir;
   rootPath.textContent = config.root;
   appendLog("App ready", config);
+  await renderAuthStatus();
+}
+
+async function renderAuthStatus() {
+  const status = await window.hermes.authStatus();
+  if (authStatusBox) authStatusBox.textContent = JSON.stringify(status, null, 2);
+  if (authSummary) {
+    const readyCount = Object.values(status).filter((item) => /opened|ready|authenticated/i.test(item.status || "")).length;
+    authSummary.textContent = `${readyCount}/${Object.keys(status).length} ready`;
+  }
+  return status;
 }
 
 speed.addEventListener("input", () => {
@@ -70,6 +83,19 @@ latestOutput.addEventListener("click", async () => {
   if (!latestOutputPath) return;
   await window.hermes.openPath(latestOutputPath);
 });
+
+for (const target of ["chatgpt", "gemini", "googleFlow", "youtube"]) {
+  document.querySelector(`#auth-${target}`)?.addEventListener("click", async () => {
+    appendLog(`Starting ${target} authentication`);
+    try {
+      const result = await window.hermes.authStart(target);
+      appendLog(`${target} authentication`, result);
+      await renderAuthStatus();
+    } catch (error) {
+      appendLog(`${target} authentication failed`, error?.message || String(error));
+    }
+  });
+}
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();

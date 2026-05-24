@@ -320,6 +320,46 @@ output {
   gap: 14px;
 }
 
+.auth-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.auth-grid button {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--ink);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.auth-grid button:hover {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
+#authStatusBox {
+  margin: 0;
+  min-height: 112px;
+  max-height: 220px;
+  overflow: auto;
+  border-radius: 8px;
+  padding: 12px;
+  color: #dce5e4;
+  background: var(--console);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;
