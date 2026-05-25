@@ -7,6 +7,9 @@ const root = "C:/Users/amd/hermes";
 const files = [
   "telegram-flow-news-bot.mjs",
   "bot_db_helper.py",
+  "electron/renderer/index.html",
+  "electron/renderer/app.js",
+  "electron/renderer/styles.css",
 ];
 
 const allowed = [

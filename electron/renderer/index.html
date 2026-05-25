@@ -34,17 +34,17 @@
         <header class="topbar">
           <div>
             <h2>YouTube Shorts Generator</h2>
-            <p>?ㅼ썙?쒕굹 URL???낅젰?섍퀬 ?蹂?湲몄씠, ?뚯꽦, ?먮쭑 ?ㅽ??쇱쓣 ?좏깮?섏꽭??</p>
+            <p>키워드나 URL을 입력하고 대본 길이, 음성, 자막 스타일을 선택하세요.</p>
           </div>
           <button id="openOutputBtn" class="icon-button" type="button" title="Open output folder" aria-label="Open output folder">
-            <span>??/span>
+            <span>열기</span>
           </button>
         </header>
 
         <section class="content-grid">
           <form id="jobForm" class="panel">
             <div class="field-group">
-              <label for="sourceValue">?낅젰 諛⑹떇</label>
+              <label for="sourceValue">입력 방식</label>
               <div class="segmented">
                 <label><input type="radio" name="sourceType" value="keyword" checked><span>Keyword</span></label>
                 <label><input type="radio" name="sourceType" value="url"><span>URL</span></label>
@@ -52,43 +52,43 @@
             </div>
 
             <div class="field-group">
-              <label for="sourceValue">?ㅼ썙???먮뒗 URL</label>
-              <textarea id="sourceValue" rows="5" placeholder="?? 理쒖떊 AI ?댁뒪"></textarea>
+              <label for="sourceValue">키워드 또는 URL</label>
+              <textarea id="sourceValue" rows="5" placeholder="예: 최신 AI 뉴스"></textarea>
             </div>
 
             <div class="form-grid">
               <div class="field-group">
-                <label for="scriptLengthMode">?蹂?湲몄씠 諛⑹떇</label>
+                <label for="scriptLengthMode">대본 길이 방식</label>
                 <select id="scriptLengthMode">
-                  <option value="preset" selected>?꾨━??/option>
-                  <option value="custom">?섎룞 珥??낅젰</option>
+                  <option value="preset" selected>프리셋</option>
+                  <option value="custom">수동 초 입력</option>
                 </select>
               </div>
 
               <div class="field-group">
-                <label for="scriptLengthPreset">?蹂?遺꾨웾</label>
+                <label for="scriptLengthPreset">대본 분량</label>
                 <select id="scriptLengthPreset">
-                  <option value="micro">30珥?/option>
-                  <option value="short">45珥?/option>
-                  <option value="standard" selected>60珥?/option>
-                  <option value="extended">90珥?/option>
+                  <option value="micro">30초</option>
+                  <option value="short">45초</option>
+                  <option value="standard" selected>60초</option>
+                  <option value="extended">90초</option>
                 </select>
               </div>
 
               <div class="field-group">
-                <label for="customDurationSeconds">?섎룞 湲몄씠(珥?</label>
+                <label for="customDurationSeconds">수동 길이(초)</label>
                 <input id="customDurationSeconds" type="number" min="15" max="600" value="120">
               </div>
 
               <div class="field-group">
-                <label for="voiceId">?뚯꽦</label>
+                <label for="voiceId">음성</label>
                 <select id="voiceId">
-                  <option value="male_30_announcer" selected>30? ?⑥꽦 ?꾨굹?댁꽌</option>
+                  <option value="male_30_announcer" selected>30대 남성 아나운서</option>
                 </select>
               </div>
 
               <div class="field-group">
-                <label for="subtitleStyleId">?먮쭑 ?ㅽ???/label>
+                <label for="subtitleStyleId">자막 스타일</label>
                 <select id="subtitleStyleId">
                   <option value="bold-shorts" selected>Bold Shorts</option>
                   <option value="clean-news">Clean News</option>
@@ -97,41 +97,41 @@
               </div>
 
               <div class="field-group">
-                <label for="subtitleFontSize">?먮쭑 ?ш린</label>
+                <label for="subtitleFontSize">자막 크기</label>
                 <input id="subtitleFontSize" type="number" min="8" max="18" value="11">
               </div>
 
               <div class="field-group">
-                <label for="subtitleOutline">?먮쭑 ?뚮몢由?/label>
+                <label for="subtitleOutline">자막 테두리</label>
                 <input id="subtitleOutline" type="number" min="0" max="4" value="2">
               </div>
 
               <div class="field-group">
-                <label for="subtitleShadow">?먮쭑 洹몃┝??/label>
+                <label for="subtitleShadow">자막 그림자</label>
                 <input id="subtitleShadow" type="number" min="0" max="4" value="1">
               </div>
 
               <div class="field-group">
-                <label for="speechSpeed">?뚯꽦 ?띾룄</label>
+                <label for="speechSpeed">음성 속도</label>
                 <input id="speechSpeed" type="range" min="0.9" max="1.2" value="1.08" step="0.01">
                 <output id="speedValue">1.08x</output>
               </div>
             </div>
 
             <div class="subtitle-preview" aria-label="Subtitle preview">
-              <div id="subtitlePreviewText">理쒖떊 AI ?댁뒪 ?듭떖留?鍮좊Ⅴ寃??뺣━?⑸땲??/div>
+              <div id="subtitlePreviewText">최신 AI 뉴스 핵심만 빠르게 정리합니다.</div>
             </div>
 
             <div class="option-row">
               <label class="switch">
                 <input id="uploadEnabled" type="checkbox">
                 <span></span>
-                YouTube ?낅줈???뱀씤 ?④퀎 ?ы븿
+                YouTube 업로드 승인 단계 포함
               </label>
               <label class="switch">
                 <input id="chatgptThumbnail" type="checkbox" checked>
                 <span></span>
-                ChatGPT ?몃꽕???앹꽦
+                ChatGPT 썸네일 생성
               </label>
               <label class="switch">
                 <input id="mockMediaMode" type="checkbox">
