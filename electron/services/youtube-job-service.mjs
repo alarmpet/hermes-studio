@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import { normalizeYouTubeJobRequest } from "../../youtube-job-schema.mjs";
 import { runYouTubeJob } from "../../youtube-job-runner.mjs";
 import { createDefaultYouTubeStages } from "../../youtube-workflow-stages.mjs";
@@ -37,7 +38,7 @@ export async function createYouTubeJob(input, context = {}) {
   const job = buildDesktopJobRequest(input);
   const jobDir = context.jobDir || join(context.outputDir, "desktop", job.id);
   const chromePath = context.chromePath || findChromeExecutable();
-  const nodeBin = process.env.HERMES_NODE_BIN || process.env.npm_node_execpath || "";
+  const nodeBin = findNodeExecutable();
   await mkdir(jobDir, { recursive: true });
 
   const progress = (event) => emitJobProgress(context.emit, { jobId: job.id, ...event });
@@ -100,6 +101,19 @@ export async function createYouTubeJob(input, context = {}) {
     details: { finalPath: result.finalVideo?.finalPath, thumbnailPath: thumbnail?.path },
   });
   return { ...result, thumbnail };
+}
+
+export function findNodeExecutable(env = process.env) {
+  const candidates = [
+    env.HERMES_NODE_BIN,
+    env.npm_node_execpath,
+    "C:/Program Files/nodejs/node.exe",
+    "C:/Program Files (x86)/nodejs/node.exe",
+    ...(env.PATH || "").split(delimiter).map((entry) => join(entry, "node.exe")),
+  ]
+    .filter(Boolean)
+    .filter((candidate) => !/electron(\.exe)?$/i.test(candidate));
+  return candidates.find((candidate) => existsSync(candidate)) || "";
 }
 
 export async function writeDesktopResult(jobDir, result) {
