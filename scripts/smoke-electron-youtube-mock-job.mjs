@@ -21,7 +21,7 @@ const result = await createYouTubeJob({
 }, {
   outputDir: jobRoot,
   ffmpegBin: ffmpegPath,
-  chromePath: "mock-browser-path",
+  chromePath: "",
   emit: (event) => events.push(event),
   paths: {
     appRoot: root,
@@ -31,7 +31,7 @@ const result = await createYouTubeJob({
     geminiProfileDir: join(jobRoot, "gemini-profile"),
     renderScriptPath: join(root, "scripts/render-youtube-with-tts.mjs"),
   },
-  allowOpenRouterFallback: true,
+  allowOpenRouterFallback: false,
 });
 
 assert.ok(result.finalVideo?.finalPath, "mock job should render a final video");

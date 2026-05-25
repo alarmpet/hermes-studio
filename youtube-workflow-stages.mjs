@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { copyFile } from "node:fs/promises";
 import { join } from "node:path";
-import { generateYouTubeWorkflowAssets, renderFinalYouTubeVideo } from "./youtube-workflow.mjs";
+import { fallbackDraftFromJob, generateYouTubeWorkflowAssets, renderFinalYouTubeVideo } from "./youtube-workflow.mjs";
 import { buildGeminiResearchDraft } from "./automation/gemini-research-draft.mjs";
 import { generateGoogleFlowVideoFromPrompt } from "./automation/google-flow-media.mjs";
 import { createThumbnailForJob } from "./pipeline/youtube-thumbnail.mjs";
@@ -17,6 +17,24 @@ export function createDefaultYouTubeStages(context = {}) {
 }
 
 export async function buildResearchDraft(job, context = {}) {
+  if (job?.options?.mockMediaMode || context.job?.options?.mockMediaMode || context.mockMediaMode) {
+    const draft = fallbackDraftFromJob(job);
+    context.emit?.({
+      type: "workflow-progress",
+      jobId: job.id,
+      phase: "research",
+      message: "Mock Media Mode: 외부 Gemini/OpenRouter 없이 로컬 테스트 초안을 생성합니다.",
+    });
+    context.emit?.({
+      type: "workflow-progress",
+      jobId: job.id,
+      phase: "draft",
+      message: `대본 생성 완료: 장면 ${draft.scenes?.length || 0}개`,
+      details: { title: draft.title, sceneCount: draft.scenes?.length || 0 },
+    });
+    return draft;
+  }
+
   context.emit?.({
     type: "workflow-progress",
     jobId: job.id,

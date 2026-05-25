@@ -36,6 +36,7 @@ export function buildDesktopJobRequest(input = {}) {
 export async function createYouTubeJob(input, context = {}) {
   const job = buildDesktopJobRequest(input);
   const jobDir = context.jobDir || join(context.outputDir, "desktop", job.id);
+  const chromePath = context.chromePath || findChromeExecutable();
   await mkdir(jobDir, { recursive: true });
 
   const progress = (event) => emitJobProgress(context.emit, { jobId: job.id, ...event });
@@ -63,7 +64,7 @@ export async function createYouTubeJob(input, context = {}) {
     job,
     jobDir,
     paths: context.paths,
-    chromePath: context.chromePath || findChromeExecutable(),
+    chromePath,
     ffmpegBin: context.ffmpegBin,
     emit: emitWorkflow,
     onFlowProgress: ({ message, details }) => progress({
@@ -79,6 +80,7 @@ export async function createYouTubeJob(input, context = {}) {
     emit: emitWorkflow,
     job,
     jobDir,
+    chromePath,
     renderScriptPath: context.paths?.renderScriptPath,
     finalName: `desktop-${job.options.mockMediaMode ? "mock" : "flow"}-${Date.now()}.mp4`,
   });

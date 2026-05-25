@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { planScenesFromScript } from "./electron/services/script-planner.mjs";
 import { getVoicePreset } from "./electron/services/voice-presets.mjs";
 import { SCRIPT_LENGTH_PRESETS, SUBTITLE_STYLE_PRESETS } from "./youtube-job-schema.mjs";
@@ -228,7 +228,11 @@ export async function renderFinalYouTubeVideo(job, assets = {}, context = {}) {
   const jobDir = resolve(assets.jobDir || resolveYouTubeJobDir(job, context));
   const finalName = context.finalName || process.env.HERMES_YOUTUBE_FINAL_NAME || `final-youtube-${Date.now()}.mp4`;
   const scriptPath = context.renderScriptPath || join(ROOT, "scripts/render-youtube-with-tts.mjs");
-  const result = spawnSync(process.execPath, [scriptPath, jobDir], {
+  const nodeBin = context.nodeBin
+    || process.env.HERMES_NODE_BIN
+    || process.env.npm_node_execpath
+    || (basename(process.execPath).toLowerCase().includes("electron") ? "node" : process.execPath);
+  const result = spawnSync(nodeBin, [scriptPath, jobDir], {
     cwd: ROOT,
     encoding: "utf8",
     env: { ...process.env, HERMES_YOUTUBE_FINAL_NAME: finalName, ...(context.env || {}) },
@@ -287,7 +291,7 @@ function cleanText(value = "") {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
-function fallbackDraftFromJob(job) {
+export function fallbackDraftFromJob(job) {
   const preset = SCRIPT_LENGTH_PRESETS[job.options.scriptLengthPreset] || SCRIPT_LENGTH_PRESETS.standard;
   return normalizeYouTubeDraft({
     title: cleanText(job.sourceValue) || "YouTube shorts draft",
