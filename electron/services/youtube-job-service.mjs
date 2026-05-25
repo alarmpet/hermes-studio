@@ -37,6 +37,7 @@ export async function createYouTubeJob(input, context = {}) {
   const job = buildDesktopJobRequest(input);
   const jobDir = context.jobDir || join(context.outputDir, "desktop", job.id);
   const chromePath = context.chromePath || findChromeExecutable();
+  const nodeBin = process.env.HERMES_NODE_BIN || process.env.npm_node_execpath || "";
   await mkdir(jobDir, { recursive: true });
 
   const progress = (event) => emitJobProgress(context.emit, { jobId: job.id, ...event });
@@ -81,6 +82,7 @@ export async function createYouTubeJob(input, context = {}) {
     job,
     jobDir,
     chromePath,
+    nodeBin,
     renderScriptPath: context.paths?.renderScriptPath,
     finalName: `desktop-${job.options.mockMediaMode ? "mock" : "flow"}-${Date.now()}.mp4`,
   });

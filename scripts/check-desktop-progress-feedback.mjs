@@ -9,6 +9,7 @@ const main = readFileSync(new URL("../electron/main.mjs", import.meta.url), "utf
 const progress = readFileSync(new URL("../electron/services/job-progress-events.mjs", import.meta.url), "utf8");
 const flowAutomation = readFileSync(new URL("../automation/google-flow-media.mjs", import.meta.url), "utf8");
 const stages = readFileSync(new URL("../youtube-workflow-stages.mjs", import.meta.url), "utf8");
+const workflowDbEvents = readFileSync(new URL("../workflow-db-events.mjs", import.meta.url), "utf8");
 
 assert.match(progress, /JOB_PROGRESS_PHASES/, "progress contract should define phases");
 assert.match(html, /id="progressSteps"/, "renderer should contain progress steps");
@@ -16,6 +17,9 @@ assert.match(html, /id="currentProgressMessage"/, "renderer should contain curre
 assert.match(html, /id="progressActionRequired"/, "renderer should contain action-required message area");
 assert.match(renderer, /function updateProgressUi/, "renderer should update progress UI from events");
 assert.match(renderer, /event\?\.type === "job-progress"/, "renderer should consume job-progress events");
+assert.match(renderer, /ELECTRON_RUN_AS_NODE|렌더 실행기|최신 설치본/, "renderer should show render runner recovery guidance");
+assert.match(progress, /actionRequired/, "progress events should support action-required recovery messages");
+assert.match(workflowDbEvents, /log-failure/, "workflow DB mirror should persist render failures to task_failures");
 assert.match(renderer, /Generating\.\.\./, "generate button should change label while running");
 assert.match(service, /createDefaultYouTubeStages/, "job service should use the shared YouTube stage factory");
 assert.match(service, /emitJobProgress/, "job service should emit structured progress events");

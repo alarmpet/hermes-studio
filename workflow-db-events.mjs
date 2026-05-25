@@ -1,5 +1,11 @@
 import { spawnSync } from "node:child_process";
 
+function isFailureEvent(event = {}) {
+  return event.type === "desktop-job-failed"
+    || event.status === "failed"
+    || /failed|failure|Gpu Cache Creation failed|disk_cache|Unable to move the cache/i.test(String(event.message || ""));
+}
+
 export function mirrorWorkflowEventToDb(event = {}, context = {}) {
   const dbHelper = context.dbHelper || "C:/Users/amd/hermes/bot_db_helper.py";
   const pythonBin = context.pythonBin || "python";
@@ -31,10 +37,38 @@ export function mirrorWorkflowEventToDb(event = {}, context = {}) {
     maxBuffer: 1024 * 1024,
   });
 
+  let failureResult = null;
+  if (isFailureEvent(event)) {
+    const failurePayload = JSON.stringify({
+      type: event.type || "",
+      phase: event.phase || "",
+      status: event.status || "",
+      message: event.message || "",
+      details: event.details || {},
+      renderRunnerMode: event.details?.renderRunnerMode || event.details?.runnerMode || "",
+      updatedAt: event.updatedAt || new Date().toISOString(),
+    });
+    failureResult = spawnSync(pythonBin, [
+      dbHelper,
+      "log-failure",
+      taskName,
+      chatId,
+      messageId,
+      failurePayload,
+      "0",
+    ], {
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+    });
+  }
+
   return {
-    ok: result.status === 0,
+    ok: result.status === 0 && (!failureResult || failureResult.status === 0),
     status: result.status,
     stdout: result.stdout,
     stderr: result.stderr,
+    failureStatus: failureResult?.status ?? null,
+    failureStdout: failureResult?.stdout ?? "",
+    failureStderr: failureResult?.stderr ?? "",
   };
 }

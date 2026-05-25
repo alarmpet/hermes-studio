@@ -1,7 +1,7 @@
-import { spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { planScenesFromScript } from "./electron/services/script-planner.mjs";
 import { getVoicePreset } from "./electron/services/voice-presets.mjs";
 import { SCRIPT_LENGTH_PRESETS, SUBTITLE_STYLE_PRESETS } from "./youtube-job-schema.mjs";
@@ -228,23 +228,17 @@ export async function renderFinalYouTubeVideo(job, assets = {}, context = {}) {
   const jobDir = resolve(assets.jobDir || resolveYouTubeJobDir(job, context));
   const finalName = context.finalName || process.env.HERMES_YOUTUBE_FINAL_NAME || `final-youtube-${Date.now()}.mp4`;
   const scriptPath = context.renderScriptPath || join(ROOT, "scripts/render-youtube-with-tts.mjs");
-  const nodeBin = context.nodeBin
-    || process.env.HERMES_NODE_BIN
-    || process.env.npm_node_execpath
-    || (basename(process.execPath).toLowerCase().includes("electron") ? "node" : process.execPath);
-  const result = spawnSync(nodeBin, [scriptPath, jobDir], {
-    cwd: ROOT,
-    encoding: "utf8",
-    env: { ...process.env, HERMES_YOUTUBE_FINAL_NAME: finalName, ...(context.env || {}) },
-    maxBuffer: 40 * 1024 * 1024,
-    timeout: Number(context.timeoutMs || process.env.HERMES_YOUTUBE_RENDER_TIMEOUT_MS || 15 * 60 * 1000),
-  });
+  const runner = resolveRenderNodeRunner(context);
+  const timeoutMs = Number(context.timeoutMs || process.env.HERMES_YOUTUBE_RENDER_TIMEOUT_MS || 15 * 60 * 1000);
+  let childOutput;
 
-  if (result.status !== 0) {
-    throw new Error(`YouTube final render failed\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`);
+  try {
+    childOutput = await runRenderChild({ runner, scriptPath, jobDir, finalName, timeoutMs, context, job });
+  } catch (error) {
+    throw buildRenderFailure(error, runner);
   }
 
-  const renderOutput = result.stdout.trim().match(/\{[\s\S]*\}\s*$/)?.[0] || "{}";
+  const renderOutput = childOutput.stdout.trim().match(/\{[\s\S]*\}\s*$/)?.[0] || "{}";
   let parsed = {};
   try {
     parsed = JSON.parse(renderOutput);
@@ -254,10 +248,124 @@ export async function renderFinalYouTubeVideo(job, assets = {}, context = {}) {
 
   const finalPath = parsed.finalPath || join(jobDir, finalName);
   if (!existsSync(finalPath)) {
-    throw new Error(`Final rendered video was not found: ${finalPath}`);
+    throw new Error([
+      `Final rendered video was not found: ${finalPath}`,
+      `Runner mode: ${runner.mode}`,
+      `STDOUT:\n${childOutput.stdout}`,
+      `STDERR:\n${childOutput.stderr}`,
+    ].join("\n"));
   }
 
   return { ...parsed, finalPath, jobDir };
+}
+
+export function resolveRenderNodeRunner(context = {}) {
+  const explicit = context.nodeBin || process.env.HERMES_NODE_BIN || process.env.npm_node_execpath;
+  if (explicit && !/electron(\.exe)?$/i.test(explicit)) {
+    return {
+      command: explicit,
+      env: {},
+      mode: "node",
+    };
+  }
+
+  if (/electron(\.exe)?$/i.test(process.execPath)) {
+    return {
+      command: process.execPath,
+      env: { ELECTRON_RUN_AS_NODE: "1" },
+      mode: "electron-run-as-node",
+    };
+  }
+
+  return {
+    command: process.execPath,
+    env: {},
+    mode: "current-node",
+  };
+}
+
+async function runRenderChild({ runner, scriptPath, jobDir, finalName, timeoutMs, context, job }) {
+  return new Promise((resolveChild, rejectChild) => {
+    const child = spawn(runner.command, [scriptPath, jobDir], {
+      cwd: ROOT,
+      env: {
+        ...process.env,
+        ...runner.env,
+        HERMES_YOUTUBE_FINAL_NAME: finalName,
+        HERMES_RENDER_RUNNER_MODE: runner.mode,
+        ...(context.env || {}),
+      },
+      windowsHide: true,
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGTERM");
+      rejectChild(new Error(`YouTube final render timed out after ${timeoutMs}ms.\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`));
+    }, timeoutMs);
+
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+      context.emit?.({
+        type: "workflow-progress",
+        jobId: job.id,
+        phase: "render",
+        message: "최종 렌더 로그를 수신하는 중입니다.",
+        details: { stream: "stdout", preview: String(chunk).slice(0, 500), renderRunnerMode: runner.mode },
+      });
+    });
+
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+      context.emit?.({
+        type: "workflow-progress",
+        jobId: job.id,
+        phase: "render",
+        message: "최종 렌더 로그를 수신하는 중입니다.",
+        details: { stream: "stderr", preview: String(chunk).slice(0, 500), renderRunnerMode: runner.mode },
+      });
+    });
+
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      rejectChild(error);
+    });
+
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (code !== 0) {
+        rejectChild(new Error(`YouTube final render failed with exit code ${code}.\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`));
+        return;
+      }
+      resolveChild({ stdout, stderr });
+    });
+  });
+}
+
+function buildRenderFailure(error, runner) {
+  const message = error?.message || String(error);
+  if (/Gpu Cache Creation failed|Unable to move the cache|disk_cache/i.test(message)) {
+    return new Error([
+      "YouTube final render launched in Chromium/Electron mode instead of Node mode.",
+      "This usually means the packaged app is using an old build or the render runner did not set ELECTRON_RUN_AS_NODE=1.",
+      `Runner: ${runner.command}`,
+      `Runner mode: ${runner.mode}`,
+      `Original error:\n${message}`,
+    ].join("\n"));
+  }
+  return error;
 }
 
 function normalizeScene(scene = {}, index, title, characterProfile) {
@@ -265,6 +373,11 @@ function normalizeScene(scene = {}, index, title, characterProfile) {
   return {
     order: Number(scene.order || index + 1),
     narration: cleanText(scene.narration || scene.voiceover || scene.text || ""),
+    visual_intent: cleanText(scene.visual_intent || scene.visualIntent || ""),
+    main_subject: cleanText(scene.main_subject || scene.mainSubject || ""),
+    action: cleanText(scene.action || ""),
+    setting: cleanText(scene.setting || ""),
+    camera_motion: cleanText(scene.camera_motion || scene.cameraMotion || ""),
     image_prompt: withCharacterProfile(imagePrompt, characterProfile),
     duration_seconds: Number(scene.duration_seconds || scene.durationSeconds || 8),
   };

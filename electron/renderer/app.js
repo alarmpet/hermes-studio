@@ -176,6 +176,13 @@ function buildSubtitleShadow(outline, shadow) {
   return shadows.join(", ");
 }
 
+function renderRunnerRecoveryGuidance(message = "") {
+  if (!/Chromium\/Electron mode|Gpu Cache Creation failed|Unable to move the cache|disk_cache|ELECTRON_RUN_AS_NODE/i.test(String(message || ""))) {
+    return null;
+  }
+  return "렌더 실행기 문제입니다. 앱을 완전히 종료한 뒤 최신 설치본의 Hermes YouTube Studio.exe로 다시 실행하세요.";
+}
+
 clearLogBtn.addEventListener("click", () => {
   consoleLog.replaceChildren();
   appendLog("Console cleared");
@@ -314,7 +321,7 @@ window.hermes.onYouTubeEvent((event) => {
   if (event?.type === "desktop-job-failed") {
     jobState.textContent = "Failed";
     if (progressActionRequired.hidden) {
-      currentProgressMessage.textContent = event.message || "작업이 실패했습니다.";
+      currentProgressMessage.textContent = renderRunnerRecoveryGuidance(event.message) || event.message || "작업이 실패했습니다.";
     }
   }
   appendLog(event.type || "youtube:event", event);

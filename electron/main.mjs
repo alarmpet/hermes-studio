@@ -11,6 +11,7 @@ import { listVisibleVoicePresets } from "./services/voice-presets.mjs";
 import { createYouTubeJob, writeDesktopResult } from "./services/youtube-job-service.mjs";
 import { uploadVideoToYouTube } from "../pipeline/youtube-upload.mjs";
 import { mirrorWorkflowEventToDb } from "../workflow-db-events.mjs";
+import { createFailureProgressEvent } from "./services/job-progress-events.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const paths = getRuntimePaths();
@@ -131,6 +132,10 @@ ipcMain.handle("youtube:createJob", async (_event, input) => {
     sendJobEvent({ type: "desktop-job-finished", jobId: result.job.id, jobDir: result.assets.jobDir });
     return result;
   } catch (error) {
+    sendJobEvent(createFailureProgressEvent({
+      message: error?.message || String(error),
+      details: { input },
+    }));
     sendJobEvent({
       type: "desktop-job-failed",
       message: error?.message || String(error),

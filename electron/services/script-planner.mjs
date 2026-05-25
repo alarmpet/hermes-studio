@@ -54,13 +54,12 @@ export function planScenesFromScript({ script, title, targetSeconds, customDurat
       order: scene.order,
       narration: scene.narration,
       duration_seconds: duration,
-      image_prompt: [
-        "9:16 cinematic YouTube shorts scene.",
-        `Title: ${title}.`,
-        `Narration context: ${scene.narration}.`,
-        characterProfile ? `Consistent character: ${characterProfile}.` : "",
-        "No subtitles, no readable text, no logos, no watermarks.",
-      ].filter(Boolean).join(" "),
+      image_prompt: buildVisualStoryPrompt({
+        title,
+        narration: scene.narration,
+        order: scene.order,
+        characterProfile,
+      }),
     };
   });
 
@@ -71,4 +70,84 @@ export function planScenesFromScript({ script, title, targetSeconds, customDurat
   }
 
   return scenes;
+}
+
+function inferVisualKeywords({ title, narration }) {
+  const text = `${title} ${narration}`.toLowerCase();
+  if (/구글 글래스|google glass|smart glass|스마트.?글래스|ar|증강/.test(text)) {
+    return {
+      subject: "sleek smart glasses with a subtle heads-up AR display",
+      environments: [
+        "a worksite technician repairing equipment while a floating manual overlay guides each step",
+        "a doctor reviewing patient vitals on a transparent augmented reality interface in a bright clinic",
+        "a traveler walking through a city while navigation arrows appear in their field of view",
+        "a close-up of a privacy camera indicator light turning on before recording starts",
+      ],
+      motifs: "transparent interface elements, practical hands-free use, realistic reflections on lenses",
+    };
+  }
+  if (/ai|인공지능|챗gpt|chatgpt|gemini/.test(text)) {
+    return {
+      subject: "AI tools transforming real work on screens and devices",
+      environments: [
+        "a newsroom desk where article drafts, charts, and model outputs update rapidly",
+        "a designer reviewing AI-generated storyboard frames on a large monitor",
+        "a small business owner automating repetitive tasks on a laptop dashboard",
+      ],
+      motifs: "clean data overlays, fast iteration, human using AI as a tool",
+    };
+  }
+  return {
+    subject: "the core object or situation from the narration",
+    environments: [
+      "a concrete real-world demonstration of the narration idea",
+      "a close-up of the key object in use",
+      "a before-and-after visual contrast that makes the idea easy to understand",
+    ],
+    motifs: "clear cause and effect, visible action, simple visual metaphor",
+  };
+}
+
+function extractSceneKeywords(text = "") {
+  return Array.from(new Set(String(text)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter((item) => Array.from(item).length >= 2)
+    .slice(0, 8)));
+}
+
+function sceneVariation({ order, narration }) {
+  const keywords = extractSceneKeywords(narration);
+  const emphasis = [
+    "show cause and effect through visible motion",
+    "use a close-up detail shot before revealing the wider situation",
+    "contrast the old way and the new way in one continuous shot",
+    "show the user interaction from the viewer's point of view",
+    "use foreground object movement to lead into the next idea",
+    "show a realistic problem being solved on screen without readable text",
+  ][(order - 1) % 6];
+  return {
+    keywords: keywords.join(", "),
+    emphasis,
+  };
+}
+
+function buildVisualStoryPrompt({ title, narration, order, characterProfile }) {
+  const visual = inferVisualKeywords({ title, narration });
+  const environment = visual.environments[(order - 1) % visual.environments.length];
+  const variation = sceneVariation({ order, narration });
+  return [
+    "9:16 cinematic YouTube shorts B-roll scene.",
+    `Visual goal: make this narration instantly understandable without showing subtitles or text: ${narration}`,
+    `Main subject: ${visual.subject}.`,
+    `Action: ${environment}.`,
+    `Scene keywords: ${variation.keywords}.`,
+    `Variation: ${variation.emphasis}.`,
+    `Context keywords: ${title}; ${visual.motifs}.`,
+    "Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting.",
+    characterProfile ? `Character consistency: if a recurring human is needed, use ${characterProfile}; otherwise prioritize objects, environments, demonstrations, and visual metaphors over a talking presenter.` : "",
+    "No talking head, avoid a person simply speaking to camera, no presenter reading the script.",
+    "No subtitles, no readable text, no logos, no watermarks.",
+  ].filter(Boolean).join(" ");
 }
