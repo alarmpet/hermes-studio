@@ -2,9 +2,11 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { planScenesFromScript } from "./electron/services/script-planner.mjs";
+import { planScenesFromHpsl, planScenesFromScript } from "./electron/services/script-planner.mjs";
 import { getVoicePreset } from "./electron/services/voice-presets.mjs";
+import { sanitizeFlowPrompt } from "./electron/services/flow-prompt-safety.mjs";
 import { SCRIPT_LENGTH_PRESETS, SUBTITLE_STYLE_PRESETS } from "./youtube-job-schema.mjs";
+import { assertDraftQuality, validateDraftQuality } from "./scripts/youtube-draft-quality.mjs";
 
 const MIN_SCENES = 3;
 const ROOT = process.env.HERMES_ROOT || "C:/Users/amd/hermes";
@@ -46,6 +48,8 @@ export function normalizeYouTubeDraft(value = {}) {
   const title = cleanText(value.title) || "YouTube shorts draft";
   const script = cleanText(value.script) || cleanText(value.body) || title;
   const character_profile = cleanText(value.character_profile || value.characterProfile) || DEFAULT_CHARACTER_PROFILE;
+  const structure = cleanText(value.structure || "HPSL").toUpperCase();
+  const hpsl = normalizeHpsl(value.hpsl, script);
   const sourceScenes = Array.isArray(value.scenes) ? value.scenes : [];
   const scenes = sourceScenes
     .map((scene, index) => normalizeScene(scene, index, title, character_profile))
@@ -65,6 +69,8 @@ export function normalizeYouTubeDraft(value = {}) {
     title,
     character_profile,
     duration_seconds: Number(value.duration_seconds || value.durationSeconds || 90),
+    structure,
+    hpsl,
     script,
     scenes: scenes.map((scene, index) => ({
       ...scene,
@@ -93,8 +99,9 @@ export function buildYouTubeDraftPrompt({ mode, input, article } = {}) {
     "Do not copy source sentences. Transform the idea into new wording.",
     "Return only JSON. No markdown.",
     "Schema:",
-    "{\"title\":\"string\",\"character_profile\":\"English stable recurring character description\",\"duration_seconds\":90,\"script\":\"string\",\"scenes\":[{\"order\":1,\"narration\":\"string\",\"image_prompt\":\"English 9:16 cinematic prompt\",\"duration_seconds\":8}]}",
+    "{\"title\":\"string\",\"structure\":\"HPSL\",\"hpsl\":{\"hook\":{\"goal\":\"Hook\",\"narration\":\"Korean narration\",\"target_seconds\":7},\"point\":{\"goal\":\"Point\",\"narration\":\"Korean narration\",\"target_seconds\":13},\"story\":{\"goal\":\"Story\",\"narration\":\"Korean narration\",\"target_seconds\":30},\"lesson\":{\"goal\":\"Lesson\",\"narration\":\"Korean narration\",\"target_seconds\":10}},\"character_profile\":\"English stable recurring character description\",\"duration_seconds\":60,\"script\":\"hook + point + story + lesson\",\"scenes\":[{\"order\":1,\"narration\":\"string\",\"image_prompt\":\"English 9:16 cinematic prompt\",\"duration_seconds\":8}]}",
     "Rules:",
+    "- Use HPSL: Hook creates curiosity, Point states the core fact, Story explains with concrete context, Lesson gives a useful takeaway.",
     "- scenes must contain at least 3 items.",
     "- character_profile must describe one stable recurring human presenter/lead if any human appears: ethnicity, gender, approximate age, hairstyle, face, outfit, and role must remain consistent.",
     "- every image_prompt must include that same character identity when people appear, and must not change race, gender, age, hairstyle, or outfit between scenes.",
@@ -145,6 +152,11 @@ export function buildRenderOptions(job) {
     subtitleAss: { ...subtitlePreset.ass, ...(job.options.subtitleStyle || {}) },
     aspectRatio: job.options.aspectRatio,
     renderQuality: job.options.renderQuality,
+    renderEffectPreset: job.options.renderEffectPreset || "cinematic",
+    transitionPreset: job.options.transitionPreset || "scene-fade",
+    transitionSeconds: Number(job.options.transitionSeconds ?? 0.3),
+    motionIntensity: job.options.motionIntensity || "medium",
+    smoothFrameInterpolation: Boolean(job.options.smoothFrameInterpolation),
     scriptLengthPreset: job.options.scriptLengthPreset,
     targetSeconds,
     sceneCount: preset.sceneCount,
@@ -162,7 +174,71 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
     || fallbackDraftFromJob(job);
   const renderOptions = buildRenderOptions(job);
   let draft = normalizeYouTubeDraft(draftInput);
-  if (job.options.sceneStrategy === "sentence-proportional") {
+  const initialQaPreview = validateDraftQuality({ draft, job, stage: "normalized-draft", jobDir });
+  if (!initialQaPreview.ok) {
+    throw new Error(`Draft QA failed: ${initialQaPreview.reason}`);
+  }
+  const initialQa = assertDraftQuality({ draft, job, stage: "normalized-draft", jobDir });
+  if (initialQa.qualityWarnings?.length) {
+    emit({
+      type: "workflow-warning",
+      jobId: job.id,
+      phase: "draft",
+      message: "Draft QA warning: 일부 장면 길이가 길어 분할 검토가 필요합니다.",
+      details: { qualityWarnings: initialQa.qualityWarnings },
+    });
+  }
+  if (job.options.scriptStructure === "hpsl" && draft.hpsl) {
+    draft = {
+      ...draft,
+      structure: "HPSL",
+      duration_seconds: renderOptions.targetSeconds,
+      scenes: planScenesFromHpsl({
+        title: draft.title,
+        hpsl: draft.hpsl,
+        targetSeconds: renderOptions.targetSeconds,
+        characterProfile: draft.character_profile,
+        stylePreset: job.options.stylePreset,
+        characterSheet: job.options.characterSheet,
+        flowOutputMode: job.options.flowOutputMode || "video",
+        hybridIntroVideoSceneCount: job.options.hybridIntroVideoSceneCount,
+      }),
+    };
+    emit({
+      type: "workflow-progress",
+      jobId: job.id,
+      phase: "scene-planning",
+      message: "HPSL 장면 구성이 완료되었습니다.",
+      details: {
+        scriptStructure: "hpsl",
+        effectiveTargetSeconds: renderOptions.targetSeconds,
+        hpslOffsets: {
+          hook: draft.hpsl.hook.target_seconds,
+          point: draft.hpsl.point.target_seconds,
+          story: draft.hpsl.story.target_seconds,
+          lesson: draft.hpsl.lesson.target_seconds,
+        },
+        hpslSectionSeconds: {
+          hook: draft.scenes.filter((scene) => scene.section === "hook").reduce((sum, scene) => sum + scene.duration_seconds, 0),
+          point: draft.scenes.filter((scene) => scene.section === "point").reduce((sum, scene) => sum + scene.duration_seconds, 0),
+          story: draft.scenes.filter((scene) => scene.section === "story").reduce((sum, scene) => sum + scene.duration_seconds, 0),
+          lesson: draft.scenes.filter((scene) => scene.section === "lesson").reduce((sum, scene) => sum + scene.duration_seconds, 0),
+        },
+        sceneSectionMap: draft.scenes.map((scene) => ({
+          order: scene.order,
+          section: scene.section,
+          duration_seconds: scene.duration_seconds,
+          outputMode: scene.outputMode || scene.flowOutputMode || job.options.flowOutputMode || "video",
+        })),
+        flowOutputMode: job.options.flowOutputMode || "video",
+        hybridIntroVideoSceneCount: job.options.hybridIntroVideoSceneCount,
+        sceneOutputModes: draft.scenes.map((scene) => ({
+          order: scene.order,
+          outputMode: scene.outputMode || scene.flowOutputMode || job.options.flowOutputMode || "video",
+        })),
+      },
+    });
+  } else if (job.options.sceneStrategy === "sentence-proportional") {
     draft = {
       ...draft,
       duration_seconds: renderOptions.targetSeconds,
@@ -172,8 +248,43 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
         targetSeconds: renderOptions.targetSeconds,
         customDurationSeconds: job.options.scriptLengthMode === "custom" ? job.options.customDurationSeconds : undefined,
         characterProfile: draft.character_profile,
+        stylePreset: job.options.stylePreset,
+        characterSheet: job.options.characterSheet,
+        flowOutputMode: job.options.flowOutputMode || "video",
+        hybridIntroVideoSceneCount: job.options.hybridIntroVideoSceneCount,
       }),
     };
+    emit({
+      type: "workflow-progress",
+      jobId: job.id,
+      phase: "scene-planning",
+      message: "Sentence-proportional scene planning completed.",
+      details: {
+        scriptStructure: draft.structure || "script",
+        effectiveTargetSeconds: renderOptions.targetSeconds,
+        flowOutputMode: job.options.flowOutputMode || "video",
+        hybridIntroVideoSceneCount: job.options.hybridIntroVideoSceneCount,
+        sceneOutputModes: draft.scenes.map((scene) => ({
+          order: scene.order,
+          outputMode: scene.outputMode || scene.flowOutputMode || job.options.flowOutputMode || "video",
+          duration_seconds: scene.duration_seconds,
+        })),
+      },
+    });
+  }
+  const plannedQaPreview = validateDraftQuality({ draft, job, stage: "scene-planned-draft", jobDir });
+  if (!plannedQaPreview.ok) {
+    throw new Error(`Draft QA failed: ${plannedQaPreview.reason}`);
+  }
+  const plannedQa = assertDraftQuality({ draft, job, stage: "scene-planned-draft", jobDir });
+  if (plannedQa.qualityWarnings?.length) {
+    emit({
+      type: "workflow-warning",
+      jobId: job.id,
+      phase: "scene-planning",
+      message: "Draft QA warning: 장면 분배 후 긴 나레이션이 감지됐습니다.",
+      details: { qualityWarnings: plannedQa.qualityWarnings },
+    });
   }
 
   const requestPath = join(jobDir, "job-request.json");
@@ -191,8 +302,10 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
       emit({ type: "flow-scene-started", jobId: job.id, scene });
       const media = await context.generateSceneMedia({ job, draft, scene, jobDir, renderOptions });
       sceneMedia.push({ order: scene.order, ...media });
+      if (media?.motionPreset) scene.motionPreset = media.motionPreset;
       emit({ type: "flow-scene-completed", jobId: job.id, scene, media });
     }
+    await writeFile(draftPath, JSON.stringify(draft, null, 2), "utf8");
   }
 
   const metadata = {
@@ -370,6 +483,15 @@ function buildRenderFailure(error, runner) {
 
 function normalizeScene(scene = {}, index, title, characterProfile) {
   const imagePrompt = cleanText(scene.image_prompt || scene.imagePrompt || scene.prompt || fallbackImagePrompt(title, index + 1));
+  const visualCategory = cleanText(scene.visual_category || scene.visualCategory || "");
+  const rawPrompt = withCharacterProfile(imagePrompt, characterProfile);
+  const flowPromptSafety = sanitizeFlowPrompt(rawPrompt, {
+    title,
+    sceneOrder: Number(scene.order || index + 1),
+    visualCategory,
+    narration: scene.narration || scene.voiceover || scene.text || "",
+    characterProfile,
+  });
   return {
     order: Number(scene.order || index + 1),
     narration: cleanText(scene.narration || scene.voiceover || scene.text || ""),
@@ -378,8 +500,39 @@ function normalizeScene(scene = {}, index, title, characterProfile) {
     action: cleanText(scene.action || ""),
     setting: cleanText(scene.setting || ""),
     camera_motion: cleanText(scene.camera_motion || scene.cameraMotion || ""),
-    image_prompt: withCharacterProfile(imagePrompt, characterProfile),
+    visual_category: visualCategory,
+    image_prompt: flowPromptSafety.prompt,
+    flow_prompt_safety: flowPromptSafety,
     duration_seconds: Number(scene.duration_seconds || scene.durationSeconds || 8),
+  };
+}
+
+function normalizeHpsl(hpsl = {}, script = "") {
+  const fallback = splitScriptForHpsl(script);
+  return {
+    hook: normalizeHpslSection(hpsl.hook, fallback.hook, 7, "Hook: make viewers curious in the first seconds"),
+    point: normalizeHpslSection(hpsl.point, fallback.point, 13, "Point: state the core fact or conclusion"),
+    story: normalizeHpslSection(hpsl.story, fallback.story, 30, "Story: explain context with concrete examples"),
+    lesson: normalizeHpslSection(hpsl.lesson, fallback.lesson, 10, "Lesson: close with a useful takeaway or caution"),
+  };
+}
+
+function normalizeHpslSection(section = {}, fallbackNarration = "", fallbackSeconds = 10, fallbackGoal = "") {
+  return {
+    goal: cleanText(section.goal || fallbackGoal),
+    narration: cleanText(section.narration || section.text || fallbackNarration),
+    target_seconds: Math.max(1, Number(section.target_seconds || section.targetSeconds || fallbackSeconds)),
+  };
+}
+
+function splitScriptForHpsl(script = "") {
+  const sentences = cleanText(script).match(/[^.!?。！？]+[.!?。！？]?/g)?.map(cleanText).filter(Boolean) || [cleanText(script)].filter(Boolean);
+  const quarter = Math.max(1, Math.ceil(sentences.length / 4));
+  return {
+    hook: sentences.slice(0, quarter).join(" ") || script,
+    point: sentences.slice(quarter, quarter * 2).join(" ") || sentences[1] || script,
+    story: sentences.slice(quarter * 2, quarter * 3).join(" ") || sentences[2] || script,
+    lesson: sentences.slice(quarter * 3).join(" ") || sentences.at(-1) || script,
   };
 }
 
@@ -406,10 +559,34 @@ function cleanText(value = "") {
 
 export function fallbackDraftFromJob(job) {
   const preset = SCRIPT_LENGTH_PRESETS[job.options.scriptLengthPreset] || SCRIPT_LENGTH_PRESETS.standard;
+  const topic = cleanText(job.sourceValue) || "YouTube shorts draft";
   return normalizeYouTubeDraft({
-    title: cleanText(job.sourceValue) || "YouTube shorts draft",
+    title: topic,
     duration_seconds: preset.targetSeconds,
-    script: cleanText(job.sourceValue) || "YouTube shorts narration",
-    scenes: [],
+    script: [
+      `${topic}의 핵심 변화가 다시 주목받고 있습니다.`,
+      `현장에서 어떤 문제가 해결되는지 짧고 쉽게 살펴보겠습니다.`,
+      `마지막으로 기대 효과와 함께 꼭 확인해야 할 위험 요소를 정리합니다.`,
+    ].join(" "),
+    scenes: [
+      {
+        order: 1,
+        narration: `${topic}의 핵심 변화가 다시 주목받고 있습니다.`,
+        image_prompt: `9:16 cinematic B-roll showing the main object or issue behind ${topic}, realistic lighting, no readable text, no logos.`,
+        duration_seconds: 8,
+      },
+      {
+        order: 2,
+        narration: "현장에서 어떤 문제가 해결되는지 짧고 쉽게 살펴보겠습니다.",
+        image_prompt: "9:16 cinematic B-roll showing a practical real-world problem being solved step by step, no readable text, no logos.",
+        duration_seconds: 8,
+      },
+      {
+        order: 3,
+        narration: "마지막으로 기대 효과와 함께 꼭 확인해야 할 위험 요소를 정리합니다.",
+        image_prompt: "9:16 cinematic B-roll showing benefits balanced with risk controls, visual metaphor, no readable text, no logos.",
+        duration_seconds: 8,
+      },
+    ],
   });
 }

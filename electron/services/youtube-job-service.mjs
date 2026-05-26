@@ -6,6 +6,7 @@ import { runYouTubeJob } from "../../youtube-job-runner.mjs";
 import { createDefaultYouTubeStages } from "../../youtube-workflow-stages.mjs";
 import { findChromeExecutable } from "./browser-profile-service.mjs";
 import { emitJobProgress } from "./job-progress-events.mjs";
+import { ingestCharacterSheet } from "./character-sheet-ingest.mjs";
 
 export function buildDesktopJobRequest(input = {}) {
   return normalizeYouTubeJobRequest({
@@ -15,13 +16,23 @@ export function buildDesktopJobRequest(input = {}) {
     options: {
       scriptLengthPreset: input.scriptLengthPreset || "standard",
       scriptLengthMode: input.scriptLengthMode || "preset",
-      customDurationSeconds: input.customDurationSeconds || 90,
+      customDurationSeconds: input.customDurationSeconds || 60,
+      scriptStructure: input.scriptStructure || "hpsl",
       sceneStrategy: input.sceneStrategy || "sentence-proportional",
       voiceId: input.voiceId || "male_30_announcer",
       speechSpeed: Number(input.speechSpeed || 1.08),
       subtitleStyleId: input.subtitleStyleId || "bold-shorts",
       subtitleStyle: input.subtitleStyle || {},
       thumbnailMode: input.thumbnailMode || "auto",
+      flowOutputMode: input.flowOutputMode || "video",
+      hybridIntroVideoSceneCount: input.hybridIntroVideoSceneCount,
+      renderEffectPreset: input.renderEffectPreset || "cinematic",
+      transitionPreset: input.transitionPreset || "scene-fade",
+      transitionSeconds: input.transitionSeconds ?? 0.3,
+      stylePresetId: input.stylePresetId || "cinematic-tech-news",
+      characterSheet: input.characterSheet || {},
+      openaiProviderMode: input.openaiProviderMode || "disabled",
+      openaiApiKeyConfigured: Boolean(input.openaiApiKeyConfigured),
       sendIntermediateMedia: false,
       mockMediaMode: Boolean(input.mockMediaMode),
     },
@@ -40,6 +51,10 @@ export async function createYouTubeJob(input, context = {}) {
   const chromePath = context.chromePath || findChromeExecutable();
   const nodeBin = findNodeExecutable();
   await mkdir(jobDir, { recursive: true });
+  job.options.characterSheet = await ingestCharacterSheet({
+    jobDir,
+    characterSheet: job.options.characterSheet,
+  });
 
   const progress = (event) => emitJobProgress(context.emit, { jobId: job.id, ...event });
   const emitWorkflow = (event = {}) => {

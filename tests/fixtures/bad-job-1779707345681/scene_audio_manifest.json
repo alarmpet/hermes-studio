@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "scenes": [
+    {
+      "order": 1,
+      "audio_path": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_1.wav",
+      "duration": 8.678630828857422,
+      "text": "여러분, 오늘은 고기 먹고 싶은 이유에 대해 이야기해볼게요. 과학적으로 고기를 먹고 싶을 때의 이유가 있대요!"
+    },
+    {
+      "order": 2,
+      "audio_path": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_2.wav",
+      "duration": 10.738997459411621,
+      "text": "우리가 고기를 원할 때, 그건 단순한 욕구가 아닐 수 있어요. 사실, 고기는 우리 몸에 필요한 단백질과 철분을 풍부하게 포함하고 있거든요."
+    },
+    {
+      "order": 3,
+      "audio_path": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_3.wav",
+      "duration": 8.612879753112793,
+      "text": "특히, 스트레스를 받을 때 몸이 고기를 더 원한다고 해요. 그래서인지, 오늘은 고기 생각이 더 간절한 것 같아요!"
+    },
+    {
+      "order": 4,
+      "audio_path": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_4.wav",
+      "duration": 8.500935554504395,
+      "text": "여러분도 그런 경험 있으신가요? 우리 몸의 신호를 잘 듣고, 필요한 영양소를 섭취하는 것이 중요하답니다!"
+    },
+    {
+      "order": 5,
+      "audio_path": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_5.wav",
+      "duration": 36.996795654296875,
+      "text": "여러분, 오늘은 고기 먹고 싶은 이유에 대해 이야기해볼게요. 과학적으로 고기를 먹고 싶을 때의 이유가 있대요! 우리가 고기를 원할 때, 그건 단순한 욕구가 아닐 수 있어요. 사실, 고기는 우리 몸에 필요한 단백질과 철분을 풍부하게 포함하고 있거든요. 특히, 스트레스를 받을 때 몸이 고기를 더 원한다고 해요. 그래서인지, 오늘은 고기 생각이 더 간절한 것 같아요! 여러분도 그런 경험 있으신가요? 우리 몸의 신호를 잘 듣고, 필요한 영양소를 섭취하는 것이 중요하답니다!"
+    }
+  ]
+}

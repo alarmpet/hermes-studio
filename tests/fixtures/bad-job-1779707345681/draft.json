@@ -1,0 +1,38 @@
+{
+  "title": "오늘 고기 먹고 싶은 이유는?",
+  "character_profile": "A young Korean woman in her late 20s with long black hair, wearing a casual t-shirt and jeans, cheerful and engaging personality.",
+  "duration_seconds": 60,
+  "script": "여러분, 오늘은 고기 먹고 싶은 이유에 대해 이야기해볼게요. 과학적으로 고기를 먹고 싶을 때의 이유가 있대요! 우리가 고기를 원할 때, 그건 단순한 욕구가 아닐 수 있어요. 사실, 고기는 우리 몸에 필요한 단백질과 철분을 풍부하게 포함하고 있거든요. 특히, 스트레스를 받을 때 몸이 고기를 더 원한다고 해요. 그래서인지, 오늘은 고기 생각이 더 간절한 것 같아요! 여러분도 그런 경험 있으신가요? 우리 몸의 신호를 잘 듣고, 필요한 영양소를 섭취하는 것이 중요하답니다!",
+  "scenes": [
+    {
+      "order": 1,
+      "narration": "여러분, 오늘은 고기 먹고 싶은 이유에 대해 이야기해볼게요. 과학적으로 고기를 먹고 싶을 때의 이유가 있대요!",
+      "duration_seconds": 7,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual goal: make this narration instantly understandable without showing subtitles or text: 여러분, 오늘은 고기 먹고 싶은 이유에 대해 이야기해볼게요. 과학적으로 고기를 먹고 싶을 때의 이유가 있대요! Main subject: the core object or situation from the narration. Action: a concrete real-world demonstration of the narration idea. Scene keywords: 여러분, 오늘은, 고기, 먹고, 싶은, 이유에, 대해, 이야기해볼게요. Variation: show cause and effect through visible motion. Context keywords: 오늘 고기 먹고 싶은 이유는?; clear cause and effect, visible action, simple visual metaphor. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. Character consistency: if a recurring human is needed, use A young Korean woman in her late 20s with long black hair, wearing a casual t-shirt and jeans, cheerful and engaging personality.; otherwise prioritize objects, environments, demonstrations, and visual metaphors over a talking presenter. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks."
+    },
+    {
+      "order": 2,
+      "narration": "우리가 고기를 원할 때, 그건 단순한 욕구가 아닐 수 있어요. 사실, 고기는 우리 몸에 필요한 단백질과 철분을 풍부하게 포함하고 있거든요.",
+      "duration_seconds": 9,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual goal: make this narration instantly understandable without showing subtitles or text: 우리가 고기를 원할 때, 그건 단순한 욕구가 아닐 수 있어요. 사실, 고기는 우리 몸에 필요한 단백질과 철분을 풍부하게 포함하고 있거든요. Main subject: the core object or situation from the narration. Action: a close-up of the key object in use. Scene keywords: 우리가, 고기를, 원할, 그건, 단순한, 욕구가, 아닐, 있어요. Variation: use a close-up detail shot before revealing the wider situation. Context keywords: 오늘 고기 먹고 싶은 이유는?; clear cause and effect, visible action, simple visual metaphor. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. Character consistency: if a recurring human is needed, use A young Korean woman in her late 20s with long black hair, wearing a casual t-shirt and jeans, cheerful and engaging personality.; otherwise prioritize objects, environments, demonstrations, and visual metaphors over a talking presenter. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks."
+    },
+    {
+      "order": 3,
+      "narration": "특히, 스트레스를 받을 때 몸이 고기를 더 원한다고 해요. 그래서인지, 오늘은 고기 생각이 더 간절한 것 같아요!",
+      "duration_seconds": 7,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual goal: make this narration instantly understandable without showing subtitles or text: 특히, 스트레스를 받을 때 몸이 고기를 더 원한다고 해요. 그래서인지, 오늘은 고기 생각이 더 간절한 것 같아요! Main subject: the core object or situation from the narration. Action: a before-and-after visual contrast that makes the idea easy to understand. Scene keywords: 특히, 스트레스를, 받을, 몸이, 고기를, 원한다고, 해요, 그래서인지. Variation: contrast the old way and the new way in one continuous shot. Context keywords: 오늘 고기 먹고 싶은 이유는?; clear cause and effect, visible action, simple visual metaphor. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. Character consistency: if a recurring human is needed, use A young Korean woman in her late 20s with long black hair, wearing a casual t-shirt and jeans, cheerful and engaging personality.; otherwise prioritize objects, environments, demonstrations, and visual metaphors over a talking presenter. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks."
+    },
+    {
+      "order": 4,
+      "narration": "여러분도 그런 경험 있으신가요? 우리 몸의 신호를 잘 듣고, 필요한 영양소를 섭취하는 것이 중요하답니다!",
+      "duration_seconds": 7,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual goal: make this narration instantly understandable without showing subtitles or text: 여러분도 그런 경험 있으신가요? 우리 몸의 신호를 잘 듣고, 필요한 영양소를 섭취하는 것이 중요하답니다! Main subject: the core object or situation from the narration. Action: a concrete real-world demonstration of the narration idea. Scene keywords: 여러분도, 그런, 경험, 있으신가요, 우리, 몸의, 신호를, 듣고. Variation: show the user interaction from the viewer's point of view. Context keywords: 오늘 고기 먹고 싶은 이유는?; clear cause and effect, visible action, simple visual metaphor. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. Character consistency: if a recurring human is needed, use A young Korean woman in her late 20s with long black hair, wearing a casual t-shirt and jeans, cheerful and engaging personality.; otherwise prioritize objects, environments, demonstrations, and visual metaphors over a talking presenter. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks."
+    },
+    {
+      "order": 5,
+      "narration": "여러분, 오늘은 고기 먹고 싶은 이유에 대해 이야기해볼게요. 과학적으로 고기를 먹고 싶을 때의 이유가 있대요! 우리가 고기를 원할 때, 그건 단순한 욕구가 아닐 수 있어요. 사실, 고기는 우리 몸에 필요한 단백질과 철분을 풍부하게 포함하고 있거든요. 특히, 스트레스를 받을 때 몸이 고기를 더 원한다고 해요. 그래서인지, 오늘은 고기 생각이 더 간절한 것 같아요! 여러분도 그런 경험 있으신가요? 우리 몸의 신호를 잘 듣고, 필요한 영양소를 섭취하는 것이 중요하답니다!",
+      "duration_seconds": 30,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual goal: make this narration instantly understandable without showing subtitles or text: 여러분, 오늘은 고기 먹고 싶은 이유에 대해 이야기해볼게요. 과학적으로 고기를 먹고 싶을 때의 이유가 있대요! 우리가 고기를 원할 때, 그건 단순한 욕구가 아닐 수 있어요. 사실, 고기는 우리 몸에 필요한 단백질과 철분을 풍부하게 포함하고 있거든요. 특히, 스트레스를 받을 때 몸이 고기를 더 원한다고 해요. 그래서인지, 오늘은 고기 생각이 더 간절한 것 같아요! 여러분도 그런 경험 있으신가요? 우리 몸의 신호를 잘 듣고, 필요한 영양소를 섭취하는 것이 중요하답니다! Main subject: the core object or situation from the narration. Action: a close-up of the key object in use. Scene keywords: 여러분, 오늘은, 고기, 먹고, 싶은, 이유에, 대해, 이야기해볼게요. Variation: use foreground object movement to lead into the next idea. Context keywords: 오늘 고기 먹고 싶은 이유는?; clear cause and effect, visible action, simple visual metaphor. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. Character consistency: if a recurring human is needed, use A young Korean woman in her late 20s with long black hair, wearing a casual t-shirt and jeans, cheerful and engaging personality.; otherwise prioritize objects, environments, demonstrations, and visual metaphors over a talking presenter. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks."
+    }
+  ]
+}

@@ -5,6 +5,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import ffmpegPath from "ffmpeg-static";
 import { getMediaDuration, getSrtEndTime } from "./media-probe.mjs";
+import { classifyDurationSyncPolicy } from "./render-duration-policy.mjs";
+import { buildXfadeFilterGraph, validateXfadePlan } from "../electron/services/timeline-transition-renderer.mjs";
+import { getTransitionConfig } from "../electron/services/render-effect-presets.mjs";
 
 const ROOT = "C:/Users/amd/hermes";
 const TTS_ROOT = "C:/Users/amd/supertonic3-local-tts-20260517-r4/supertonic3-local-tts";
@@ -17,6 +20,11 @@ const RENDER_OPTIONS_PATH = join(JOB_DIR, "render-options.json");
 const RENDER_OPTIONS = existsSync(RENDER_OPTIONS_PATH)
   ? JSON.parse(readFileSync(RENDER_OPTIONS_PATH, "utf8"))
   : {};
+const transitionPreset = RENDER_OPTIONS.transitionPreset || "scene-fade";
+const transitionConfig = getTransitionConfig({
+  transitionPreset,
+  transitionSeconds: Number(RENDER_OPTIONS.transitionSeconds || 0.3),
+});
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -160,6 +168,9 @@ function loadScenes() {
       const scenes = draft.scenes.map((scene, index) => ({
         order: Number(scene.order || index + 1),
         narration: String(scene.narration || scene.text || "").trim(),
+        outputMode: scene.outputMode || scene.flowOutputMode || "video",
+        flowOutputMode: scene.flowOutputMode || scene.outputMode || "video",
+        motionPreset: scene.motionPreset || "",
       })).filter((scene) => scene.narration);
       if (scenes.length && scenes.every((scene) => !looksLikeCorruptKorean(scene.narration))) {
         return scenes;
@@ -176,27 +187,32 @@ function renderSceneVideo({ rawVideo, audioPath, audioDuration, order }) {
   const adjustedVideo = join(JOB_DIR, `scene_${order}_video_adjusted.mp4`);
   const finalScene = join(JOB_DIR, `scene_${order}_synced.mp4`);
   const ratio = audioDuration / videoDuration;
+  const policy = classifyDurationSyncPolicy({ order, videoDuration, audioDuration });
 
-  if (ratio >= 0.9 && ratio <= 1.2) {
+  if (policy.requiresRegeneration) {
+    const failure = {
+      ok: false,
+      failureCode: policy.failureCode,
+      failedSceneOrder: policy.failedSceneOrder,
+      ratio: policy.ratio,
+      extraHoldSeconds: policy.extraHoldSeconds,
+      qualityWarnings: policy.qualityWarnings,
+      freezeRisk: "high",
+      requiresRegeneration: true,
+      suggestedRecovery: "Split this scene narration or generate an additional Flow B-roll clip before rendering.",
+    };
+    writeFileSync(join(JOB_DIR, "render-report-v2.json"), JSON.stringify(failure, null, 2), "utf8");
+    console.error(JSON.stringify(failure, null, 2));
+    throw new Error(`RENDER_QA_FAILURE: ${failure.failureCode} scene=${failure.failedSceneOrder} ratio=${failure.ratio}`);
+  }
+
+  if (policy.strategy === "setpts" || policy.strategy === "slowdown-loop") {
     const setpts = ratio.toFixed(6);
     run(ffmpegPath, [
       "-y",
       "-i", rawVideo,
       "-an",
       "-vf", `setpts=${setpts}*PTS`,
-      "-t", String(audioDuration),
-      "-c:v", "libx264",
-      "-preset", "veryfast",
-      "-crf", "20",
-      adjustedVideo,
-    ]);
-  } else if (audioDuration > videoDuration) {
-    const pad = Math.max(0, audioDuration - videoDuration);
-    run(ffmpegPath, [
-      "-y",
-      "-i", rawVideo,
-      "-an",
-      "-vf", `tpad=stop_mode=clone:stop_duration=${pad.toFixed(3)}`,
       "-t", String(audioDuration),
       "-c:v", "libx264",
       "-preset", "veryfast",
@@ -236,7 +252,10 @@ function renderSceneVideo({ rawVideo, audioPath, audioDuration, order }) {
     videoDuration,
     audioDuration,
     ratio,
-    strategy: ratio >= 0.9 && ratio <= 1.2 ? "setpts" : (audioDuration > videoDuration ? "tpad" : "trim"),
+    strategy: policy.strategy,
+    extraHoldSeconds: policy.extraHoldSeconds,
+    qualityWarnings: policy.qualityWarnings,
+    requiresRegeneration: policy.requiresRegeneration,
   };
 }
 
@@ -283,18 +302,53 @@ const srtPath = join(JOB_DIR, "subtitles-ko-v2.srt");
 const mergedPath = join(JOB_DIR, "merged-scenes-synced.mp4");
 const finalPath = join(JOB_DIR, FINAL_NAME);
 const reportPath = join(JOB_DIR, "render-report-v2.json");
+const sceneRenderManifestPath = join(JOB_DIR, "scene-render-manifest.json");
+let advancedEffectsFallback = false;
+let advancedEffectsError = "";
 
 writeFileSync(concatPath, concatLines.join("\n"), "utf8");
 writeFileSync(srtPath, srtBlocks.join("\n"), "utf8");
 
-run(ffmpegPath, [
-  "-y",
-  "-f", "concat",
-  "-safe", "0",
-  "-i", concatPath,
-  "-c", "copy",
-  mergedPath,
-]);
+const shouldTryXfade = transitionConfig.filter === "xfade" && renderReport.length > 1;
+if (shouldTryXfade) {
+  try {
+    const sceneDurations = renderReport.map((item) => item.audioDuration);
+    const actualVideoDurations = renderReport.map((item) => getMediaDuration(item.finalScene));
+    const validation = validateXfadePlan({
+      transitionSeconds: transitionConfig.seconds,
+      sceneDurations,
+      actualVideoDurations,
+    });
+    if (!validation.ok) throw new Error(validation.reason);
+    buildXfadeFilterGraph({
+      sceneCount: renderReport.length,
+      transitionName: transitionConfig.transition,
+      transitionSeconds: transitionConfig.seconds,
+      sceneDurations,
+    });
+    throw new Error("Xfade visual-tail renderer is not enabled for this build; using safe concat fallback.");
+  } catch (error) {
+    advancedEffectsFallback = true;
+    advancedEffectsError = String(error.message || error);
+    run(ffmpegPath, [
+      "-y",
+      "-f", "concat",
+      "-safe", "0",
+      "-i", concatPath,
+      "-c", "copy",
+      mergedPath,
+    ]);
+  }
+} else {
+  run(ffmpegPath, [
+    "-y",
+    "-f", "concat",
+    "-safe", "0",
+    "-i", concatPath,
+    "-c", "copy",
+    mergedPath,
+  ]);
+}
 
 const subtitleFilter = `subtitles='${escapeFilterPath(srtPath)}':force_style='${subtitleForceStyle()}'`;
 run(ffmpegPath, [
@@ -324,15 +378,54 @@ writeFileSync(reportPath, JSON.stringify({
   concatPath,
   finalDuration,
   subtitleEnd,
+  renderEffectPreset: RENDER_OPTIONS.renderEffectPreset || "cinematic",
+  transitionPreset,
+  transitionSeconds: transitionConfig.seconds,
+  transition: {
+    preset: transitionPreset,
+    seconds: transitionConfig.seconds,
+    mode: transitionConfig.filter,
+    fallback: advancedEffectsFallback,
+  },
+  advancedEffectsFallback,
+  advancedEffectsError,
+  qualityWarnings: renderReport.flatMap((item) => item.qualityWarnings || []),
+  freezeRisk: renderReport.some((item) => item.requiresRegeneration) ? "high" : "low",
+  requiresRegeneration: false,
   scenes: renderReport.map((item) => ({
     ...item,
     finalScene: item.finalScene.replace(/\\/g, "/"),
+    motionPreset: scenes.find((scene) => Number(scene.order) === Number(item.order))?.motionPreset || "",
+    sceneOutputMode: scenes.find((scene) => Number(scene.order) === Number(item.order))?.outputMode || scenes.find((scene) => Number(scene.order) === Number(item.order))?.flowOutputMode || "video",
   })),
   source: scenes.map((scene) => ({
     ...scene,
     rawVideo: join(JOB_DIR, `scene_${scene.order}.mp4`).replace(/\\/g, "/"),
     file: basename(join(JOB_DIR, `scene_${scene.order}.mp4`)),
+    sceneOutputMode: scene.outputMode || scene.flowOutputMode || "video",
+    sourceMode: scene.outputMode || scene.flowOutputMode || "video",
   })),
+  sceneRenderManifestPath,
+}, null, 2), "utf8");
+
+writeFileSync(sceneRenderManifestPath, JSON.stringify({
+  ok: true,
+  jobDir: JOB_DIR,
+  finalPath,
+  scenes: renderReport.map((item) => {
+    const source = scenes.find((scene) => Number(scene.order) === Number(item.order)) || {};
+    const sceneOutputMode = source.outputMode || source.flowOutputMode || "video";
+    return {
+      order: item.order,
+      sourceMode: sceneOutputMode,
+      sceneOutputMode,
+      rawVideo: join(JOB_DIR, `scene_${item.order}.mp4`).replace(/\\/g, "/"),
+      finalScene: item.finalScene.replace(/\\/g, "/"),
+      videoDuration: item.videoDuration,
+      audioDuration: item.audioDuration,
+      strategy: item.strategy,
+    };
+  }),
 }, null, 2), "utf8");
 
 console.log(JSON.stringify({

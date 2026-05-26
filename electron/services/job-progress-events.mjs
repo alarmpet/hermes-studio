@@ -25,9 +25,10 @@ export function renderRunnerActionRequired() {
 
 export function createFailureProgressEvent({ jobId = "", message = "", details = {} } = {}) {
   const renderRunnerFailure = isRenderRunnerFailure(message);
+  const finalOutputQaFailure = /Final output QA failed/i.test(String(message || ""));
   return createJobProgressEvent({
     jobId,
-    phase: renderRunnerFailure ? "render" : "submitted",
+    phase: renderRunnerFailure || finalOutputQaFailure ? "render" : "submitted",
     status: renderRunnerFailure ? "action-required" : "failed",
     message: renderRunnerFailure
       ? "렌더 실행기가 Electron/Chromium 모드로 실행되어 최종 렌더가 중단되었습니다."

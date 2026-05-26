@@ -1,0 +1,42 @@
+{
+  "id": "youtube-1779707345681",
+  "sourceType": "url",
+  "sourceValue": "https://n.news.naver.com/mnews/hotissue/article/081/0003646631?type=series&cid=1089231",
+  "options": {
+    "scriptLengthMode": "preset",
+    "scriptLengthPreset": "standard",
+    "customDurationSeconds": 60,
+    "sceneStrategy": "sentence-proportional",
+    "voiceId": "male_30_announcer",
+    "speechSpeed": 1.06,
+    "subtitleStyleId": "bold-shorts",
+    "subtitleStyle": {
+      "fontSize": 11,
+      "outline": 2,
+      "shadow": 1,
+      "marginV": 90,
+      "maxLineChars": 10,
+      "maxLines": 2
+    },
+    "aspectRatio": "9:16",
+    "renderQuality": "shorts-hq",
+    "characterMode": "consistent-presenter",
+    "thumbnailMode": "chatgpt",
+    "thumbnailHookStyle": "smart-curiosity",
+    "thumbnailUsesScriptContext": true,
+    "useChatGptThumbnail": true,
+    "sendIntermediateMedia": false,
+    "mockMediaMode": false
+  },
+  "upload": {
+    "enabled": false,
+    "requireApproval": true,
+    "privacyStatus": "private",
+    "madeForKids": false,
+    "containsSyntheticMedia": true,
+    "categoryId": "25",
+    "autoThumbnail": true
+  },
+  "createdAt": "2026-05-25T11:09:05.681Z",
+  "requestedBy": "desktop"
+}

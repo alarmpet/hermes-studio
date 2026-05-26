@@ -37,7 +37,7 @@ const result = await new Promise((resolvePromise) => {
   const timer = setTimeout(() => {
     child.kill("SIGTERM");
     resolvePromise({ timedOut: true, code: null });
-  }, 5000);
+  }, 8000);
 
   child.on("close", (code) => {
     clearTimeout(timer);

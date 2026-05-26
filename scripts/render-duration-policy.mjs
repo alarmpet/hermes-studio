@@ -1,0 +1,68 @@
+export function classifyDurationSyncPolicy({ order, videoDuration, audioDuration } = {}) {
+  const safeVideoDuration = Number(videoDuration || 0);
+  const safeAudioDuration = Number(audioDuration || 0);
+  const ratio = safeVideoDuration > 0 ? safeAudioDuration / safeVideoDuration : Number.POSITIVE_INFINITY;
+  const extraHoldSeconds = Math.max(0, safeAudioDuration - safeVideoDuration);
+  const base = {
+    order: Number(order || 0),
+    failedSceneOrder: Number(order || 0),
+    videoDuration: Number(safeVideoDuration.toFixed(3)),
+    audioDuration: Number(safeAudioDuration.toFixed(3)),
+    ratio: Number(ratio.toFixed(6)),
+    extraHoldSeconds: Number(extraHoldSeconds.toFixed(3)),
+    qualityWarnings: [],
+    requiresRegeneration: false,
+    failureCode: "",
+  };
+
+  if (!Number.isFinite(ratio) || safeVideoDuration <= 0 || safeAudioDuration <= 0) {
+    return {
+      ...base,
+      strategy: "invalid",
+      requiresRegeneration: true,
+      failureCode: "INVALID_MEDIA_DURATION",
+    };
+  }
+
+  if (ratio > 1.3 || extraHoldSeconds > 2) {
+    return {
+      ...base,
+      strategy: "regenerate",
+      requiresRegeneration: true,
+      failureCode: "SCENE_DURATION_MISMATCH",
+      qualityWarnings: [{
+        code: "SCENE_DURATION_MISMATCH",
+        sceneOrder: Number(order || 0),
+        message: `Scene ${order} audio is too long for one Flow clip.`,
+        ratio: Number(ratio.toFixed(3)),
+        extraHoldSeconds: Number(extraHoldSeconds.toFixed(3)),
+      }],
+    };
+  }
+
+  if (ratio > 1.2) {
+    return {
+      ...base,
+      strategy: "slowdown-loop",
+      qualityWarnings: [{
+        code: "SOFT_DURATION_MISMATCH",
+        sceneOrder: Number(order || 0),
+        message: `Scene ${order} needs a soft slowdown/loop instead of a freeze frame.`,
+        ratio: Number(ratio.toFixed(3)),
+        extraHoldSeconds: Number(extraHoldSeconds.toFixed(3)),
+      }],
+    };
+  }
+
+  if (ratio >= 0.85) {
+    return {
+      ...base,
+      strategy: "setpts",
+    };
+  }
+
+  return {
+    ...base,
+    strategy: "trim",
+  };
+}

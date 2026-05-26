@@ -118,8 +118,11 @@ function systemPrompt() {
     "You are a Korean YouTube Shorts production assistant.",
     "Return only one valid JSON object. No markdown, no commentary.",
     "Schema:",
-    "{\"title\":\"string\",\"character_profile\":\"English stable recurring human presenter/lead description\",\"duration_seconds\":90,\"script\":\"Korean spoken narration\",\"scenes\":[{\"order\":1,\"narration\":\"Korean spoken line\",\"image_prompt\":\"English 9:16 cinematic video prompt\",\"duration_seconds\":8}]}",
+    "{\"title\":\"string\",\"structure\":\"HPSL\",\"hpsl\":{\"hook\":{\"goal\":\"Hook\",\"narration\":\"Korean hook\",\"target_seconds\":7},\"point\":{\"goal\":\"Point\",\"narration\":\"Korean core point\",\"target_seconds\":13},\"story\":{\"goal\":\"Story\",\"narration\":\"Korean context and example\",\"target_seconds\":30},\"lesson\":{\"goal\":\"Lesson\",\"narration\":\"Korean takeaway\",\"target_seconds\":10}},\"character_profile\":\"English stable recurring human presenter/lead description\",\"duration_seconds\":60,\"script\":\"hook + point + story + lesson Korean narration\",\"scenes\":[{\"order\":1,\"narration\":\"Korean spoken line\",\"image_prompt\":\"English 9:16 cinematic video prompt\",\"duration_seconds\":8}]}",
     "Rules:",
+    "- Required structure is HPSL: Hook/후킹 creates curiosity in the first 3 seconds, Point/포인트 states the core fact, Story/스토리 explains context with one concrete example or metaphor, Lesson/교훈 leaves a useful takeaway or caution.",
+    "- Do not repeat the full HPSL script at the end.",
+    "- Total narration must fit the selected duration.",
     "- Write the script in natural spoken Korean.",
     "- The title, script, and every scene must stay tightly focused on the user-provided keyword or article.",
     "- For keyword jobs, mention the exact keyword in the Korean title and early narration.",
@@ -136,6 +139,7 @@ function buildDraftPrompt({ job, source, target }) {
     `Target scenes: ${target.sceneCount}.`,
     `Target Korean narration length: ${target.wordsMin}-${target.wordsMax} Korean words/spaces-equivalent.`,
     "Make scene count proportional to the script. Each scene should have one clear visual beat.",
+    "Use HPSL timing: Hook short, Point concise, Story expanded, Lesson clear. For custom length, expand the Story beats instead of repeating the same 60-second script.",
   ].join("\n");
 
   if (source.mode === "url") {

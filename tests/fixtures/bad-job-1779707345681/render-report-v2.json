@@ -1,0 +1,84 @@
+{
+  "ok": true,
+  "jobDir": "C:\\Users\\amd\\AppData\\Roaming\\hermes\\outputs\\desktop\\youtube-1779707345681",
+  "finalPath": "C:\\Users\\amd\\AppData\\Roaming\\hermes\\outputs\\desktop\\youtube-1779707345681\\desktop-flow-1779707345749.mp4",
+  "mergedPath": "C:\\Users\\amd\\AppData\\Roaming\\hermes\\outputs\\desktop\\youtube-1779707345681\\merged-scenes-synced.mp4",
+  "srtPath": "C:\\Users\\amd\\AppData\\Roaming\\hermes\\outputs\\desktop\\youtube-1779707345681\\subtitles-ko-v2.srt",
+  "concatPath": "C:\\Users\\amd\\AppData\\Roaming\\hermes\\outputs\\desktop\\youtube-1779707345681\\concat_synced.txt",
+  "finalDuration": 73.83,
+  "subtitleEnd": 73.79,
+  "scenes": [
+    {
+      "order": 1,
+      "finalScene": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_1_synced.mp4",
+      "videoDuration": 8,
+      "audioDuration": 8.71,
+      "ratio": 1.08875,
+      "strategy": "setpts"
+    },
+    {
+      "order": 2,
+      "finalScene": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_2_synced.mp4",
+      "videoDuration": 8,
+      "audioDuration": 10.8,
+      "ratio": 1.35,
+      "strategy": "tpad"
+    },
+    {
+      "order": 3,
+      "finalScene": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_3_synced.mp4",
+      "videoDuration": 8,
+      "audioDuration": 8.64,
+      "ratio": 1.08,
+      "strategy": "setpts"
+    },
+    {
+      "order": 4,
+      "finalScene": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_4_synced.mp4",
+      "videoDuration": 8,
+      "audioDuration": 8.57,
+      "ratio": 1.07125,
+      "strategy": "setpts"
+    },
+    {
+      "order": 5,
+      "finalScene": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_5_synced.mp4",
+      "videoDuration": 8,
+      "audioDuration": 37.07,
+      "ratio": 4.63375,
+      "strategy": "tpad"
+    }
+  ],
+  "source": [
+    {
+      "order": 1,
+      "narration": "여러분, 오늘은 고기 먹고 싶은 이유에 대해 이야기해볼게요. 과학적으로 고기를 먹고 싶을 때의 이유가 있대요!",
+      "rawVideo": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_1.mp4",
+      "file": "scene_1.mp4"
+    },
+    {
+      "order": 2,
+      "narration": "우리가 고기를 원할 때, 그건 단순한 욕구가 아닐 수 있어요. 사실, 고기는 우리 몸에 필요한 단백질과 철분을 풍부하게 포함하고 있거든요.",
+      "rawVideo": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_2.mp4",
+      "file": "scene_2.mp4"
+    },
+    {
+      "order": 3,
+      "narration": "특히, 스트레스를 받을 때 몸이 고기를 더 원한다고 해요. 그래서인지, 오늘은 고기 생각이 더 간절한 것 같아요!",
+      "rawVideo": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_3.mp4",
+      "file": "scene_3.mp4"
+    },
+    {
+      "order": 4,
+      "narration": "여러분도 그런 경험 있으신가요? 우리 몸의 신호를 잘 듣고, 필요한 영양소를 섭취하는 것이 중요하답니다!",
+      "rawVideo": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_4.mp4",
+      "file": "scene_4.mp4"
+    },
+    {
+      "order": 5,
+      "narration": "여러분, 오늘은 고기 먹고 싶은 이유에 대해 이야기해볼게요. 과학적으로 고기를 먹고 싶을 때의 이유가 있대요! 우리가 고기를 원할 때, 그건 단순한 욕구가 아닐 수 있어요. 사실, 고기는 우리 몸에 필요한 단백질과 철분을 풍부하게 포함하고 있거든요. 특히, 스트레스를 받을 때 몸이 고기를 더 원한다고 해요. 그래서인지, 오늘은 고기 생각이 더 간절한 것 같아요! 여러분도 그런 경험 있으신가요? 우리 몸의 신호를 잘 듣고, 필요한 영양소를 섭취하는 것이 중요하답니다!",
+      "rawVideo": "C:/Users/amd/AppData/Roaming/hermes/outputs/desktop/youtube-1779707345681/scene_5.mp4",
+      "file": "scene_5.mp4"
+    }
+  ]
+}

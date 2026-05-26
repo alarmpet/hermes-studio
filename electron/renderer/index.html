@@ -48,13 +48,16 @@
               <div class="segmented">
                 <label><input type="radio" name="sourceType" value="keyword" checked><span>Keyword</span></label>
                 <label><input type="radio" name="sourceType" value="url"><span>URL</span></label>
+                <label><input type="radio" name="sourceType" value="script"><span>Script</span></label>
               </div>
             </div>
 
             <div class="field-group">
-              <label for="sourceValue">키워드 또는 URL</label>
+              <label id="sourceValueLabel" for="sourceValue">키워드 또는 URL</label>
               <textarea id="sourceValue" rows="5" placeholder="예: 최신 AI 뉴스"></textarea>
             </div>
+            <div id="sceneSplitPreview" class="duration-summary">직접 대본 모드에서 문장별 장면 미리보기가 표시됩니다.</div>
+            <div id="scriptDurationValidation" class="qa-summary">직접 대본 모드에서 예상 음성 길이가 표시됩니다.</div>
 
             <div class="form-grid">
               <div class="field-group">
@@ -77,7 +80,7 @@
 
               <div class="field-group">
                 <label for="customDurationSeconds">수동 길이(초)</label>
-                <input id="customDurationSeconds" type="number" min="15" max="600" value="120">
+                <input id="customDurationSeconds" type="number" min="15" max="600" value="60">
               </div>
 
               <div class="field-group">
@@ -116,7 +119,72 @@
                 <input id="speechSpeed" type="range" min="0.9" max="1.2" value="1.08" step="0.01">
                 <output id="speedValue">1.08x</output>
               </div>
+
+              <div class="field-group">
+                <label for="stylePresetId">영상 스타일 프리셋</label>
+                <select id="stylePresetId"></select>
+                <div id="stylePresetPreview" class="preset-preview"></div>
+              </div>
+
+              <div class="field-group">
+                <label for="renderEffectPreset">렌더 효과</label>
+                <select id="renderEffectPreset">
+                  <option value="clean">Clean</option>
+                  <option value="cinematic" selected>Cinematic</option>
+                  <option value="dynamic-shorts">Dynamic Shorts</option>
+                </select>
+                <div id="renderEffectPreview" class="effect-preview">Cinematic: 부드러운 줌/팬과 안정적인 장면 전환을 적용합니다.</div>
+              </div>
+
+              <div class="field-group">
+                <label for="transitionPreset">화면 전환</label>
+                <select id="transitionPreset">
+                  <option value="scene-fade" selected>Scene Fade</option>
+                  <option value="smooth-crossfade">Smooth Crossfade</option>
+                  <option value="directional-wipe">Directional Wipe</option>
+                  <option value="hook-whip">Hook Whip</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+
+              <div class="field-group">
+                <label for="transitionSeconds">전환 길이(초)</label>
+                <input id="transitionSeconds" type="number" min="0" max="0.6" step="0.05" value="0.3">
+              </div>
+
+              <div class="field-group">
+                <label>Google Flow 생성 방식</label>
+                <div class="segmented" id="flowOutputModeControl">
+                  <label><input type="radio" name="flowOutputMode" value="video" checked><span>Video</span></label>
+                  <label><input type="radio" name="flowOutputMode" value="image"><span>Image</span></label>
+                  <label><input type="radio" name="flowOutputMode" value="hybrid"><span>Hybrid</span></label>
+                </div>
+                <div id="flowOutputModeHint" class="preset-preview"></div>
+                <div id="hybridFlowControls" class="hybrid-controls" hidden>
+                  <label for="hybridIntroVideoSceneCount">Opening video scenes</label>
+                  <input id="hybridIntroVideoSceneCount" type="number" min="0" max="6" value="2">
+                  <div id="hybridFlowPreview" class="preset-preview">First 2 scenes: video / remaining scenes: image</div>
+                </div>
+              </div>
             </div>
+
+            <section class="sub-panel character-panel">
+              <h4>Character Sheet</h4>
+              <textarea id="characterSheetText" rows="4" placeholder="예: 30대 한국인 여성 테크 리포터, 단발 검은 머리, 네이비 재킷"></textarea>
+              <input id="characterSheetImages" type="file" accept="image/*" multiple>
+              <div id="characterSheetSummary">참조 이미지 없음</div>
+            </section>
+
+            <div class="structure-strip" aria-label="대본 구조">
+              <span>HPSL</span>
+              <span>후킹</span>
+              <span>포인트</span>
+              <span>스토리</span>
+              <span>교훈</span>
+            </div>
+
+            <div class="duration-summary" id="durationSummary">실제 적용 길이: 60초 · 예상 장면 5개 · HPSL</div>
+            <div class="qa-summary" id="qaSummary">QA 대기 중</div>
 
             <div class="subtitle-preview" aria-label="Subtitle preview">
               <div id="subtitlePreviewText">최신 AI 뉴스 핵심만 빠르게 정리합니다.</div>
@@ -159,7 +227,7 @@
               <li data-phase="draft">대본 생성</li>
               <li data-phase="scene-planning">장면 구성</li>
               <li data-phase="flow-submit">Flow 생성 요청</li>
-              <li data-phase="flow-media">Flow 영상 생성</li>
+              <li data-phase="flow-media">Flow 미디어 생성</li>
               <li data-phase="render">TTS/자막/최종 렌더</li>
               <li data-phase="thumbnail">썸네일 생성</li>
               <li data-phase="completed">완료</li>
@@ -194,6 +262,14 @@
               <h3>Console</h3>
               <span id="jobState">Idle</span>
             </div>
+            <div id="consoleFilters" class="console-filters">
+              <button data-filter="all" class="is-active" type="button">All</button>
+              <button data-filter="warning" type="button">Warnings</button>
+              <button data-filter="error" type="button">Errors</button>
+              <button data-filter="artifact" type="button">Artifacts</button>
+            </div>
+            <div id="artifactPanel" class="artifact-panel"></div>
+            <button id="copyJobSummaryBtn" class="secondary-button compact-button" type="button">Copy Summary</button>
             <div id="consoleLog" class="console-log" aria-live="polite"></div>
             <div class="result-box">
               <span>Latest output</span>

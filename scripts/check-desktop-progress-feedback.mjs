@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createFailureProgressEvent } from "../electron/services/job-progress-events.mjs";
 
 const renderer = readFileSync(new URL("../electron/renderer/app.js", import.meta.url), "utf8");
 const html = readFileSync(new URL("../electron/renderer/index.html", import.meta.url), "utf8");
@@ -17,26 +18,39 @@ assert.match(html, /id="currentProgressMessage"/, "renderer should contain curre
 assert.match(html, /id="progressActionRequired"/, "renderer should contain action-required message area");
 assert.match(renderer, /function updateProgressUi/, "renderer should update progress UI from events");
 assert.match(renderer, /event\?\.type === "job-progress"/, "renderer should consume job-progress events");
+assert.match(renderer, /flow-prompt-safety|Flow Prompt Safety/, "desktop UI should expose Flow prompt safety progress");
 assert.match(renderer, /ELECTRON_RUN_AS_NODE|렌더 실행기|최신 설치본/, "renderer should show render runner recovery guidance");
 assert.match(progress, /actionRequired/, "progress events should support action-required recovery messages");
 assert.match(workflowDbEvents, /log-failure/, "workflow DB mirror should persist render failures to task_failures");
+assert.match(workflowDbEvents, /flow-mode-mismatch/, "workflow DB mirror should persist Flow mode mismatches to task_failures");
 assert.match(renderer, /Generating\.\.\./, "generate button should change label while running");
+assert.match(renderer, /flowOutputMode/i, "console should surface Flow output mode");
 assert.match(service, /createDefaultYouTubeStages/, "job service should use the shared YouTube stage factory");
 assert.match(service, /emitJobProgress/, "job service should emit structured progress events");
 assert.match(service, /onFlowProgress:\s*\(\{ message, details \}\)/, "desktop service should forward Flow internal progress to the UI");
 assert.match(stages, /buildGeminiResearchDraft/, "shared stages should use Gemini research draft as primary draft source");
 assert.match(stages, /generateGoogleFlowVideoFromPrompt/, "shared stages should call the real Google Flow automation module");
+assert.match(stages, /flowOutputMode|outputMode/, "stages should emit image/video specific progress");
+assert.match(stages, /sceneOutputMode/, "progress events should include the actual per-scene output mode");
+assert.match(stages, /hybrid-scene-render|flow-video-normalize|flow-image-motion-render/, "progress events should identify hybrid per-scene render phases");
+assert.match(workflowDbEvents, /details:\s*event\.details/, "workflow DB mirror should preserve per-scene hybrid render details in task_events");
+assert.match(stages, /Google Flow output mode mismatch|Flow UI appears to be/, "workflow should expose Flow mode mismatch");
+assert.match(renderer, /flow-mode-mismatch|mode_mismatch|output mode mismatch/i, "console should preserve Flow mode mismatch details");
 assert.match(stages, /generateMockMedia/, "shared stages should own mock media generation");
 assert.doesNotMatch(service, /not wired yet/, "desktop Flow media generation must not remain a not-wired stub");
 assert.match(draftService, /OpenRouter/, "desktop draft service should use OpenRouter for script generation");
 assert.match(draftService, /response_format:\s*\{\s*type:\s*"json_object"\s*\}/, "desktop draft generation should request JSON output");
 assert.match(draftService, /fetchArticleSource/, "desktop draft service should support URL article sources");
 assert.match(flowAutomation, /launchPersistentContext/, "Flow automation should use the authenticated persistent profile");
-assert.match(flowAutomation, /Flow did not expose a new video URL/, "Flow automation should save diagnostic evidence when no video is exposed");
+assert.match(flowAutomation, /Flow did not expose a new \$\{outputMode\} URL/, "Flow automation should save diagnostic evidence when media is not exposed");
 assert.match(flowAutomation, /scene_\$\{sceneOrder\}_flow_submitted\.png/, "Flow automation should save a post-submit screenshot");
 assert.match(flowAutomation, /verifyFlowSubmissionStarted/, "Flow automation should verify generation started after clicking create");
 assert.match(flowAutomation, /scene_\$\{sceneOrder\}_flow_submit_state\.json/, "Flow automation should save submit-start diagnostics");
 assert.match(flowAutomation, /scene_\$\{sceneOrder\}_flow_waiting\.png/, "Flow automation should save a waiting screenshot");
 assert.match(main, /desktop-job-failed/, "main process should emit desktop-job-failed events");
+
+const qaFailureProgress = createFailureProgressEvent({ message: "Final output QA failed: VISUAL_REPETITION_RISK" });
+assert.equal(qaFailureProgress.phase, "render", "final output QA failures should stay on the render phase");
+assert.equal(qaFailureProgress.percent, 82, "final output QA failures should not appear as a 5% submitted failure");
 
 console.log("Desktop progress feedback contract OK");

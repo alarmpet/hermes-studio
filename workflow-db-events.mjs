@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 
 function isFailureEvent(event = {}) {
   return event.type === "desktop-job-failed"
+    || event.details?.eventType === "flow-mode-mismatch"
     || event.status === "failed"
     || /failed|failure|Gpu Cache Creation failed|disk_cache|Unable to move the cache/i.test(String(event.message || ""));
 }
@@ -18,7 +19,10 @@ export function mirrorWorkflowEventToDb(event = {}, context = {}) {
     phase: event.phase || "",
     status: event.status || "",
     message: event.message || "",
-    details: event.details || {},
+    details: event.details,
+    renderEffectPreset: event.details?.renderEffectPreset || event.job?.options?.renderEffectPreset || event.input?.renderEffectPreset || "",
+    transitionPreset: event.details?.transitionPreset || event.job?.options?.transitionPreset || event.input?.transitionPreset || "",
+    transitionSeconds: event.details?.transitionSeconds ?? event.job?.options?.transitionSeconds ?? event.input?.transitionSeconds ?? null,
     updatedAt: event.updatedAt || new Date().toISOString(),
   });
 

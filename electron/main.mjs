@@ -7,7 +7,9 @@ import { getAuthStatus, startAuth } from "./services/auth-service.mjs";
 import { loadConfig, saveConfig } from "./services/config-store.mjs";
 import { listJobs, readJob, upsertJob } from "./services/job-store.mjs";
 import { getRuntimePaths } from "./services/path-resolver.mjs";
+import { listStylePresets } from "./services/style-presets.mjs";
 import { listVisibleVoicePresets } from "./services/voice-presets.mjs";
+import { getRecentWorkflowEvents } from "./services/workflow-history-service.mjs";
 import { createYouTubeJob, writeDesktopResult } from "./services/youtube-job-service.mjs";
 import { uploadVideoToYouTube } from "../pipeline/youtube-upload.mjs";
 import { mirrorWorkflowEventToDb } from "../workflow-db-events.mjs";
@@ -67,9 +69,18 @@ ipcMain.handle("config:save", async (_event, config) => saveConfig(paths.configP
 
 ipcMain.handle("presets:voices", async () => listVisibleVoicePresets());
 
+ipcMain.handle("presets:styles", async () => listStylePresets({
+  dbHelperPath: join(paths.appRoot, "bot_db_helper.py"),
+}));
+
 ipcMain.handle("jobs:list", async () => listJobs(paths.jobsDir));
 
 ipcMain.handle("jobs:read", async (_event, jobId) => readJob(paths.jobsDir, jobId));
+
+ipcMain.handle("workflow:recentEvents", async (_event, jobId) => getRecentWorkflowEvents({
+  dbHelperPath: join(paths.appRoot, "bot_db_helper.py"),
+  jobId,
+}));
 
 ipcMain.handle("auth:status", async () => {
   const config = await loadConfig(paths.configPath);
@@ -127,6 +138,9 @@ ipcMain.handle("youtube:createJob", async (_event, input) => {
       jobDir: result.assets.jobDir,
       finalPath: result.finalVideo?.finalPath,
       thumbnailPath: result.thumbnail?.path,
+      renderEffectPreset: result.job.options?.renderEffectPreset || "cinematic",
+      transitionPreset: result.job.options?.transitionPreset || "scene-fade",
+      transitionSeconds: Number(result.job.options?.transitionSeconds || 0.3),
       createdAt: result.job.createdAt,
     });
     sendJobEvent({ type: "desktop-job-finished", jobId: result.job.id, jobDir: result.assets.jobDir });

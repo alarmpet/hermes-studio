@@ -45,6 +45,13 @@ def connect() -> sqlite3.Connection:
     return conn
 
 
+def ensure_column(conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+    rows = conn.execute(f"PRAGMA table_info({table})").fetchall()
+    existing = {row["name"] for row in rows}
+    if column not in existing:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def embedding_features(text: str) -> list[tuple[str, float]]:
     value = str(text or "").lower()
     features: list[tuple[str, float]] = []
@@ -177,6 +184,30 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS style_presets (
+                id TEXT PRIMARY KEY,
+                label TEXT NOT NULL,
+                aesthetic TEXT NOT NULL,
+                camera TEXT,
+                lighting TEXT,
+                color_palette TEXT,
+                character_continuity TEXT,
+                world_continuity TEXT,
+                negative_prompt TEXT,
+                preferred_output_modes TEXT NOT NULL DEFAULT '["video", "image"]',
+                prompt_suffix TEXT NOT NULL,
+                is_custom INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        ensure_column(conn, "style_presets", "character_continuity", "TEXT")
+        ensure_column(conn, "style_presets", "world_continuity", "TEXT")
+        ensure_column(conn, "style_presets", "negative_prompt", "TEXT")
+        ensure_column(conn, "style_presets", "preferred_output_modes", "TEXT NOT NULL DEFAULT '[\"video\", \"image\"]'")
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS jobs_queue (
@@ -425,6 +456,21 @@ def log_event(event_type: str, task_name: str, chat_id: str, message_id: str, da
             (event_type, task_name, chat_id, message_id, str(job_id or ""), json.dumps(data, ensure_ascii=False), now_iso()),
         )
     print_json({"ok": True, "id": cur.lastrowid})
+
+
+def list_style_presets() -> None:
+    init_db()
+    with connect() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, label, aesthetic, camera, lighting, color_palette,
+                   character_continuity, world_continuity, negative_prompt,
+                   preferred_output_modes, prompt_suffix, is_custom
+            FROM style_presets
+            ORDER BY is_custom ASC, label ASC
+            """
+        ).fetchall()
+    print_json([dict(row) for row in rows])
 
 
 def upsert_job(job_json: str) -> None:
@@ -1020,6 +1066,8 @@ def main() -> None:
     event_parser.add_argument("data_json", nargs="?", default="{}")
     event_parser.add_argument("--job-id", default="")
 
+    sub.add_parser("list-style-presets")
+
     upsert_job_parser = sub.add_parser("upsert-job")
     upsert_job_parser.add_argument("job_json")
 
@@ -1114,6 +1162,8 @@ def main() -> None:
         mark_recovered(args.chat_id, args.message_id, args.note)
     elif args.cmd == "log-event":
         log_event(args.event_type, args.task_name, args.chat_id, args.message_id, args.data_json, args.job_id)
+    elif args.cmd == "list-style-presets":
+        list_style_presets()
     elif args.cmd == "upsert-job":
         upsert_job(args.job_json)
     elif args.cmd == "update-job":

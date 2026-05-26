@@ -27,8 +27,10 @@ assert.equal(keywordJob.options.voiceId, "M1");
 assert.equal(keywordJob.options.subtitleStyleId, "bold-shorts");
 assert.equal(keywordJob.options.scriptLengthPreset, "standard");
 assert.equal(keywordJob.options.sceneStrategy, "sentence-proportional");
-assert.equal(keywordJob.options.customDurationSeconds, 90);
+assert.equal(keywordJob.options.customDurationSeconds, 60);
+assert.equal(keywordJob.options.scriptStructure, "hpsl");
 assert.equal(keywordJob.options.sendIntermediateMedia, false);
+assert.equal(keywordJob.options.flowOutputMode, "video");
 assert.equal(keywordJob.upload.enabled, false);
 assert.equal(keywordJob.upload.containsSyntheticMedia, true);
 
@@ -68,6 +70,63 @@ assert.throws(
 assert.throws(
   () => normalizeYouTubeJobRequest({ sourceType: "url", sourceValue: "not-a-url", options: {} }),
   /http/,
+);
+
+assert.equal(normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "image mode",
+  options: { flowOutputMode: "image" },
+}).options.flowOutputMode, "image");
+
+const hybridJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "google glass",
+  options: { flowOutputMode: "hybrid", hybridIntroVideoSceneCount: 2 },
+});
+assert.equal(hybridJob.options.flowOutputMode, "hybrid");
+assert.equal(hybridJob.options.hybridIntroVideoSceneCount, 2);
+
+const clampedHybridJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "google glass",
+  options: { flowOutputMode: "hybrid", hybridIntroVideoSceneCount: 99 },
+});
+assert.equal(clampedHybridJob.options.hybridIntroVideoSceneCount, 6);
+
+const effectsJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "google glass",
+  options: {
+    renderEffectPreset: "cinematic",
+    transitionPreset: "smooth-crossfade",
+    transitionSeconds: 0.35,
+  },
+});
+assert.equal(effectsJob.options.renderEffectPreset, "cinematic");
+assert.equal(effectsJob.options.transitionPreset, "smooth-crossfade");
+assert.equal(effectsJob.options.transitionSeconds, 0.35);
+assert.equal(effectsJob.options.motionIntensity, "medium");
+assert.equal(effectsJob.options.smoothFrameInterpolation, false);
+
+assert.throws(() => normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "google glass",
+  options: { renderEffectPreset: "chaos" },
+}), /Unknown renderEffectPreset/);
+
+assert.throws(() => normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "google glass",
+  options: { transitionPreset: "spinny" },
+}), /Unknown transitionPreset/);
+
+assert.throws(
+  () => normalizeYouTubeJobRequest({
+    sourceType: "keyword",
+    sourceValue: "bad mode",
+    options: { flowOutputMode: "gif" },
+  }),
+  /Unknown flowOutputMode/,
 );
 
 console.log(JSON.stringify({ ok: true, checked: "youtube-job-schema" }));

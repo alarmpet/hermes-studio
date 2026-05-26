@@ -96,14 +96,25 @@ async function requestGeminiDraft(job, context = {}) {
 
 export function buildGeminiPrompt(job) {
   const sourceLabel = job.sourceType === "url" ? "URL" : "keyword";
+  const hybridIntroVideoSceneCount = Math.max(0, Math.min(6, Math.round(Number(job?.options?.hybridIntroVideoSceneCount ?? 2))));
+  const hybridInstruction = job?.options?.flowOutputMode === "hybrid"
+    ? [
+        `- Hybrid mode is enabled: hybridIntroVideoSceneCount=${hybridIntroVideoSceneCount}. The first ${hybridIntroVideoSceneCount} opening video scenes will be generated as Flow video/Veo-style clips; all later scenes will be generated as still images with motion in render.`,
+        "- For opening video scenes, keep each Korean narration sentence under 35 Korean characters when possible, make the action visually obvious, and avoid packing multiple ideas into one scene.",
+        "- For later image scenes, use clear visual variety and concrete symbols that support the narration without needing readable text.",
+      ]
+    : [];
   return [
     "You are Hermes YouTube Shorts research and production planner.",
     "Research the user's source inside Gemini when useful, then produce one valid JSON object only.",
     "Do not include markdown.",
     "Do not copy the schema example values. Never answer with literal placeholder values such as string, Korean narration, Korean sentence, or English stable character profile.",
     "Schema:",
-    "{\"title\":\"string\",\"character_profile\":\"English stable character profile or empty string\",\"duration_seconds\":90,\"script\":\"Korean narration\",\"scenes\":[{\"order\":1,\"narration\":\"Korean sentence\",\"visual_intent\":\"what viewer should understand visually\",\"main_subject\":\"topic-specific object/person/place\",\"action\":\"visible action or demonstration\",\"setting\":\"specific environment\",\"camera_motion\":\"camera direction\",\"image_prompt\":\"English Google Flow 9:16 cinematic B-roll prompt\",\"duration_seconds\":8}]}",
+    "{\"title\":\"string\",\"structure\":\"HPSL\",\"hpsl\":{\"hook\":{\"goal\":\"Hook\",\"narration\":\"Korean hook\",\"target_seconds\":7},\"point\":{\"goal\":\"Point\",\"narration\":\"Korean core point\",\"target_seconds\":13},\"story\":{\"goal\":\"Story\",\"narration\":\"Korean context and example\",\"target_seconds\":30},\"lesson\":{\"goal\":\"Lesson\",\"narration\":\"Korean takeaway\",\"target_seconds\":10}},\"character_profile\":\"English stable character profile or empty string\",\"duration_seconds\":60,\"script\":\"hook + point + story + lesson Korean narration\",\"scenes\":[{\"order\":1,\"narration\":\"Korean sentence\",\"visual_intent\":\"what viewer should understand visually\",\"main_subject\":\"topic-specific object/person/place\",\"action\":\"visible action or demonstration\",\"setting\":\"specific environment\",\"camera_motion\":\"camera direction\",\"image_prompt\":\"English Google Flow 9:16 cinematic B-roll prompt\",\"duration_seconds\":8}]}",
     "Rules:",
+    "- Required structure is HPSL: Hook/후킹 creates curiosity in the first 3 seconds, Point/포인트 states the core fact, Story/스토리 explains context with one concrete example or metaphor, Lesson/교훈 leaves a useful takeaway or caution.",
+    "- Do not repeat the full HPSL script at the end.",
+    "- Total narration must fit the selected duration.",
     "- The Korean script must match the requested topic exactly.",
     "- For keyword jobs, mention the exact keyword in the title and first narration sentence.",
     "- For URL jobs, rewrite and transform the article idea instead of copying.",
@@ -114,7 +125,11 @@ export function buildGeminiPrompt(job) {
     "- If the topic has an object, technology, place, chart, risk, or process, show that visually.",
     "- Use the recurring character only as a guide, observer, or user when helpful; do not force a talking presenter into every scene.",
     "- If a character appears, keep one consistent age, gender, ethnicity, face, hairstyle, outfit, and role across every scene.",
+    "- For Google Flow image_prompt fields, never include names of celebrities, politicians, athletes, influencers, CEOs, founders, journalists, or other identifiable real people.",
+    "- If the source article names a real person, keep the name only in Korean narration when factually needed, but describe Flow visuals with generic roles such as a tech executive, a politician, an athlete, an anonymous official, or symbolic B-roll.",
+    "- Do not ask Flow to depict, imitate, or resemble any real person's face, body, likeness, or voice.",
     "- Prompts must avoid logos, subtitles, readable text, captions, and watermarks.",
+    ...hybridInstruction,
     `${sourceLabel}: ${job.sourceValue}`,
   ].join("\n");
 }
