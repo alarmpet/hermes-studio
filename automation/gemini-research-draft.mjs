@@ -6,6 +6,7 @@ import { normalizeYouTubeDraft, parseJsonMarkdown } from "../youtube-workflow.mj
 import { buildDesktopYouTubeDraft } from "../electron/services/youtube-draft-service.mjs";
 
 export const GEMINI_URL = "https://gemini.google.com/";
+export const GEMINI_GEMS_URL = "https://gemini.google.com/gem/500bb37978fe";
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -44,7 +45,19 @@ export async function buildGeminiResearchDraft(job, context = {}) {
   await mkdir(jobDir, { recursive: true });
 
   try {
-    const draft = await requestGeminiDraft(job, context);
+    let draft;
+    try {
+      draft = await requestGemsDraft(job, context);
+    } catch (error) {
+      context.emit?.({
+        type: "workflow-warning",
+        jobId: job.id,
+        phase: "research",
+        message: `Gems draft failed; trying normal Gemini. ${error.message}`,
+        details: { provider: "gemini-gems", fallbackProvider: "gemini" },
+      });
+      draft = await requestGeminiDraft(job, context);
+    }
     return normalizeYouTubeDraft(draft);
   } catch (error) {
     if (context.allowOpenRouterFallback === false) throw error;
@@ -58,7 +71,25 @@ export async function buildGeminiResearchDraft(job, context = {}) {
   }
 }
 
+async function requestGemsDraft(job, context = {}) {
+  return requestGeminiBrowserDraft(job, context, {
+    url: GEMINI_GEMS_URL,
+    provider: "gemini-gems",
+    requestFile: "gemini-gems-request.txt",
+    responseFile: "gemini-gems-response.txt",
+  });
+}
+
 async function requestGeminiDraft(job, context = {}) {
+  return requestGeminiBrowserDraft(job, context, {
+    url: GEMINI_URL,
+    provider: "gemini",
+    requestFile: "gemini-request.txt",
+    responseFile: "gemini-response.txt",
+  });
+}
+
+async function requestGeminiBrowserDraft(job, context = {}, target = {}) {
   const chromePath = context.chromePath;
   const profileDir = context.paths?.geminiProfileDir;
   const jobDir = context.jobDir;
@@ -66,7 +97,7 @@ async function requestGeminiDraft(job, context = {}) {
   if (!profileDir) throw new Error("Gemini profile directory is required.");
 
   const prompt = buildGeminiPrompt(job);
-  await writeFile(join(jobDir, "gemini-request.txt"), prompt, "utf8");
+  await writeFile(join(jobDir, target.requestFile || "gemini-request.txt"), prompt, "utf8");
   await releaseAppManagedAuthWindow(profileDir);
 
   const browser = await chromium.launchPersistentContext(profileDir, {
@@ -79,14 +110,14 @@ async function requestGeminiDraft(job, context = {}) {
   try {
     const page = browser.pages()[0] || await browser.newPage();
     page.setDefaultTimeout(60000);
-    await page.goto(GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.goto(target.url || GEMINI_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
     await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
     await assertGeminiReady(page);
     await submitPrompt(page, prompt);
     const response = await waitForJsonResponse(page);
-    await writeFile(join(jobDir, "gemini-response.txt"), response, "utf8");
+    await writeFile(join(jobDir, target.responseFile || "gemini-response.txt"), response, "utf8");
     const parsed = parseJsonMarkdown(response);
-    if (!parsed) throw new Error("Gemini returned invalid JSON.");
+    if (!parsed) throw new Error(`${target.provider || "Gemini"} returned invalid JSON.`);
     assertUsefulDraft(parsed, job);
     return parsed;
   } finally {

@@ -59,8 +59,8 @@ export async function buildResearchDraft(job, context = {}) {
     jobId: job.id,
     phase: "research",
     message: job.sourceType === "url"
-      ? "Gemini에서 URL 자료를 확인하는 중입니다."
-      : "Gemini에서 키워드 자료를 확인하는 중입니다.",
+      ? "Gemini Gems에서 URL 자료 확인과 HPSL 대본 작성을 먼저 시도합니다."
+      : "Gemini Gems에서 키워드 자료 확인과 HPSL 대본 작성을 먼저 시도합니다.",
   });
   const draft = await buildGeminiResearchDraft(job, context);
   const qaPreview = validateDraftQuality({ draft, job, stage: "research" });

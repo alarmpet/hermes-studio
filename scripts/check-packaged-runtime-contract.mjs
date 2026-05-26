@@ -40,6 +40,9 @@ if (existsSync(unpacked)) {
     assert.match(packagedSchema, /scriptStructure/, "packaged job schema should include scriptStructure");
     assert.match(packagedSchema, /direct-script/, "packaged job schema should include direct script mode");
     assert.match(packagedGemini, /structure[^\\n]+HPSL/, "packaged Gemini prompt should request HPSL");
+    assert.match(packagedGemini, /GEMINI_GEMS_URL/, "packaged Gemini draft should include the Gems-first URL");
+    assert.match(packagedGemini, /requestGemsDraft/, "packaged Gemini draft should try Gems before normal Gemini");
+    assert.match(packagedStages, /Gemini Gems/, "packaged workflow should show Gems-first progress text");
     assert.match(packagedStages, /finalOutputQa/, "packaged workflow should emit final output QA");
     assert.match(packagedPlanner, /flow-prompt-safety/, "packaged planner should sanitize Google Flow prompts");
     assert.match(packagedFlowAutomation, /isFlowPolicyWarningText/, "packaged Flow automation should detect policy warnings");
