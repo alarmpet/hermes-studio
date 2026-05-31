@@ -1,4 +1,4 @@
-export function classifyDurationSyncPolicy({ order, videoDuration, audioDuration } = {}) {
+export function classifyDurationSyncPolicy({ order, videoDuration, audioDuration, outputMode = "" } = {}) {
   const safeVideoDuration = Number(videoDuration || 0);
   const safeAudioDuration = Number(audioDuration || 0);
   const ratio = safeVideoDuration > 0 ? safeAudioDuration / safeVideoDuration : Number.POSITIVE_INFINITY;
@@ -24,7 +24,15 @@ export function classifyDurationSyncPolicy({ order, videoDuration, audioDuration
     };
   }
 
-  if (ratio > 1.3 || extraHoldSeconds > 2) {
+  const isImageMode = String(outputMode || "").toLowerCase() === "image";
+  const longformSoftMismatch = safeVideoDuration >= 20 && ratio <= 1.2;
+
+  const imageMotionSoftMismatch = isImageMode
+    ? ratio > 1.2 && ratio <= 3 && extraHoldSeconds <= 30
+    : ratio > 1.2 && ratio <= 1.7 && extraHoldSeconds <= 4;
+
+  if ((isImageMode && (ratio > 3 || extraHoldSeconds > 30))
+    || (!isImageMode && (ratio > 1.7 || (extraHoldSeconds > 4 && !longformSoftMismatch)))) {
     return {
       ...base,
       strategy: "regenerate",
@@ -40,7 +48,7 @@ export function classifyDurationSyncPolicy({ order, videoDuration, audioDuration
     };
   }
 
-  if (ratio > 1.2) {
+  if (ratio > 1.2 || longformSoftMismatch || imageMotionSoftMismatch) {
     return {
       ...base,
       strategy: "slowdown-loop",

@@ -169,7 +169,9 @@ label {
 }
 
 textarea,
-select {
+select,
+input[type="text"],
+input[type="number"] {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -307,6 +309,54 @@ output {
     -2px  2px 0 #000,  2px  2px 0 #000,
      0px -2px 0 #000,  0px  2px 0 #000,
     -2px  0px 0 #000,  2px  0px 0 #000;
+}
+
+.title-overlay-panel {
+  margin: 12px 0 16px;
+}
+
+.title-overlay-preview {
+  min-height: 160px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: linear-gradient(160deg, #2f6f6a, #1f2937 55%, #6b3f2a);
+  display: grid;
+  align-items: start;
+}
+
+.title-overlay-preview[data-enabled="false"] {
+  opacity: .45;
+}
+
+#titleOverlayPreviewText {
+  margin: 18px 22px 0;
+  padding: 12px 16px;
+  border-radius: 4px;
+  color: #fff;
+  background: rgba(0, 0, 0, .86);
+  font-size: 22px;
+  line-height: 1.08;
+  font-weight: 900;
+  text-align: center;
+  text-shadow: -2px -2px 0 #000, 2px 2px 0 #000;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+
+.title-overlay-preview[data-style="white-editorial"] #titleOverlayPreviewText {
+  color: #111827;
+  background: #fff;
+  text-shadow: none;
+}
+
+.title-overlay-preview[data-style="black-green-hook"] #titleOverlayPreviewText {
+  color: #22c55e;
+  background: rgba(0, 0, 0, .9);
+}
+
+.title-overlay-preview[data-style="minimal-shadow"] #titleOverlayPreviewText {
+  background: linear-gradient(180deg, rgba(0, 0, 0, .72), rgba(0, 0, 0, 0));
 }
 
 .option-row {

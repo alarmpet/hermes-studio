@@ -24,10 +24,12 @@ export function getRuntimePaths() {
     configPath: join(userData, "config.json"),
     jobsDir: join(userData, "jobs"),
     youtubeTokenPath: join(userData, "youtube-token.json"),
+    googleWorkspaceTokenPath: join(userData, "google-workspace-token.secure"),
     youtubeClientSecretsPath: join(userData, "client_secrets.json"),
     chatgptProfileDir: join(userData, "browser-profiles", "chatgpt-profile"),
     flowProfileDir: join(userData, "browser-profiles", "flow-profile"),
     geminiProfileDir: join(userData, "browser-profiles", "gemini-profile"),
+    notebooklmProfileDir: join(userData, "browser-profiles", "notebooklm-profile"),
     renderScriptPath: join(unpackedRoot, "scripts", "render-youtube-with-tts.mjs"),
   };
 }

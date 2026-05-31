@@ -12,10 +12,11 @@ const jobRoot = await mkdtemp(join(tmpdir(), "hermes-youtube-hybrid-smoke-"));
 const events = [];
 
 const result = await createYouTubeJob({
-  sourceType: "keyword",
+  sourceType: "script",
   sourceValue: "구글 글래스",
-  scriptLengthMode: "preset",
-  scriptLengthPreset: "micro",
+  sourceValue: "구글 글래스가 다시 주목받고 있습니다. 첫 장면은 작은 안경형 기기의 가능성을 보여줍니다. 두 번째 장면은 과거와 현재의 사용 방식을 비교합니다. 세 번째 장면은 사생활과 집중력 문제를 경고합니다. 마지막 장면은 기술보다 맥락이 중요하다는 교훈을 전합니다.",
+  scriptLengthMode: "custom",
+  customDurationSeconds: 20,
   flowOutputMode: "hybrid",
   hybridIntroVideoSceneCount: 1,
   voiceId: "male_30_announcer",

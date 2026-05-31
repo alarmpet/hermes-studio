@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { planScenesFromHpsl, planScenesFromScript } from "./electron/services/script-planner.mjs";
 import { getVoicePreset } from "./electron/services/voice-presets.mjs";
 import { sanitizeFlowPrompt } from "./electron/services/flow-prompt-safety.mjs";
 import { SCRIPT_LENGTH_PRESETS, SUBTITLE_STYLE_PRESETS } from "./youtube-job-schema.mjs";
 import { assertDraftQuality, validateDraftQuality } from "./scripts/youtube-draft-quality.mjs";
+import { assertDraftDurationContract } from "./scripts/youtube-draft-duration.mjs";
+import { buildLongformMediaPlan, isLongformJob, planLongformScenesFromDraft } from "./electron/services/longform-planner.mjs";
 
 const MIN_SCENES = 3;
 const ROOT = process.env.HERMES_ROOT || "C:/Users/amd/hermes";
@@ -150,6 +152,13 @@ export function buildRenderOptions(job) {
     speechSpeed: Number(job.options.speechSpeed || voicePreset.speed),
     subtitleStyleId: job.options.subtitleStyleId,
     subtitleAss: { ...subtitlePreset.ass, ...(job.options.subtitleStyle || {}) },
+    titleOverlay: {
+      enabled: Boolean(job.options.titleOverlayEnabled),
+      text: job.options.titleOverlayText || "",
+      styleId: job.options.titleOverlayStyleId || "bold-black-accent",
+      maxLines: job.options.titleOverlayMaxLines || 2,
+      safeTop: job.options.titleOverlaySafeTop ?? 84,
+    },
     aspectRatio: job.options.aspectRatio,
     renderQuality: job.options.renderQuality,
     renderEffectPreset: job.options.renderEffectPreset || "cinematic",
@@ -161,6 +170,11 @@ export function buildRenderOptions(job) {
     targetSeconds,
     sceneCount: preset.sceneCount,
     characterMode: job.options.characterMode,
+    videoFormat: job.options.videoFormat || "shorts",
+    longformTargetSeconds: job.options.longformTargetSeconds,
+    introVideoClipCount: job.options.introVideoClipCount,
+    bodyVisualMode: job.options.bodyVisualMode,
+    bodyImageSeconds: job.options.bodyImageSeconds,
   };
 }
 
@@ -174,11 +188,16 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
     || fallbackDraftFromJob(job);
   const renderOptions = buildRenderOptions(job);
   let draft = normalizeYouTubeDraft(draftInput);
-  const initialQaPreview = validateDraftQuality({ draft, job, stage: "normalized-draft", jobDir });
+  const initialQaPreview = isLongformJob(job)
+    ? { ok: true, qualityWarnings: [] }
+    : validateDraftQuality({ draft, job, stage: "normalized-draft", jobDir });
   if (!initialQaPreview.ok) {
     throw new Error(`Draft QA failed: ${initialQaPreview.reason}`);
   }
-  const initialQa = assertDraftQuality({ draft, job, stage: "normalized-draft", jobDir });
+  const initialQa = isLongformJob(job)
+    ? { ok: true, qualityWarnings: [] }
+    : assertDraftQuality({ draft, job, stage: "normalized-draft", jobDir });
+  const initialDurationQa = assertDraftDurationContract({ draft, job, stage: "normalized-draft", jobDir });
   if (initialQa.qualityWarnings?.length) {
     emit({
       type: "workflow-warning",
@@ -188,7 +207,45 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
       details: { qualityWarnings: initialQa.qualityWarnings },
     });
   }
-  if (job.options.scriptStructure === "hpsl" && draft.hpsl) {
+  emit({
+    type: "workflow-progress",
+    jobId: job.id,
+    phase: "draft-duration-qa",
+    message: "Normalized draft duration QA passed before Flow generation.",
+    details: { durationQa: initialDurationQa },
+  });
+  if (isLongformJob(job)) {
+    draft = {
+      ...draft,
+      structure: "LONGFORM_CHAPTERS",
+      duration_seconds: renderOptions.targetSeconds,
+      scenes: planLongformScenesFromDraft({
+        job,
+        draft,
+        stylePreset: job.options.stylePreset,
+        characterSheet: job.options.characterSheet,
+      }),
+    };
+    emit({
+      type: "workflow-progress",
+      jobId: job.id,
+      phase: "scene-planning",
+      message: "Longform chapter media planning completed.",
+      details: {
+        videoFormat: "longform",
+        effectiveTargetSeconds: renderOptions.targetSeconds,
+        introVideoClipCount: job.options.introVideoClipCount,
+        bodyVisualMode: job.options.bodyVisualMode,
+        bodyImageSeconds: job.options.bodyImageSeconds,
+        sceneOutputModes: draft.scenes.map((scene) => ({
+          order: scene.order,
+          chapter: scene.chapter,
+          outputMode: scene.outputMode,
+          duration_seconds: scene.duration_seconds,
+        })),
+      },
+    });
+  } else if (job.options.scriptStructure === "hpsl" && draft.hpsl) {
     draft = {
       ...draft,
       structure: "HPSL",
@@ -202,6 +259,7 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
         characterSheet: job.options.characterSheet,
         flowOutputMode: job.options.flowOutputMode || "video",
         hybridIntroVideoSceneCount: job.options.hybridIntroVideoSceneCount,
+        aspectRatio: job.options.aspectRatio || "9:16",
       }),
     };
     emit({
@@ -252,6 +310,7 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
         characterSheet: job.options.characterSheet,
         flowOutputMode: job.options.flowOutputMode || "video",
         hybridIntroVideoSceneCount: job.options.hybridIntroVideoSceneCount,
+        aspectRatio: job.options.aspectRatio || "9:16",
       }),
     };
     emit({
@@ -291,19 +350,79 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
   const draftPath = join(jobDir, "draft.json");
   const renderOptionsPath = join(jobDir, "render-options.json");
   const metadataPath = join(jobDir, "metadata.json");
+  const longformMediaPlanPath = join(jobDir, "longform-media-plan.json");
+  const sceneMediaManifestPath = join(jobDir, "scene-media-manifest.json");
 
   await writeFile(requestPath, JSON.stringify(job, null, 2), "utf8");
   await writeFile(draftPath, JSON.stringify(draft, null, 2), "utf8");
   await writeFile(renderOptionsPath, JSON.stringify(renderOptions, null, 2), "utf8");
+  const longformMediaPlan = isLongformJob(job) ? buildLongformMediaPlan({ job, draft }) : null;
+  if (longformMediaPlan) {
+    await writeFile(longformMediaPlanPath, JSON.stringify(longformMediaPlan, null, 2), "utf8");
+  }
 
+  const sceneMediaManifest = await readSceneMediaManifest(sceneMediaManifestPath);
   const sceneMedia = [];
   if (typeof context.generateSceneMedia === "function") {
     for (const scene of draft.scenes) {
+      const outputMode = scene.outputMode || scene.flowOutputMode || job.options.flowOutputMode || "video";
+      const reusable = findReusableSceneMedia(sceneMediaManifest, scene, outputMode);
+      if (reusable) {
+        sceneMedia.push(reusable);
+        emit({
+          type: "workflow-progress",
+          jobId: job.id,
+          phase: "flow-resume",
+          message: `Scene ${scene.order} already has completed media; reusing it for resume.`,
+          details: {
+            sceneOrder: scene.order,
+            sceneOutputMode: outputMode,
+            path: reusable.path,
+            manifestPath: sceneMediaManifestPath,
+          },
+        });
+        continue;
+      }
       emit({ type: "flow-scene-started", jobId: job.id, scene });
-      const media = await context.generateSceneMedia({ job, draft, scene, jobDir, renderOptions });
-      sceneMedia.push({ order: scene.order, ...media });
-      if (media?.motionPreset) scene.motionPreset = media.motionPreset;
-      emit({ type: "flow-scene-completed", jobId: job.id, scene, media });
+      try {
+        const media = await context.generateSceneMedia({ job, draft, scene, jobDir, renderOptions });
+        const mediaRecord = { order: scene.order, ...media };
+        sceneMedia.push(mediaRecord);
+        upsertSceneMediaManifest(sceneMediaManifest, {
+          ...mediaRecord,
+          status: "completed",
+          outputMode,
+          sceneOutputMode: media.sceneOutputMode || outputMode,
+          completedAt: new Date().toISOString(),
+        });
+        await writeSceneMediaManifest(sceneMediaManifestPath, sceneMediaManifest);
+        if (media?.motionPreset) scene.motionPreset = media.motionPreset;
+        emit({ type: "flow-scene-completed", jobId: job.id, scene, media });
+      } catch (error) {
+        upsertSceneMediaManifest(sceneMediaManifest, {
+          order: scene.order,
+          status: "failed",
+          outputMode,
+          sceneOutputMode: outputMode,
+          error: error.message,
+          failedAt: new Date().toISOString(),
+        });
+        await writeSceneMediaManifest(sceneMediaManifestPath, sceneMediaManifest);
+        emit({
+          type: "workflow-warning",
+          status: "failed",
+          jobId: job.id,
+          phase: "flow-scene-failed",
+          message: `Scene ${scene.order} media generation failed; resume data was saved.`,
+          details: {
+            sceneOrder: scene.order,
+            sceneOutputMode: outputMode,
+            error: error.message,
+            manifestPath: sceneMediaManifestPath,
+          },
+        });
+        throw error;
+      }
     }
     await writeFile(draftPath, JSON.stringify(draft, null, 2), "utf8");
   }
@@ -317,6 +436,8 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
     draft,
     renderOptions,
     sceneMedia,
+    sceneMediaManifestPath,
+    longformMediaPlan,
     createdAt: new Date().toISOString(),
   };
   await writeFile(metadataPath, JSON.stringify(metadata, null, 2), "utf8");
@@ -328,9 +449,63 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
     requestPath,
     draftPath,
     renderOptionsPath,
+    longformMediaPlanPath: longformMediaPlan ? longformMediaPlanPath : "",
     metadataPath,
+    sceneMediaManifestPath,
     sceneMedia,
+    longformMediaPlan,
   };
+}
+
+async function readSceneMediaManifest(manifestPath) {
+  if (!existsSync(manifestPath)) {
+    return { ok: true, version: 1, scenes: [] };
+  }
+  try {
+    const parsed = JSON.parse(await readFile(manifestPath, "utf8"));
+    return {
+      ok: true,
+      version: Number(parsed.version || 1),
+      scenes: Array.isArray(parsed.scenes) ? parsed.scenes : [],
+    };
+  } catch {
+    return { ok: false, version: 1, scenes: [] };
+  }
+}
+
+function findReusableSceneMedia(manifest, scene, outputMode) {
+  const record = manifest.scenes.find((item) => Number(item.order) === Number(scene.order));
+  if (!record || record.status !== "completed") return null;
+  if ((record.sceneOutputMode || record.outputMode || "") !== outputMode) return null;
+  if (!record.path || !existsSync(record.path)) return null;
+  return {
+    ...record,
+    order: scene.order,
+    resumed: true,
+  };
+}
+
+function upsertSceneMediaManifest(manifest, record) {
+  const index = manifest.scenes.findIndex((item) => Number(item.order) === Number(record.order));
+  const nextRecord = {
+    ...record,
+    updatedAt: new Date().toISOString(),
+  };
+  if (index >= 0) {
+    manifest.scenes[index] = { ...manifest.scenes[index], ...nextRecord };
+  } else {
+    manifest.scenes.push(nextRecord);
+  }
+  manifest.scenes.sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+}
+
+async function writeSceneMediaManifest(manifestPath, manifest) {
+  await writeFile(manifestPath, JSON.stringify({
+    ok: manifest.scenes.every((item) => item.status === "completed"),
+    version: manifest.version || 1,
+    updatedAt: new Date().toISOString(),
+    scenes: manifest.scenes,
+  }, null, 2), "utf8");
 }
 
 export async function renderFinalYouTubeVideo(job, assets = {}, context = {}) {

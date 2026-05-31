@@ -8,12 +8,17 @@ contextBridge.exposeInMainWorld("hermes", {
   stylePresets: () => ipcRenderer.invoke("presets:styles"),
   authStatus: () => ipcRenderer.invoke("auth:status"),
   authStart: (target) => ipcRenderer.invoke("auth:start", target),
+  authChangeAccount: (target) => ipcRenderer.invoke("auth:changeAccount", target),
+  authClearSession: (target) => ipcRenderer.invoke("auth:clearSession", target),
   jobsList: () => ipcRenderer.invoke("jobs:list"),
   jobsRead: (jobId) => ipcRenderer.invoke("jobs:read", jobId),
   workflowRecentEvents: (jobId) => ipcRenderer.invoke("workflow:recentEvents", jobId),
   selectDirectory: () => ipcRenderer.invoke("app:selectDirectory"),
   openPath: (targetPath) => ipcRenderer.invoke("app:openPath", targetPath),
   youtubeCreateJob: (input) => ipcRenderer.invoke("youtube:createJob", input),
+  youtubeRetryFailedScenes: (jobId) => ipcRenderer.invoke("youtube:retryFailedScenes", jobId),
+  youtubeRenderExistingAssets: (jobId) => ipcRenderer.invoke("youtube:renderExistingAssets", jobId),
+  youtubeRetryThumbnail: (jobId) => ipcRenderer.invoke("youtube:retryThumbnail", jobId),
   youtubeApproveUpload: () => ipcRenderer.invoke("youtube:approveUpload"),
   onYouTubeEvent: (callback) => {
     const listener = (_event, payload) => callback(payload);

@@ -42,7 +42,7 @@ export function buildDirectScriptDraft(job) {
 
 function addHybridHookNarrationWarnings({ scenes = [], flowOutputMode = "video", hybridIntroVideoSceneCount = 2 } = {}) {
   if (flowOutputMode !== "hybrid") return scenes;
-  const introCount = Math.max(0, Math.min(6, Math.round(Number(hybridIntroVideoSceneCount ?? 2))));
+  const introCount = Math.max(0, Math.min(10, Math.round(Number(hybridIntroVideoSceneCount ?? 2))));
   return scenes.map((scene) => {
     if ((scene.order || 1) > introCount || scene.outputMode !== "video") return scene;
     const narrationLength = String(scene.narration || "").replace(/\s+/g, "").length;

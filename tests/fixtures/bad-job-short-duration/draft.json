@@ -1,0 +1,14 @@
+{
+  "title": "AI 개발 플랫폼",
+  "structure": "HPSL",
+  "hpsl": {
+    "hook": { "narration": "AI 개발 플랫폼이 바뀌고 있습니다.", "target_seconds": 7 },
+    "point": { "narration": "핵심은 자동화입니다.", "target_seconds": 13 },
+    "story": { "narration": "개발자는 반복 작업을 줄일 수 있습니다.", "target_seconds": 30 },
+    "lesson": { "narration": "도구를 목적에 맞게 써야 합니다.", "target_seconds": 10 }
+  },
+  "script": "AI 개발 플랫폼이 바뀌고 있습니다. 핵심은 자동화입니다. 개발자는 반복 작업을 줄일 수 있습니다. 도구를 목적에 맞게 써야 합니다.",
+  "scenes": [
+    { "order": 1, "narration": "AI 개발 플랫폼이 바뀌고 있습니다.", "image_prompt": "AI tools" }
+  ]
+}

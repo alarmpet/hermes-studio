@@ -3,6 +3,8 @@ const sourceValue = document.querySelector("#sourceValue");
 const speed = document.querySelector("#speechSpeed");
 const speedValue = document.querySelector("#speedValue");
 const voiceSelect = document.querySelector("#voiceId");
+const researchProvider = document.querySelector("#researchProvider");
+const archiveProvider = document.querySelector("#archiveProvider");
 const consoleLog = document.querySelector("#consoleLog");
 const jobState = document.querySelector("#jobState");
 const latestOutput = document.querySelector("#latestOutput");
@@ -20,6 +22,10 @@ const subtitleFontSize = document.querySelector("#subtitleFontSize");
 const subtitleOutline = document.querySelector("#subtitleOutline");
 const subtitleShadow = document.querySelector("#subtitleShadow");
 const subtitlePreviewText = document.querySelector("#subtitlePreviewText");
+const titleOverlayEnabled = document.querySelector("#titleOverlayEnabled");
+const titleOverlayText = document.querySelector("#titleOverlayText");
+const titleOverlayStyleId = document.querySelector("#titleOverlayStyleId");
+const titleOverlayPreviewText = document.querySelector("#titleOverlayPreviewText");
 const mockMediaModeInput = document.querySelector("#mockMediaMode");
 const jobProgressPercent = document.querySelector("#jobProgressPercent");
 const currentProgressMessage = document.querySelector("#currentProgressMessage");
@@ -33,18 +39,31 @@ const scriptDurationValidation = document.querySelector("#scriptDurationValidati
 const stylePresetId = document.querySelector("#stylePresetId");
 const stylePresetPreview = document.querySelector("#stylePresetPreview");
 const renderEffectPreset = document.querySelector("#renderEffectPreset");
+const motionIntensity = document.querySelector("#motionIntensity");
 const transitionPreset = document.querySelector("#transitionPreset");
 const transitionSeconds = document.querySelector("#transitionSeconds");
 const renderEffectPreview = document.querySelector("#renderEffectPreview");
 const flowOutputModeHint = document.querySelector("#flowOutputModeHint");
+const videoFormatHint = document.querySelector("#videoFormatHint");
+const autoLandscapeLongform = document.querySelector("#autoLandscapeLongform");
+const aspectRatioHint = document.querySelector("#aspectRatioHint");
+const longformControls = document.querySelector("#longformControls");
 const hybridFlowControls = document.querySelector("#hybridFlowControls");
 const hybridIntroVideoSceneCount = document.querySelector("#hybridIntroVideoSceneCount");
+const longformTargetSeconds = document.querySelector("#longformTargetSeconds");
+const introVideoClipCount = document.querySelector("#introVideoClipCount");
+const bodyImageSeconds = document.querySelector("#bodyImageSeconds");
 const hybridFlowPreview = document.querySelector("#hybridFlowPreview");
 const characterSheetText = document.querySelector("#characterSheetText");
 const characterSheetImages = document.querySelector("#characterSheetImages");
 const characterSheetSummary = document.querySelector("#characterSheetSummary");
 const artifactPanel = document.querySelector("#artifactPanel");
+const retryFailedScenesBtn = document.querySelector("#retryFailedScenesBtn");
+const renderExistingAssetsBtn = document.querySelector("#renderExistingAssetsBtn");
+const retryThumbnailBtn = document.querySelector("#retryThumbnailBtn");
 const copyJobSummaryBtn = document.querySelector("#copyJobSummaryBtn");
+const enableLiveMcp = document.querySelector("#enableLiveMcp");
+const webwrightDiagnosticsEnabled = document.querySelector("#webwrightDiagnosticsEnabled");
 const thumbnailProviderName = "ChatGPT";
 
 const presetSeconds = { micro: 30, short: 45, standard: 60, extended: 90 };
@@ -74,6 +93,7 @@ const PROGRESS_PERCENT_BY_PHASE = {
 let latestOutputPath = "";
 let outputDir = "";
 let appIsPackaged = false;
+let selectedJobId = "";
 
 function appendLog(message, detail) {
   const row = document.createElement("div");
@@ -99,13 +119,41 @@ function appendLog(message, detail) {
 
 function eventSeverity(event = {}) {
   if (/failed|error/i.test(event.type || event.message || "")) return "error";
-  if (event.type === "workflow-warning" || event.status === "action-required") return "warning";
+  if (event.type === "workflow-warning" || event.status === "action-required" || event.details?.primaryProviderFailure) return "warning";
   if (event.details?.finalPath || event.details?.thumbnailPath || event.details?.jobDir) return "artifact";
   return "info";
 }
 
+function explainThumbnailFailure(failure = {}) {
+  const code = failure.code || failure.failureCode || "";
+  if (code === "CHATGPT_IMAGE_TOOL_NOT_FOUND") {
+    return "ChatGPT는 열렸지만 이미지 만들기 도구를 찾지 못했습니다. ChatGPT 화면에서 이미지 생성 기능이 사용 가능한 계정/모델인지 확인하세요.";
+  }
+  if (code === "CHATGPT_HUMAN_VERIFICATION_REQUIRED") {
+    return "ChatGPT 사람 확인 또는 보안 확인이 필요합니다. Authenticate ChatGPT를 열고 확인을 완료한 뒤 다시 실행하세요.";
+  }
+  if (code === "CHATGPT_AUTH_REQUIRED") {
+    return "ChatGPT 로그인이 필요합니다. Authenticate ChatGPT 버튼으로 로그인하세요.";
+  }
+  if (code === "CHATGPT_IMAGE_TIMEOUT") {
+    return "ChatGPT가 제한 시간 안에 새 썸네일 이미지를 노출하지 않았습니다. 모델/도구 상태를 확인하세요.";
+  }
+  if (code === "CHATGPT_TEXT_RESPONSE_INSTEAD_OF_IMAGE") {
+    return "ChatGPT가 이미지 생성 대신 텍스트 응답 상태로 동작했습니다. 이미지 만들기 도구가 선택됐는지 확인하세요.";
+  }
+  return failure.message || "ChatGPT 썸네일 생성 실패로 로컬 폴백 썸네일을 사용했습니다.";
+}
+
 function renderConsoleEvent(event = {}) {
   const modeHint = event.details?.flowOutputMode ? `mode=${event.details.flowOutputMode}` : "";
+  if (event.details?.primaryProviderFailure) {
+    return {
+      title: "ChatGPT thumbnail fallback",
+      severity: "warning",
+      message: explainThumbnailFailure(event.details.primaryProviderFailure),
+      detail: event.details.primaryProviderFailure,
+    };
+  }
   if (event.details?.eventType === "flow-mode-mismatch") {
     return {
       title: "flow-mode-mismatch",
@@ -130,12 +178,29 @@ function getFlowOutputMode() {
   return document.querySelector("input[name='flowOutputMode']:checked")?.value || "video";
 }
 
+function getVideoFormat() {
+  return document.querySelector("input[name='videoFormat']:checked")?.value || "shorts";
+}
+
+function getLongformTargetSeconds() {
+  return Math.max(600, Math.min(1200, Number(longformTargetSeconds?.value || 720)));
+}
+
+function getRequestedAspectRatio() {
+  const customDuration = Number(document.querySelector("#customDurationSeconds")?.value || 60);
+  const longformLike = getVideoFormat() === "longform" || customDuration >= 180 || getLongformTargetSeconds() >= 180;
+  return autoLandscapeLongform?.checked && longformLike ? "16:9" : "9:16";
+}
+
 function getHybridIntroVideoSceneCount() {
-  return Math.max(0, Math.min(6, Math.round(Number(hybridIntroVideoSceneCount?.value || 2))));
+  if (getVideoFormat() === "longform") {
+    return Math.max(1, Math.min(10, Math.round(Number(introVideoClipCount?.value || 10))));
+  }
+  return Math.max(0, Math.min(10, Math.round(Number(hybridIntroVideoSceneCount?.value || 2))));
 }
 
 function updateHybridFlowControls() {
-  const mode = getFlowOutputMode();
+  const mode = getVideoFormat() === "longform" ? "hybrid" : getFlowOutputMode();
   if (hybridFlowControls) hybridFlowControls.hidden = mode !== "hybrid";
   if (hybridFlowPreview) {
     const count = getHybridIntroVideoSceneCount();
@@ -147,14 +212,22 @@ function readJobInput() {
   return {
     sourceType: getSourceType(),
     sourceValue: sourceValue.value.trim(),
+    videoFormat: getVideoFormat(),
+    longformTargetSeconds: getLongformTargetSeconds(),
+    introVideoSeconds: 60,
+    introVideoClipCount: Math.max(1, Math.min(10, Math.round(Number(introVideoClipCount?.value || 10)))),
+    bodyVisualMode: "image",
+    bodyImageSeconds: Math.max(10, Math.min(30, Number(bodyImageSeconds?.value || 18))),
+    enableLiveMcp: Boolean(enableLiveMcp?.checked),
     scriptLengthMode: document.querySelector("#scriptLengthMode").value,
     scriptLengthPreset: document.querySelector("#scriptLengthPreset").value,
     customDurationSeconds: Number(document.querySelector("#customDurationSeconds").value || 60),
     scriptStructure: getSourceType() === "script" ? "direct-script" : "hpsl",
     sceneStrategy: "sentence-proportional",
-    flowOutputMode: getFlowOutputMode(),
+    flowOutputMode: getVideoFormat() === "longform" ? "hybrid" : getFlowOutputMode(),
     hybridIntroVideoSceneCount: getHybridIntroVideoSceneCount(),
     renderEffectPreset: renderEffectPreset?.value || "cinematic",
+    motionIntensity: motionIntensity?.value || "light",
     transitionPreset: transitionPreset?.value || "scene-fade",
     transitionSeconds: Number(transitionSeconds?.value || 0.3),
     stylePresetId: stylePresetId?.value || "cinematic-tech-news",
@@ -169,6 +242,8 @@ function readJobInput() {
       profileText: characterSheetText?.value.trim() || "",
       referenceImagePaths: Array.from(characterSheetImages?.files || []).map((file) => file.path).filter(Boolean),
     },
+    researchProvider: researchProvider?.value || "gemini-gems-browser",
+    archiveProvider: archiveProvider?.value || "local-files",
     voiceId: voiceSelect.value,
     subtitleStyleId: subtitleStyleId.value,
     subtitleStyle: {
@@ -179,6 +254,13 @@ function readJobInput() {
       maxLineChars: subtitlePresetDefaults[subtitleStyleId.value]?.maxLineChars || 11,
       maxLines: subtitlePresetDefaults[subtitleStyleId.value]?.maxLines || 2,
     },
+    titleOverlayEnabled: Boolean(titleOverlayEnabled?.checked),
+    titleOverlayText: titleOverlayText?.value.trim() || "",
+    titleOverlayStyleId: titleOverlayStyleId?.value || "bold-black-accent",
+    titleOverlayMaxLines: 2,
+    titleOverlaySafeTop: getRequestedAspectRatio() === "16:9" ? 40 : 84,
+    aspectRatio: getRequestedAspectRatio(),
+    autoLandscapeLongform: Boolean(autoLandscapeLongform?.checked),
     speechSpeed: Number(speed.value),
     mockMediaMode: !appIsPackaged && mockMediaModeInput.checked,
     thumbnailMode: document.querySelector("#chatgptThumbnail").checked ? thumbnailProviderName.toLowerCase() : "auto",
@@ -189,8 +271,12 @@ function readJobInput() {
 
 async function loadConfig() {
   const config = await window.hermes.getConfig();
+  const persistedConfig = await window.hermes.configGet?.().catch(() => null);
   outputDir = config.outputDir;
   appIsPackaged = Boolean(config.isPackaged);
+  if (webwrightDiagnosticsEnabled) {
+    webwrightDiagnosticsEnabled.checked = Boolean(persistedConfig?.webwrightDiagnosticsEnabled);
+  }
   if (appIsPackaged) {
     mockMediaModeInput.checked = false;
     mockMediaModeInput.disabled = true;
@@ -199,6 +285,7 @@ async function loadConfig() {
   await populateVoicePresets();
   await populateStylePresets();
   updateSubtitlePreview();
+  updateTitleOverlayPreview();
   updateDurationPreview();
   updateSourceModeUi();
   updateFlowOutputModeHint();
@@ -209,9 +296,10 @@ async function loadConfig() {
 }
 
 function effectiveTargetSeconds() {
+  if (getVideoFormat() === "longform") return getLongformTargetSeconds();
   const mode = document.querySelector("#scriptLengthMode").value;
   if (mode === "custom") {
-    return Math.max(15, Math.min(600, Number(document.querySelector("#customDurationSeconds").value || 60)));
+    return Math.max(15, Math.min(1200, Number(document.querySelector("#customDurationSeconds").value || 60)));
   }
   return presetSeconds[document.querySelector("#scriptLengthPreset").value] || 60;
 }
@@ -222,14 +310,56 @@ function updateDurationPreview() {
   const preset = document.querySelector("#scriptLengthPreset").value;
   const customInput = document.querySelector("#customDurationSeconds");
   customInput.disabled = mode !== "custom";
+  if (longformControls) longformControls.hidden = getVideoFormat() !== "longform";
+  if (videoFormatHint) {
+    videoFormatHint.textContent = getVideoFormat() === "longform"
+      ? "Longform: 초반은 Flow 영상 클립, 이후는 Flow 이미지와 로컬 모션 렌더로 구성합니다."
+      : "Shorts: 30-90초 중심의 빠른 영상입니다.";
+  }
   const scenes = mode === "custom" ? Math.max(3, Math.ceil(seconds / 10)) : (presetScenes[preset] || 5);
   durationSummary.textContent = `실제 적용 길이: ${seconds}초 · 예상 장면 ${scenes}개 · ${getSourceType() === "script" ? "직접 대본" : "HPSL"}`;
   updateScriptDurationValidation();
+  updateAspectRatioHint();
+}
+
+function updateAspectRatioHint() {
+  if (!aspectRatioHint) return;
+  const aspect = getRequestedAspectRatio();
+  aspectRatioHint.textContent = aspect === "16:9"
+    ? "Landscape 16:9: Flow prompts, final render, and ChatGPT thumbnail target horizontal longform output."
+    : "Portrait 9:16: Flow prompts, final render, and ChatGPT thumbnail target vertical output.";
 }
 
 for (const selector of ["#scriptLengthMode", "#scriptLengthPreset", "#customDurationSeconds"]) {
   document.querySelector(selector)?.addEventListener("input", updateDurationPreview);
   document.querySelector(selector)?.addEventListener("change", updateDurationPreview);
+}
+
+for (const input of document.querySelectorAll("input[name='videoFormat']")) {
+  input.addEventListener("change", () => {
+    if (getVideoFormat() === "longform") {
+      document.querySelector("#scriptLengthMode").value = "custom";
+      document.querySelector("#customDurationSeconds").value = String(getLongformTargetSeconds());
+      document.querySelector("input[name='flowOutputMode'][value='hybrid']").checked = true;
+      if (researchProvider) researchProvider.value = "notebooklm-mcp";
+      if (enableLiveMcp) enableLiveMcp.checked = true;
+    }
+    updateDurationPreview();
+    updateFlowOutputModeHint();
+    updateAspectRatioHint();
+  });
+}
+
+autoLandscapeLongform?.addEventListener("change", updateAspectRatioHint);
+
+for (const selector of ["#longformTargetSeconds", "#introVideoClipCount", "#bodyImageSeconds"]) {
+  document.querySelector(selector)?.addEventListener("input", () => {
+    if (getVideoFormat() === "longform") {
+      document.querySelector("#customDurationSeconds").value = String(getLongformTargetSeconds());
+    }
+    updateDurationPreview();
+    updateHybridFlowControls();
+  });
 }
 
 async function populateVoicePresets() {
@@ -241,9 +371,11 @@ async function populateVoicePresets() {
     option.dataset.speed = String(voice.speed || "");
     return option;
   }));
-  const first = voices[0];
-  if (first?.speed) {
-    speed.value = String(first.speed);
+  const defaultVoiceId = "female_30_announcer";
+  const defaultPreset = voices.find((v) => v.id === defaultVoiceId) || voices[0];
+  if (defaultPreset) {
+    voiceSelect.value = defaultPreset.id;
+    speed.value = String(defaultPreset.speed || 1.06);
     speedValue.textContent = `${Number(speed.value).toFixed(2)}x`;
   }
 }
@@ -270,9 +402,10 @@ function updateStylePresetPreview() {
 
 function updateFlowOutputModeHint() {
   if (!flowOutputModeHint) return;
-  if (getFlowOutputMode() === "hybrid") {
+  const mode = getVideoFormat() === "longform" ? "hybrid" : getFlowOutputMode();
+  if (mode === "hybrid") {
     flowOutputModeHint.textContent = "Hybrid: opening scenes use Flow video for motion and attention; later scenes use Nano Banana Pro images rendered as smooth motion clips.";
-  } else if (getFlowOutputMode() === "image") {
+  } else if (mode === "image") {
     flowOutputModeHint.textContent = "Image: Google Flow creates Nano Banana Pro images and Hermes renders them into moving clips.";
   } else {
     flowOutputModeHint.textContent = "Video: Google Flow creates Veo video clips for every scene.";
@@ -281,16 +414,21 @@ function updateFlowOutputModeHint() {
 }
 
 function updateRenderEffectPreview() {
-  if (!renderEffectPreview || !renderEffectPreset || !transitionPreset || !transitionSeconds) return;
+  if (!renderEffectPreview || !renderEffectPreset || !motionIntensity || !transitionPreset || !transitionSeconds) return;
   const effectLabels = {
-    clean: "Clean: 안정적인 저속 줌/팬을 적용합니다.",
-    cinematic: "Cinematic: 부드러운 줌/팬과 고급스러운 장면 흐름을 적용합니다.",
-    "dynamic-shorts": "Dynamic Shorts: 초반 집중도를 위한 빠른 훅 모션을 적용합니다.",
+    clean: "Clean",
+    cinematic: "Cinematic",
+    "dynamic-shorts": "Dynamic Shorts",
+  };
+  const intensityLabels = {
+    none: "효과없음: 정적인 장면 위주로 안정적으로 렌더합니다.",
+    light: "약하게: 장면마다 은은한 줌/팬 효과를 랜덤 적용합니다.",
+    strong: "강하게: 초반 집중도를 위해 더 역동적인 줌/팬 효과를 랜덤 적용합니다.",
   };
   const transitionLabel = transitionPreset.value === "none"
     ? "전환 없음"
     : `${transitionPreset.selectedOptions[0]?.textContent || transitionPreset.value} ${Number(transitionSeconds.value || 0.3).toFixed(2)}초`;
-  renderEffectPreview.textContent = `${effectLabels[renderEffectPreset.value] || effectLabels.cinematic} ${transitionLabel}`;
+  renderEffectPreview.textContent = `${intensityLabels[motionIntensity.value] || intensityLabels.light} ${effectLabels[renderEffectPreset.value] || effectLabels.cinematic} · ${transitionLabel}`;
 }
 
 async function renderAuthStatus() {
@@ -331,6 +469,19 @@ function updateSubtitlePreview() {
   const shadow = Math.max(0, Number(subtitleShadow.value || 0));
   subtitlePreviewText.style.fontSize = `${Number(subtitleFontSize.value || 24)}px`;
   subtitlePreviewText.style.textShadow = buildSubtitleShadow(outline, shadow);
+}
+
+function updateTitleOverlayPreview() {
+  if (!titleOverlayPreviewText) return;
+  const fallback = sourceValue.value.trim().slice(0, 24) || "Video title preview";
+  titleOverlayPreviewText.textContent = titleOverlayText?.value.trim() || fallback;
+  titleOverlayPreviewText.parentElement.dataset.style = titleOverlayStyleId?.value || "bold-black-accent";
+  titleOverlayPreviewText.parentElement.dataset.enabled = titleOverlayEnabled?.checked ? "true" : "false";
+}
+
+for (const input of [titleOverlayEnabled, titleOverlayText, titleOverlayStyleId, sourceValue]) {
+  input?.addEventListener("input", updateTitleOverlayPreview);
+  input?.addEventListener("change", updateTitleOverlayPreview);
 }
 
 function buildSubtitleShadow(outline, shadow) {
@@ -375,6 +526,7 @@ refreshJobsBtn.addEventListener("click", renderJobs);
 
 stylePresetId?.addEventListener("change", updateStylePresetPreview);
 renderEffectPreset?.addEventListener("change", updateRenderEffectPreview);
+motionIntensity?.addEventListener("change", updateRenderEffectPreview);
 transitionPreset?.addEventListener("change", updateRenderEffectPreview);
 transitionSeconds?.addEventListener("input", updateRenderEffectPreview);
 
@@ -388,6 +540,14 @@ for (const input of document.querySelectorAll("input[name='sourceType']")) {
 }
 
 sourceValue.addEventListener("input", () => {
+  const value = sourceValue.value.trim();
+  if (/^https?:\/\//i.test(value) && getSourceType() === "keyword") {
+    const urlRadio = document.querySelector("input[name='sourceType'][value='url']");
+    if (urlRadio) {
+      urlRadio.checked = true;
+      updateSourceModeUi();
+    }
+  }
   updateSceneSplitPreview();
   updateScriptDurationValidation();
 });
@@ -395,6 +555,9 @@ sourceValue.addEventListener("input", () => {
 characterSheetImages?.addEventListener("change", updateCharacterSheetSummary);
 characterSheetText?.addEventListener("input", updateCharacterSheetSummary);
 copyJobSummaryBtn?.addEventListener("click", copyJobSummary);
+retryFailedScenesBtn?.addEventListener("click", retryFailedScenes);
+renderExistingAssetsBtn?.addEventListener("click", renderExistingAssets);
+retryThumbnailBtn?.addEventListener("click", retryThumbnail);
 
 for (const button of document.querySelectorAll("#consoleFilters [data-filter]")) {
   button.addEventListener("click", () => {
@@ -473,10 +636,13 @@ function updateCharacterSheetSummary() {
 
 function updateArtifactPanel(details = {}) {
   if (!artifactPanel) return;
+  const primaryFailure = details.primaryProviderFailure || {};
   const entries = [
     ["최종 영상", details.finalPath || details.finalVideo],
     ["썸네일", details.thumbnailPath],
     ["작업 폴더", details.jobDir],
+    ["ChatGPT 썸네일 실패", primaryFailure.resultPath],
+    ["ChatGPT 진단", primaryFailure.details?.diagnosticsPath],
   ].filter(([, value]) => Boolean(value));
   if (!entries.length) return;
   artifactPanel.replaceChildren(...entries.map(([label, value]) => {
@@ -486,6 +652,13 @@ function updateArtifactPanel(details = {}) {
     button.addEventListener("click", () => window.hermes.openPath(value));
     return button;
   }));
+}
+
+function updateRecoveryActions() {
+  const disabled = !selectedJobId;
+  if (retryFailedScenesBtn) retryFailedScenesBtn.disabled = disabled;
+  if (renderExistingAssetsBtn) renderExistingAssetsBtn.disabled = disabled;
+  if (retryThumbnailBtn) retryThumbnailBtn.disabled = disabled;
 }
 
 async function restoreConsoleHistory(jobId) {
@@ -510,6 +683,76 @@ async function copyJobSummary() {
   appendLog("Copied job summary", text);
 }
 
+async function retryFailedScenes() {
+  if (!selectedJobId) return;
+  jobState.textContent = "Recovering";
+  appendLog("Retrying failed scenes", { jobId: selectedJobId });
+  retryFailedScenesBtn.disabled = true;
+  try {
+    const result = await window.hermes.youtubeRetryFailedScenes(selectedJobId);
+    latestOutputPath = result.assets?.jobDir || result.finalVideo?.jobDir || latestOutputPath;
+    latestOutput.disabled = !latestOutputPath;
+    latestOutput.textContent = latestOutputPath || "No output";
+    updateArtifactPanel({ finalPath: result.finalVideo?.finalPath, jobDir: result.assets?.jobDir });
+    appendLog("Failed scene retry finished", result.finalVideo || result);
+    await renderJobs();
+  } catch (error) {
+    jobState.textContent = "Recovery Failed";
+    appendLog("Failed scene retry failed", error?.message || String(error));
+  } finally {
+    updateRecoveryActions();
+  }
+}
+
+async function renderExistingAssets() {
+  if (!selectedJobId) return;
+  jobState.textContent = "Rendering";
+  appendLog("Rendering existing assets", { jobId: selectedJobId });
+  renderExistingAssetsBtn.disabled = true;
+  try {
+    const result = await window.hermes.youtubeRenderExistingAssets(selectedJobId);
+    latestOutputPath = result.finalVideo?.finalPath || latestOutputPath;
+    latestOutput.disabled = !latestOutputPath;
+    latestOutput.textContent = latestOutputPath || "No output";
+    updateArtifactPanel({ finalPath: result.finalVideo?.finalPath, jobDir: result.finalVideo?.jobDir });
+    appendLog("Existing asset render finished", result.finalVideo || result);
+    await renderJobs();
+  } catch (error) {
+    jobState.textContent = "Render Failed";
+    appendLog("Existing asset render failed", error?.message || String(error));
+  } finally {
+    updateRecoveryActions();
+  }
+}
+
+async function retryThumbnail() {
+  if (!selectedJobId) return;
+  jobState.textContent = "Thumbnail Retry";
+  appendLog("Retrying thumbnail only", { jobId: selectedJobId });
+  retryThumbnailBtn.disabled = true;
+  try {
+    const result = await window.hermes.youtubeRetryThumbnail(selectedJobId);
+    latestOutputPath = result.jobDir || latestOutputPath;
+    latestOutput.disabled = !latestOutputPath;
+    latestOutput.textContent = latestOutputPath || "No output";
+    updateArtifactPanel({
+      thumbnailPath: result.thumbnail?.path,
+      jobDir: result.jobDir,
+      primaryProviderFailure: result.thumbnail?.primaryProviderFailure,
+    });
+    appendLog("Thumbnail retry finished", {
+      thumbnailPath: result.thumbnail?.path,
+      primaryProviderFailure: result.thumbnail?.primaryProviderFailure,
+    });
+    await renderJobs();
+  } catch (error) {
+    jobState.textContent = "Thumbnail Retry Failed";
+    appendLog("Thumbnail retry failed", error?.message || String(error));
+  } finally {
+    updateRecoveryActions();
+  }
+}
+
 async function renderJobs() {
   const jobs = await window.hermes.jobsList();
   if (!jobs.length) {
@@ -522,18 +765,20 @@ async function renderJobs() {
     item.className = "job-item";
     item.innerHTML = `<small>${job.status}</small><span>${job.title || job.id}</span>`;
     item.addEventListener("click", async () => {
+      selectedJobId = job.id;
       latestOutputPath = job.finalVideo || job.jobDir || "";
       latestOutput.disabled = !latestOutputPath;
       latestOutput.textContent = latestOutputPath || "No output";
       jobState.textContent = job.status || "Selected";
       updateArtifactPanel({ finalPath: job.finalVideo, jobDir: job.jobDir, thumbnailPath: job.thumbnailPath });
+      updateRecoveryActions();
       await restoreConsoleHistory(job.id);
     });
     return item;
   }));
 }
 
-for (const target of ["chatgpt", "gemini", "googleFlow", "youtube"]) {
+for (const target of ["chatgpt", "gemini", "googleFlow", "youtube", "notebooklm", "googleWorkspace"]) {
   document.querySelector(`#auth-${target}`)?.addEventListener("click", async () => {
     appendLog(`Starting ${target} authentication`);
     try {
@@ -545,7 +790,44 @@ for (const target of ["chatgpt", "gemini", "googleFlow", "youtube"]) {
       appendLog(`${target} authentication failed`, error?.message || String(error));
     }
   });
+
+  document.querySelector(`#auth-change-${target}`)?.addEventListener("click", async () => {
+    appendLog(`Changing ${target} account`);
+    try {
+      const result = await window.hermes.authChangeAccount(target);
+      appendLog(`${target} account change`, result);
+      if (target === "youtube") await handleYouTubeAuthResult(result);
+      await renderAuthStatus();
+    } catch (error) {
+      appendLog(`${target} account change failed`, error?.message || String(error));
+    }
+  });
+
+  document.querySelector(`#auth-clear-${target}`)?.addEventListener("click", async () => {
+    const confirmed = window.confirm(`Clear saved ${target} session on this computer?`);
+    if (!confirmed) return;
+    appendLog(`Clearing ${target} session`);
+    try {
+      const result = await window.hermes.authClearSession(target);
+      appendLog(`${target} session cleared`, result);
+      await renderAuthStatus();
+    } catch (error) {
+      appendLog(`${target} session clear failed`, error?.message || String(error));
+    }
+  });
 }
+
+webwrightDiagnosticsEnabled?.addEventListener("change", async () => {
+  const current = await window.hermes.configGet?.().catch(() => ({}));
+  const next = {
+    ...(current || {}),
+    webwrightDiagnosticsEnabled: Boolean(webwrightDiagnosticsEnabled.checked),
+  };
+  await window.hermes.configSave?.(next);
+  appendLog("Webwright diagnostics setting updated", {
+    webwrightDiagnosticsEnabled: next.webwrightDiagnosticsEnabled,
+  });
+});
 
 async function handleYouTubeAuthResult(result) {
   if (result.status === "client-secrets-missing") {
@@ -653,11 +935,13 @@ form.addEventListener("submit", async (event) => {
   appendLog("Submitting YouTube job", input);
   try {
     const result = await window.hermes.youtubeCreateJob(input);
+    selectedJobId = result.job?.id || "";
     latestOutputPath = result.assets?.jobDir || "";
     latestOutput.disabled = !latestOutputPath;
     latestOutput.textContent = latestOutputPath || "No output";
     jobState.textContent = "Preview Complete";
     appendLog("Job finished", result.finalVideo || result);
+    updateRecoveryActions();
     await renderJobs();
   } catch (error) {
     jobState.textContent = "Failed";
@@ -683,3 +967,5 @@ loadConfig().catch((error) => {
   jobState.textContent = "Config Error";
   appendLog("Failed to load config", error?.message || String(error));
 });
+
+updateRecoveryActions();

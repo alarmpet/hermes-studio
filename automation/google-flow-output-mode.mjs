@@ -1,10 +1,16 @@
+import {
+  flowChipClassifierBrowserSource,
+  isAgentChip,
+} from "./google-flow-chip-classifier.mjs";
+
 const LABELS = {
-  image: ["\uc774\ubbf8\uc9c0", "image"],
-  video: ["\ub3d9\uc601\uc0c1", "video"],
-  imageModel: ["Nano Banana Pro"],
-  imageModelDropdown: ["Imagen 4", "Nano Banana"],
+  image: ["이미지", "image"],
+  video: ["동영상", "video"],
+  imageModel: ["Nano Banana 2", "Nano Banana Pro"],
+  imageModelDropdown: ["Imagen 4", "Nano Banana 2", "Nano Banana"],
   videoModel: ["Veo 3.1 - Lite", "Veo"],
   aspect: ["9:16", "crop_9_16"],
+  landscapeAspect: ["16:9", "crop_16_9"],
   count: ["1x"],
 };
 
@@ -12,13 +18,29 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function configureFlowOutputMode(page, outputMode = "video") {
-  if (outputMode === "image") return configureFlowImage(page);
-  return configureFlowVideo(page);
+export async function configureFlowOutputMode(page, outputMode = "video", aspectRatio = "9:16") {
+  if (outputMode === "image") return configureFlowImage(page, aspectRatio);
+  return configureFlowVideo(page, aspectRatio);
 }
 
-export async function verifyFlowOutputMode(page, requestedOutputMode) {
-  return page.evaluate((requested) => {
+export async function verifyFlowOutputMode(page, requestedOutputMode, aspectRatio = "9:16") {
+  return page.evaluate(({ requested, requestedAspectRatio, classifierSource }) => {
+    let chooseChip;
+    try {
+      ({ chooseFlowGeneratorChip: chooseChip } = Function(`${classifierSource}; return { chooseFlowGeneratorChip };`)());
+    } catch (error) {
+      return {
+        requestedOutputMode: requested,
+        selectedOutputMode: "unknown",
+        selectedImageModel: "unknown",
+        ok: false,
+        failureCode: "FLOW_CHIP_CLASSIFIER_EVAL_FAILED",
+        reason: `Browser-side classifier evaluation crash: ${error?.message || error}`,
+        stack: error?.stack || "",
+        bottomGeneratorChip: [],
+        textTail: document.body?.innerText?.slice(-1500) || "",
+      };
+    }
     const visible = (el) => {
       const style = getComputedStyle(el);
       const rect = el.getBoundingClientRect();
@@ -45,101 +67,145 @@ export async function verifyFlowOutputMode(page, requestedOutputMode) {
           height: Math.round(rect.height),
         };
       })
-      .filter((item) => item.y > window.innerHeight * 0.64 && item.x > window.innerWidth * 0.45);
+      .filter((item) => item.y > window.innerHeight * 0.64);
 
-    const bottomText = bottomGeneratorChip.map((item) => item.label).join("\n");
+    const selectedChip = chooseChip(bottomGeneratorChip);
+    const selectedChipLabel = selectedChip?.label || "";
     const fullText = document.body?.innerText || "";
-    const selectedOutputMode = /\uc774\ubbf8\uc9c0|image|Nano Banana|Imagen/i.test(bottomText)
-      ? "image"
-      : /\ub3d9\uc601\uc0c1|video|Veo|00:10:00|videocam/i.test(bottomText)
-        ? "video"
+    const modeText = selectedChipLabel;
+    const selectedOutputMode = /Veo|video|\ub3d9\uc601\uc0c1|00:10:00|videocam/i.test(modeText)
+      ? "video"
+      : /\uc774\ubbf8\uc9c0|image|Nano Banana|Imagen/i.test(modeText)
+        ? "image"
         : "unknown";
-    const selectedImageModel = /Nano Banana Pro/i.test(bottomText)
+    const selectedImageModel = /Nano Banana Pro/i.test(modeText)
       ? "nano-banana-pro"
-      : /Nano Banana/i.test(bottomText)
-        ? "nano-banana"
-        : /Imagen/i.test(bottomText)
-          ? "imagen"
-          : "unknown";
-    const imageModelOk = requested !== "image" || selectedImageModel === "nano-banana-pro";
+      : /Nano Banana 2/i.test(modeText)
+        ? "nano-banana-2"
+        : /Nano Banana/i.test(modeText)
+          ? "nano-banana"
+          : /Imagen/i.test(modeText)
+            ? "imagen"
+            : "unknown";
+    const imageModelOk = requested !== "image" || selectedImageModel !== "unknown";
 
     return {
       requestedOutputMode: requested,
+      requestedAspectRatio,
       selectedOutputMode,
       selectedImageModel,
+      selectedAspectRatio: /16:9|crop_16_9/i.test(selectedChipLabel) ? "16:9" : "9:16",
+      selectedChip: selectedChip ? {
+        label: selectedChip.label,
+        score: selectedChip._score,
+        x: selectedChip.x,
+        y: selectedChip.y,
+        width: selectedChip.width,
+        height: selectedChip.height,
+      } : null,
       ok: selectedOutputMode === requested && imageModelOk,
       bottomGeneratorChip,
       textTail: fullText.slice(-1500),
     };
-  }, requestedOutputMode);
+  }, { requested: requestedOutputMode, requestedAspectRatio: aspectRatio, classifierSource: flowChipClassifierBrowserSource() });
 }
 
-async function configureFlowVideo(page) {
+async function configureFlowVideo(page, aspectRatio = "9:16") {
   return configureFlowGenerator(page, {
     requestedOutputMode: "video",
     targetLabels: LABELS.video,
     generatorLabels: LABELS.videoModel,
-    aspectLabels: LABELS.aspect,
+    aspectLabels: aspectRatio === "16:9" ? LABELS.landscapeAspect : LABELS.aspect,
     countLabels: LABELS.count,
   });
 }
 
-async function configureFlowImage(page) {
+async function configureFlowImage(page, aspectRatio = "9:16") {
   return configureFlowGenerator(page, {
     requestedOutputMode: "image",
     targetLabels: LABELS.image,
     modelDropdownLabels: LABELS.imageModelDropdown,
     generatorLabels: LABELS.imageModel,
     modelRequired: true,
-    aspectLabels: LABELS.aspect,
+    aspectLabels: aspectRatio === "16:9" ? LABELS.landscapeAspect : LABELS.aspect,
     countLabels: LABELS.count,
   });
 }
 
 async function configureFlowGenerator(page, config) {
-  const findBottomGeneratorChip = () => page.evaluate(() => {
-    const visible = (el) => {
-      const style = getComputedStyle(el);
-      const rect = el.getBoundingClientRect();
-      return !el.disabled
-        && el.getAttribute("aria-disabled") !== "true"
-        && style.visibility !== "hidden"
-        && style.display !== "none"
-        && rect.width > 8
-        && rect.height > 8;
-    };
-    const textOf = (el) => [
-      el.innerText,
-      el.textContent,
-      el.getAttribute("aria-label"),
-      el.getAttribute("title"),
-    ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-    const controls = () => Array.from(document.querySelectorAll("button,[role='button'],[role='option'],[aria-label],div,span"))
-      .filter(visible)
-      .map((el) => ({ el, text: textOf(el), rect: el.getBoundingClientRect() }))
-      .filter((item) => item.text);
-    const candidates = controls().filter((item) => {
-      const text = item.text;
-      return item.el.matches("button,[role='button']")
-        && item.rect.y > window.innerHeight * 0.64
-        && item.rect.x > window.innerWidth * 0.45
-        && !/arrow_forward|create|generate|\ub9cc\ub4e4\uae30/i.test(text)
-        && (item.rect.width > 48 || /\ub3d9\uc601\uc0c1|\uc774\ubbf8\uc9c0|video|image|Veo|Nano Banana|Imagen|1x|crop_9_16|9:16/i.test(text));
-    }).sort((a, b) => {
-      const aMode = /\ub3d9\uc601\uc0c1|\uc774\ubbf8\uc9c0|video|image/i.test(a.text) ? 1 : 0;
-      const bMode = /\ub3d9\uc601\uc0c1|\uc774\ubbf8\uc9c0|video|image/i.test(b.text) ? 1 : 0;
-      return bMode - aMode || (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height);
-    });
-    const target = candidates[0];
-    if (!target) return { ok: false, reason: "bottom generator chip not found", bottomGeneratorChip: false };
-    return {
-      ok: true,
-      text: target.text,
-      bottomGeneratorChip: true,
-      x: Math.round(target.rect.x + target.rect.width / 2),
-      y: Math.round(target.rect.y + target.rect.height / 2),
-    };
-  });
+  const findBottomGeneratorChip = () => page.evaluate((classifierSource) => {
+    try {
+      const {
+        chooseFlowGeneratorChip: chooseChip,
+        rejectedFlowChipReasons: rejectedReasons,
+      } = Function(`${classifierSource}; return { chooseFlowGeneratorChip, rejectedFlowChipReasons };`)();
+      const visible = (el) => {
+        const style = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        return !el.disabled
+          && el.getAttribute("aria-disabled") !== "true"
+          && style.visibility !== "hidden"
+          && style.display !== "none"
+          && rect.width > 8
+          && rect.height > 8;
+      };
+      const textOf = (el) => [
+        el.innerText,
+        el.textContent,
+        el.getAttribute("aria-label"),
+        el.getAttribute("title"),
+      ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+      const bottomItems = Array.from(document.querySelectorAll("button,[role='button']"))
+        .filter(visible)
+        .map((el) => {
+          const rect = el.getBoundingClientRect();
+          return {
+            label: textOf(el),
+            x: Math.round(rect.x),
+            y: Math.round(rect.y),
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          };
+        })
+        .filter((item) => item.label && item.y > window.innerHeight * 0.64);
+      const selected = chooseChip(bottomItems);
+      const rejectedChipReasons = rejectedReasons(bottomItems);
+      if (!selected) {
+        return {
+          ok: false,
+          reason: "model/settings chip not found",
+          bottomGeneratorChip: false,
+          bottomButtons: bottomItems,
+          rejectedChipReasons,
+        };
+      }
+      const selectedChip = {
+        label: selected.label,
+        score: selected._score,
+        x: selected.x,
+        y: selected.y,
+        width: selected.width,
+        height: selected.height,
+      };
+      return {
+        ok: true,
+        text: selected.label,
+        bottomGeneratorChip: true,
+        selectedChip,
+        rejectedChipReasons,
+        bottomButtons: bottomItems,
+        x: Math.round(selected.x + selected.width / 2),
+        y: Math.round(selected.y + selected.height / 2),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        reason: `Browser-side classifier evaluation crash: ${error?.message || error}`,
+        failureCode: "FLOW_CHIP_CLASSIFIER_EVAL_FAILED",
+        stack: error?.stack || "",
+      };
+    }
+  }, flowChipClassifierBrowserSource());
   const findControl = (needles, options = {}) => page.evaluate(({ needles, options }) => {
     const visible = (el) => {
       const style = getComputedStyle(el);
@@ -171,7 +237,10 @@ async function configureFlowGenerator(page, config) {
         if (options.generatorMenuOnly) {
           const inLeftSidebar = item.rect.x < window.innerWidth * 0.18;
           if (inLeftSidebar) return false;
+          if (item.rect.width > 420 || item.rect.height > 120) return false;
         }
+        if (Number.isFinite(options.minY) && item.rect.y < options.minY) return false;
+        if (Number.isFinite(options.maxY) && item.rect.y > options.maxY) return false;
         if (options.requireArrowDropDown && !text.includes("arrow_drop_down")) return false;
         return true;
       }).sort((a, b) => {
@@ -196,6 +265,51 @@ async function configureFlowGenerator(page, config) {
       };
     }, { needles, options });
   const pageSummary = () => page.evaluate(() => document.body?.innerText?.slice(-800) || "");
+  const findSectionBounds = () => page.evaluate(({ currentLabels, otherLabels }) => {
+    const visible = (el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden"
+        && style.display !== "none"
+        && rect.width > 8
+        && rect.height > 8;
+    };
+    const textOf = (el) => [
+      el.innerText,
+      el.textContent,
+      el.getAttribute("aria-label"),
+      el.getAttribute("title"),
+    ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const matching = (labels) => {
+      const lowered = labels.map((label) => String(label || "").toLowerCase()).filter(Boolean);
+      return Array.from(document.querySelectorAll("button,[role='button'],[role='option'],[aria-label],div,span"))
+        .filter(visible)
+        .map((el) => ({ text: textOf(el), rect: el.getBoundingClientRect() }))
+        .filter((item) => item.rect.x > window.innerWidth * 0.55)
+        .filter((item) => item.rect.width < 420 && item.rect.height < 100)
+        .filter((item) => lowered.some((label) => item.text.toLowerCase().includes(label)))
+        .sort((a, b) => a.rect.y - b.rect.y);
+    };
+    const current = matching(currentLabels)[0];
+    const others = matching(otherLabels).filter((item) => !current || Math.abs(item.rect.y - current.rect.y) > 20);
+    const next = current ? others.find((item) => item.rect.y > current.rect.y) : null;
+    const previous = current ? [...others].reverse().find((item) => item.rect.y < current.rect.y) : null;
+    if (!current) return { ok: false, reason: "section heading not found" };
+    return {
+      ok: true,
+      label: current.text,
+      minY: Math.max(0, Math.round(current.rect.y - 8)),
+      maxY: next
+        ? Math.round(next.rect.y - 12)
+        : Math.round(window.innerHeight - 40),
+      previousY: previous ? Math.round(previous.rect.y) : null,
+      nextY: next ? Math.round(next.rect.y) : null,
+    };
+  }, {
+    currentLabels: config.targetLabels || [],
+    otherLabels: config.requestedOutputMode === "video" ? LABELS.image : LABELS.video,
+  });
+  const clickSave = () => clickMatch(["\uc800\uc7a5", "save"], { generatorMenuOnly: true, optional: false, delay: 900 });
 
   const openBottomGeneratorChip = async () => {
     const target = await findBottomGeneratorChip();
@@ -222,33 +336,50 @@ async function configureFlowGenerator(page, config) {
     return { ok: false, requestedOutputMode: config.requestedOutputMode, results, summary: await pageSummary() };
   }
   await delay(600);
+  const sectionBounds = await findSectionBounds();
+  results.push({ ok: sectionBounds.ok, optional: false, sectionBounds });
+  if (!sectionBounds.ok) {
+    return { ok: false, requestedOutputMode: config.requestedOutputMode, results, summary: await pageSummary() };
+  }
+  const scoped = {
+    generatorMenuOnly: true,
+    minY: sectionBounds.minY,
+    maxY: sectionBounds.maxY,
+  };
 
   results.push(await openBottomGeneratorChip());
   if (config.modelDropdownLabels?.length) {
-    const dropdownResult = await clickMatch(config.modelDropdownLabels, { generatorMenuOnly: true, requireArrowDropDown: true, optional: false });
+    const dropdownResult = await clickMatch(config.modelDropdownLabels, { ...scoped, requireArrowDropDown: true, optional: false });
     results.push(dropdownResult);
     if (!dropdownResult.ok) {
       return { ok: false, requestedOutputMode: config.requestedOutputMode, results, summary: await pageSummary() };
     }
     await delay(500);
   }
-  results.push(await clickMatch(config.generatorLabels, { generatorMenuOnly: true, optional: !config.modelRequired }));
+  results.push(await clickMatch(config.generatorLabels, { ...scoped, optional: !config.modelRequired }));
   await delay(300);
 
   results.push(await openBottomGeneratorChip());
-  results.push(await clickMatch(config.aspectLabels, { generatorMenuOnly: true, optional: true }));
+  results.push(await clickMatch(config.aspectLabels, { ...scoped, optional: true }));
   await delay(300);
 
   results.push(await openBottomGeneratorChip());
-  results.push(await clickMatch(config.countLabels, { exact: true, generatorMenuOnly: true, optional: true }));
-  await page.keyboard.press("Escape").catch(() => {});
+  results.push(await clickMatch(config.countLabels, { ...scoped, exact: true, optional: true }));
+  const saveResult = await clickSave();
+  results.push({ ...saveResult, saveSettings: true });
+  if (!saveResult.ok) await page.keyboard.press("Escape").catch(() => {});
   await delay(300);
 
   const criticalResults = results.filter((item) => !item.optional);
   return {
     ok: criticalResults.every((item) => item.ok),
     requestedOutputMode: config.requestedOutputMode,
+    settingsPanelApplied: true,
+    saved: saveResult.ok,
+    sectionBounds,
     results,
+    selectedChip: [...results].reverse().find((item) => item.selectedChip)?.selectedChip,
+    rejectedChipReasons: results.flatMap((item) => item.rejectedChipReasons || []),
     summary: await pageSummary(),
   };
 }

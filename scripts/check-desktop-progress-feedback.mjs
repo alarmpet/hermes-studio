@@ -23,6 +23,19 @@ assert.match(renderer, /ELECTRON_RUN_AS_NODE|렌더 실행기|최신 설치본/,
 assert.match(progress, /actionRequired/, "progress events should support action-required recovery messages");
 assert.match(workflowDbEvents, /log-failure/, "workflow DB mirror should persist render failures to task_failures");
 assert.match(workflowDbEvents, /flow-mode-mismatch/, "workflow DB mirror should persist Flow mode mismatches to task_failures");
+assert.match(workflowDbEvents, /FLOW_ABNORMAL_ACTIVITY/, "workflow DB mirror should persist Flow abnormal activity failures to task_failures");
+assert.match(workflowDbEvents, /failureCodeOf/, "Workflow DB mirror should extract structured failure codes");
+assert.match(workflowDbEvents, /SOURCE_GROUNDING_MISMATCH|FLOW_PROMPT_ASPECT_MISMATCH|HPSL_STRUCTURE_MISMATCH/, "Known draft QA failure codes should be preserved for diagnose views");
+assert.match(workflowDbEvents, /finalOutputQa/, "workflow DB mirror should inspect final output QA failure codes");
+assert.match(workflowDbEvents, /failureCodesOf/, "workflow DB mirror should preserve all final output QA failure codes");
+assert.match(workflowDbEvents, /HARD_FREEZE_RISK/, "workflow DB mirror should classify hard freeze QA failures");
+assert.match(workflowDbEvents, /TARGET_DURATION_DRIFT/, "workflow DB mirror should classify target duration QA failures");
+assert.match(workflowDbEvents, /VISUAL_REPETITION_RISK/, "workflow DB mirror should classify visual repetition QA failures");
+assert.match(workflowDbEvents, /IMAGE_SEQUENCE_DIRECTION_REVERSAL/, "workflow DB mirror should classify stable image sequence direction failures");
+assert.match(workflowDbEvents, /IMAGE_SEQUENCE_DELTA_SPIKE/, "workflow DB mirror should classify stable image sequence jitter failures");
+assert.match(workflowDbEvents, /\[.*failureCode.*\]|prefixFailureCode/, "task_failures.error_msg should include a searchable failure-code prefix");
+assert.match(workflowDbEvents, /selectedChipLabel/, "DB failure payload should preserve the clicked Flow chip label");
+assert.match(workflowDbEvents, /rejectedChipReasons/, "DB failure payload should preserve rejected Flow chip reasons");
 assert.match(renderer, /Generating\.\.\./, "generate button should change label while running");
 assert.match(renderer, /flowOutputMode/i, "console should surface Flow output mode");
 assert.match(service, /createDefaultYouTubeStages/, "job service should use the shared YouTube stage factory");
@@ -47,10 +60,21 @@ assert.match(flowAutomation, /scene_\$\{sceneOrder\}_flow_submitted\.png/, "Flow
 assert.match(flowAutomation, /verifyFlowSubmissionStarted/, "Flow automation should verify generation started after clicking create");
 assert.match(flowAutomation, /scene_\$\{sceneOrder\}_flow_submit_state\.json/, "Flow automation should save submit-start diagnostics");
 assert.match(flowAutomation, /scene_\$\{sceneOrder\}_flow_waiting\.png/, "Flow automation should save a waiting screenshot");
+assert.match(flowAutomation, /classifyFlowGenerationFailureText/, "Flow automation should classify Flow failure cards before timing out");
 assert.match(main, /desktop-job-failed/, "main process should emit desktop-job-failed events");
 
 const qaFailureProgress = createFailureProgressEvent({ message: "Final output QA failed: VISUAL_REPETITION_RISK" });
 assert.equal(qaFailureProgress.phase, "render", "final output QA failures should stay on the render phase");
 assert.equal(qaFailureProgress.percent, 82, "final output QA failures should not appear as a 5% submitted failure");
+assert.equal(qaFailureProgress.details.finalVideoExists, true, "QA failures should tell the UI that the final video exists");
+assert.equal(qaFailureProgress.details.qaFailure, true, "QA failures should be distinct from render process failures");
+assert.deepEqual(qaFailureProgress.details.failureCodes, ["VISUAL_REPETITION_RISK"]);
+assert.match(qaFailureProgress.message, /Final video was created, but final QA blocked it/);
+
+const flowAbnormalProgress = createFailureProgressEvent({ message: "FLOW_ABNORMAL_ACTIVITY: Google Flow reported abnormal activity." });
+assert.equal(flowAbnormalProgress.phase, "flow-media", "Flow abnormal activity failures should stay on the Flow media phase");
+assert.equal(flowAbnormalProgress.percent, 62, "Flow abnormal activity failures should not appear as a 5% submitted failure");
+assert.equal(flowAbnormalProgress.status, "action-required", "Flow abnormal activity should ask for account/session action");
+assert.deepEqual(flowAbnormalProgress.details.failureCodes, ["FLOW_ABNORMAL_ACTIVITY"]);
 
 console.log("Desktop progress feedback contract OK");

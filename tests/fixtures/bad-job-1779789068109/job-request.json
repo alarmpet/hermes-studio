@@ -1,0 +1,60 @@
+{
+  "id": "youtube-1779789068109",
+  "runtimeContractVersion": "youtube-hpsl-v2",
+  "sourceType": "url",
+  "sourceValue": "https://n.news.naver.com/mnews/article/001/0016099405",
+  "options": {
+    "scriptLengthMode": "preset",
+    "scriptLengthPreset": "standard",
+    "customDurationSeconds": 60,
+    "scriptStructure": "hpsl",
+    "sceneStrategy": "sentence-proportional",
+    "voiceId": "male_30_announcer",
+    "speechSpeed": 1.08,
+    "subtitleStyleId": "bold-shorts",
+    "subtitleStyle": {
+      "fontSize": 13,
+      "outline": 4,
+      "shadow": 2,
+      "marginV": 90,
+      "maxLineChars": 10,
+      "maxLines": 2
+    },
+    "aspectRatio": "9:16",
+    "renderQuality": "shorts-hq",
+    "characterMode": "consistent-presenter",
+    "thumbnailMode": "chatgpt",
+    "thumbnailHookStyle": "smart-curiosity",
+    "thumbnailUsesScriptContext": true,
+    "useChatGptThumbnail": true,
+    "sendIntermediateMedia": false,
+    "flowOutputMode": "hybrid",
+    "hybridIntroVideoSceneCount": 1,
+    "renderEffectPreset": "cinematic",
+    "transitionPreset": "scene-fade",
+    "transitionSeconds": 0.3,
+    "motionIntensity": "medium",
+    "smoothFrameInterpolation": false,
+    "stylePresetId": "cinematic-tech-news",
+    "stylePreset": {},
+    "characterSheet": {
+      "mode": "none",
+      "profileText": "",
+      "referenceImagePaths": []
+    },
+    "openaiProviderMode": "disabled",
+    "openaiApiKeyConfigured": false,
+    "mockMediaMode": false
+  },
+  "upload": {
+    "enabled": false,
+    "requireApproval": true,
+    "privacyStatus": "private",
+    "madeForKids": false,
+    "containsSyntheticMedia": true,
+    "categoryId": "25",
+    "autoThumbnail": true
+  },
+  "createdAt": "2026-05-26T09:51:08.109Z",
+  "requestedBy": "desktop"
+}

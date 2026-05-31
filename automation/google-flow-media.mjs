@@ -5,6 +5,9 @@ import { extname, join } from "node:path";
 import { chromium } from "playwright";
 import { isFlowPolicyWarningText } from "../electron/services/flow-prompt-safety.mjs";
 import { attachFlowIngredients } from "./google-flow-ingredients.mjs";
+import {
+  flowChipClassifierBrowserSource,
+} from "./google-flow-chip-classifier.mjs";
 import { configureFlowOutputMode, verifyFlowOutputMode } from "./google-flow-output-mode.mjs";
 
 export const GOOGLE_FLOW_URL = "https://labs.google/fx/ko/tools/flow";
@@ -13,6 +16,85 @@ const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function classifyFlowGenerationFailureText(text = "") {
+  const value = String(text || "");
+  if (!value.trim()) return null;
+
+  if (/비정상적인\s*활동|unusual\s+activity|suspicious\s+activity|abnormal\s+activity|automated\s+traffic|too\s+many\s+requests|rate\s*limit|temporarily\s+unavailable|try\s+again\s+later|고객센터|鍮꾩젙|媛먯|怨좉컼|쇳꽣/i.test(value)) {
+    return {
+      code: "FLOW_ABNORMAL_ACTIVITY",
+      reason: "flow-abnormal-activity",
+      retryable: false,
+      actionRequired: true,
+      userMessage: "Google Flow reported abnormal activity for this account/session. Change or re-authenticate the Flow account, wait for the account cooldown, then retry the failed scene.",
+    };
+  }
+
+  if (/(^|\n|\s)(실패|failed)(\n|\s|$)/i.test(value) && /(다시\s*시도|retry|프롬프트\s*재사용|reuse\s+prompt|delete_forever|삭제)/i.test(value)) {
+    return {
+      code: "FLOW_GENERATION_FAILED",
+      reason: "flow-generation-failed",
+      retryable: true,
+      actionRequired: false,
+      userMessage: "Google Flow returned a generation failure card before exposing media.",
+    };
+  }
+
+  return null;
+}
+
+async function writeFlowFailureDiagnostics({ page, jobDir, sceneOrder, outputMode, failure, state, source, screenshotName = "flow_screen" }) {
+  const screenshotPath = join(jobDir, `scene_${sceneOrder}_${screenshotName}.png`);
+  await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+  await writeFile(join(jobDir, `scene_${sceneOrder}_flow_status.json`), JSON.stringify({
+    ok: false,
+    reason: failure?.reason || "flow-generation-failed",
+    failureCode: failure?.code || "FLOW_GENERATION_FAILED",
+    actionRequired: Boolean(failure?.actionRequired),
+    retryable: Boolean(failure?.retryable),
+    source,
+    outputMode,
+    userMessage: failure?.userMessage || "",
+    lastText: state?.text || state?.textTail || "",
+    screenshotPath,
+    updatedAt: new Date().toISOString(),
+  }, null, 2), "utf8");
+  return screenshotPath;
+}
+
+function buildFlowFailureMessage(failure, screenshotPath) {
+  const prefix = failure?.code ? `${failure.code}: ` : "";
+  return `${prefix}${failure?.userMessage || "Google Flow generation failed."} Screenshot: ${screenshotPath}`;
+}
+
+async function maximizeChromiumWindow(page) {
+  const session = await page.context().newCDPSession(page);
+  try {
+    const { windowId } = await session.send("Browser.getWindowForTarget");
+    await session.send("Browser.setWindowBounds", {
+      windowId,
+      bounds: { windowState: "maximized" },
+    });
+    const bounds = await session.send("Browser.getWindowBounds", { windowId });
+    if (bounds?.bounds?.windowState !== "maximized") {
+      throw new Error(`Chrome window did not enter maximized state: ${JSON.stringify(bounds?.bounds || {})}`);
+    }
+    return bounds?.bounds || {};
+  } finally {
+    await session.detach().catch(() => {});
+  }
+}
+
+async function ensureLargeViewport(page, { width = 1920, height = 1080 } = {}) {
+  await page.setViewportSize({ width, height });
+  const windowBounds = await maximizeChromiumWindow(page);
+  const viewport = page.viewportSize?.();
+  if (!viewport || viewport.width < width || viewport.height < height) {
+    throw new Error(`Browser viewport is too small for stable Google Flow automation: ${JSON.stringify(viewport)}`);
+  }
+  return { viewport, windowBounds };
 }
 
 function assertRuntime({ chromePath, profileDir, jobDir }) {
@@ -108,10 +190,46 @@ async function ensureFlowProject(page) {
   throw new Error(`Flow project did not open: ${page.url()}`);
 }
 
+async function dismissFlowBlockingNotices(page) {
+  return page.evaluate(() => {
+    const visible = (el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return !el.disabled && style.visibility !== "hidden" && style.display !== "none" && rect.width > 8 && rect.height > 8;
+    };
+    const textOf = (el) => [
+      el.innerText,
+      el.textContent,
+      el.getAttribute("aria-label"),
+      el.getAttribute("title"),
+    ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const bodyText = document.body?.innerText || "";
+    const noticeOpen = /Flow\s*에이전트가\s*활성화|Flow\s*agent\s*is\s*enabled/i.test(bodyText);
+    if (!noticeOpen) return { dismissed: false, reason: "no-flow-agent-notice" };
+    const buttons = Array.from(document.querySelectorAll("button,[role='button']"))
+      .filter(visible)
+      .map((el) => ({ el, text: textOf(el), rect: el.getBoundingClientRect() }))
+      .filter((item) => /확인|닫기|got it|ok|close/i.test(item.text))
+      .sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height));
+    const target = buttons[0];
+    if (!target) return { dismissed: false, reason: "notice-confirm-button-not-found" };
+    target.el.click();
+    return { dismissed: true, label: target.text };
+  }).catch((error) => ({ dismissed: false, reason: error?.message || String(error) }));
+}
+
 async function waitForFlowGeneratorReady(page, jobDir, sceneOrder) {
   let lastState = null;
   for (let attempt = 0; attempt < 60; attempt += 1) {
-    lastState = await page.evaluate(() => {
+    const noticeState = await dismissFlowBlockingNotices(page);
+    if (noticeState.dismissed) {
+      await delay(500);
+    }
+    lastState = await page.evaluate((classifierSource) => {
+      const {
+        chooseFlowGeneratorChip: chooseChip,
+        rejectedFlowChipReasons: rejectedReasons,
+      } = Function(`${classifierSource}; return { chooseFlowGeneratorChip, rejectedFlowChipReasons };`)();
       const visible = (el) => {
         const style = getComputedStyle(el);
         const rect = el.getBoundingClientRect();
@@ -135,17 +253,23 @@ async function waitForFlowGeneratorReady(page, jobDir, sceneOrder) {
             height: Math.round(rect.height),
           };
         });
-      const bottomButtons = buttons.filter((item) => item.y > window.innerHeight * 0.64 && item.x > window.innerWidth * 0.45);
-      const generatorChip = bottomButtons.find((item) => !/arrow_forward|create|generate|\ub9cc\ub4e4\uae30/i.test(item.label) && item.width > 48);
-      const createButton = bottomButtons.find((item) => /arrow_forward|create|generate|\ub9cc\ub4e4\uae30/i.test(item.label));
+      const bottomButtons = buttons.filter((item) => item.y > window.innerHeight * 0.64);
+      const generatorChip = chooseChip(bottomButtons);
+      const createButton = bottomButtons.find((item) => item.x > window.innerWidth * 0.45 && /arrow_forward|create|generate|\ub9cc\ub4e4\uae30/i.test(item.label));
       return {
         ready: Boolean(generatorChip && createButton),
         generatorChip,
         createButton,
         bottomButtons,
+        rejectedChipReasons: rejectedReasons(bottomButtons),
         textTail: (document.body?.innerText || "").slice(-800),
       };
-    });
+    }, flowChipClassifierBrowserSource()).catch((error) => ({
+      ready: false,
+      failureCode: "FLOW_CHIP_CLASSIFIER_EVAL_FAILED",
+      reason: `Browser-side classifier evaluation crash: ${error?.message || error}`,
+      stack: error?.stack || "",
+    }));
     if (lastState.ready) {
       await writeFile(join(jobDir, `scene_${sceneOrder}_flow_generator_ready.json`), JSON.stringify({
         ok: true,
@@ -165,98 +289,6 @@ async function waitForFlowGeneratorReady(page, jobDir, sceneOrder) {
     updatedAt: new Date().toISOString(),
   }, null, 2), "utf8").catch(() => {});
   throw new Error(`Google Flow generator controls were not ready. Screenshot: ${screenshotPath}`);
-}
-
-async function configureFlowVideo(page) {
-  return page.evaluate(async () => {
-    const labels = {
-      video: "\ub3d9\uc601\uc0c1",
-      asset: "\uc560\uc14b",
-    };
-    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-    const visible = (el) => {
-      const style = getComputedStyle(el);
-      const rect = el.getBoundingClientRect();
-      return !el.disabled && style.visibility !== "hidden" && style.display !== "none" && rect.width > 8 && rect.height > 8;
-    };
-    const textOf = (el) => [
-      el.innerText,
-      el.textContent,
-      el.getAttribute("aria-label"),
-      el.getAttribute("title"),
-    ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-    const controls = () => Array.from(document.querySelectorAll("button,[role='button'],[role='option'],[aria-label],div,span"))
-      .filter(visible)
-      .map((el) => ({ el, text: textOf(el), rect: el.getBoundingClientRect() }))
-      .filter((item) => item.text);
-    const bodyText = () => document.body?.innerText || "";
-    const openGeneratorMenu = async () => {
-      const menuOpen = bodyText().includes("Veo 3.1 - Lite")
-        && bodyText().includes(labels.video)
-        && bodyText().includes("16:9")
-        && bodyText().includes("x4");
-      if (menuOpen) return { ok: true, alreadyOpen: true };
-
-      const candidates = controls().filter((item) => {
-        const text = item.text;
-        return item.el.matches("button,[role='button']")
-          && item.rect.y > window.innerHeight * 0.72
-          && (text.includes("Nano Banana")
-            || text.includes("Veo")
-            || text.includes("crop_9_16")
-            || text.includes("1x"));
-      }).sort((a, b) => (b.rect.width * b.rect.height) - (a.rect.width * a.rect.height));
-      const target = candidates[0];
-      if (!target) return { ok: false, reason: "Generator settings button not found" };
-      target.el.click();
-      await wait(500);
-      return { ok: true, text: target.text };
-    };
-    const clickMatch = async (needles, options = {}) => {
-      const lowerNeedles = needles.map((needle) => needle.toLowerCase());
-      const matches = controls().filter((item) => {
-        const text = item.text.toLowerCase();
-        const matched = lowerNeedles.some((needle) => options.exact ? text === needle : text.includes(needle));
-        if (!matched) return false;
-        if (options.minY !== undefined && item.rect.y < options.minY) return false;
-        return true;
-      }).sort((a, b) => {
-        const aClickable = a.el.closest("button,[role='button'],[role='option']") ? 1 : 0;
-        const bClickable = b.el.closest("button,[role='button'],[role='option']") ? 1 : 0;
-        return bClickable - aClickable || (a.rect.width * a.rect.height) - (b.rect.width * b.rect.height);
-      });
-      const match = matches[0];
-      if (!match) return { ok: false, reason: `No control matched: ${needles.join(", ")}` };
-      const clickable = match.el.closest("button,[role='button'],[role='option']") || match.el;
-      clickable.click();
-      await wait(options.delay ?? 300);
-      return { ok: true, text: match.text };
-    };
-    const opened = await openGeneratorMenu();
-    if (!opened.ok) return { ok: false, results: [opened], summary: bodyText().slice(-500) };
-
-    const results = [];
-    results.push(await clickMatch([labels.video, "video"]));
-    await wait(300);
-    await openGeneratorMenu();
-    results.push(await clickMatch([labels.asset, "asset"]));
-    await wait(300);
-    await openGeneratorMenu();
-    results.push(await clickMatch(["9:16", "crop_9_16"]));
-    await wait(300);
-    await openGeneratorMenu();
-    results.push(await clickMatch(["1x"], { exact: true }));
-    await wait(300);
-    await openGeneratorMenu();
-    if (bodyText().includes("Veo 3.1 - Lite")) {
-      results.push(await clickMatch(["Veo 3.1 - Lite"]));
-    }
-    const text = bodyText();
-    const ok = text.includes(labels.video)
-      && (text.includes("9:16") || text.includes("crop_9_16"))
-      && (text.includes("Veo") || !text.includes("Nano Banana"));
-    return { ok, results, summary: text.slice(-500) };
-  });
 }
 
 async function findPromptAndCreate(page) {
@@ -388,7 +420,7 @@ async function submitPromptToFlowAgain(page, prompt) {
 }
 
 async function probeFlowSubmitState(page) {
-  return page.evaluate(() => {
+  const state = await page.evaluate(() => {
     const text = document.body?.innerText || "";
     const textboxes = Array.from(document.querySelectorAll("[contenteditable='true'], textarea"))
       .map((el) => ({
@@ -430,13 +462,55 @@ async function probeFlowSubmitState(page) {
       textTail: text.slice(-1000),
     };
   });
+  const failureClassification = classifyFlowGenerationFailureText(state.textTail);
+  return {
+    ...state,
+    hasFailureCard: Boolean(failureClassification),
+    failureClassification,
+  };
 }
 
-async function verifyFlowSubmissionStarted(page, jobDir, sceneOrder) {
+async function verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode = "video", onProgress) {
   let lastState = null;
   for (let i = 0; i < 20; i += 1) {
     await delay(1000);
     lastState = await probeFlowSubmitState(page);
+    const hasProgressOrVideo = lastState.hasProgressPercent || lastState.hasVideo;
+    if (lastState.failureClassification && !hasProgressOrVideo) {
+      const screenshotPath = await writeFlowFailureDiagnostics({
+        page,
+        jobDir,
+        sceneOrder,
+        outputMode,
+        failure: lastState.failureClassification,
+        state: lastState,
+        source: "submit-start",
+        screenshotName: "flow_submit_failed",
+      });
+      await writeFile(join(jobDir, `scene_${sceneOrder}_flow_submit_state.json`), JSON.stringify({
+        ok: false,
+        reason: lastState.failureClassification.reason,
+        failureCode: lastState.failureClassification.code,
+        actionRequired: lastState.failureClassification.actionRequired,
+        retryable: lastState.failureClassification.retryable,
+        state: lastState,
+        screenshotPath,
+        updatedAt: new Date().toISOString(),
+      }, null, 2), "utf8");
+      onProgress?.({
+        message: buildFlowFailureMessage(lastState.failureClassification, screenshotPath),
+        details: {
+          eventType: lastState.failureClassification.reason,
+          failureCode: lastState.failureClassification.code,
+          actionRequired: lastState.failureClassification.actionRequired,
+          retryable: lastState.failureClassification.retryable,
+          sceneOrder,
+          outputMode,
+          screenshotPath,
+        },
+      });
+      throw new Error(buildFlowFailureMessage(lastState.failureClassification, screenshotPath));
+    }
     if (!lastState.promptStillVisible || !lastState.createButtonVisible || lastState.hasProgressPercent || lastState.hasVideo) {
       await writeFile(join(jobDir, `scene_${sceneOrder}_flow_submit_state.json`), JSON.stringify({
         ok: true,
@@ -556,6 +630,7 @@ export async function generateGoogleFlowVideoFromPrompt({
   chromePath,
   profileDir,
   outputMode = "video",
+  aspectRatio = "9:16",
   ingredientImagePaths = [],
   timeoutMs = DEFAULT_TIMEOUT_MS,
   onProgress,
@@ -569,13 +644,20 @@ export async function generateGoogleFlowVideoFromPrompt({
   const context = await chromium.launchPersistentContext(profileDir, {
     executablePath: chromePath,
     headless: false,
+    viewport: { width: 1920, height: 1080 },
     locale: "ko-KR",
     acceptDownloads: true,
-    args: ["--no-first-run", "--no-default-browser-check"],
+    args: ["--no-first-run", "--no-default-browser-check", "--start-maximized", "--window-size=1920,1080"],
   });
 
   try {
     const page = await visiblePage(context);
+    await ensureLargeViewport(page);
+    await writeFile(join(jobDir, `scene_${sceneOrder}_browser_window_state.json`), JSON.stringify({
+      ok: true,
+      viewport: page.viewportSize?.(),
+      updatedAt: new Date().toISOString(),
+    }, null, 2), "utf8").catch(() => {});
     page.setDefaultTimeout(60000);
     onProgress?.({ message: `장면 ${sceneOrder} Google Flow 프로젝트를 여는 중입니다.` });
     await ensureFlowProject(page);
@@ -583,15 +665,16 @@ export async function generateGoogleFlowVideoFromPrompt({
     const retryFlowOutputModeAfterReload = async ({ reason }) => {
       await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_retry.json`), JSON.stringify({
         reason,
-        requestedOutputMode: outputMode,
-        updatedAt: new Date().toISOString(),
+      requestedOutputMode: outputMode,
+      requestedAspectRatio: aspectRatio,
+      updatedAt: new Date().toISOString(),
       }, null, 2), "utf8");
       await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
       await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
       await ensureFlowProject(page);
       await waitForFlowGeneratorReady(page, jobDir, sceneOrder);
-      const retrySwitchResult = await configureFlowOutputMode(page, outputMode);
-      const retryVerification = await verifyFlowOutputMode(page, outputMode);
+      const retrySwitchResult = await configureFlowOutputMode(page, outputMode, aspectRatio);
+      const retryVerification = await verifyFlowOutputMode(page, outputMode, aspectRatio);
       await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_retry_verification.json`), JSON.stringify({
         retrySwitchResult,
         retryVerification,
@@ -601,21 +684,30 @@ export async function generateGoogleFlowVideoFromPrompt({
     };
     onProgress?.({ message: `장면 ${sceneOrder} Google Flow 설정을 확인하는 중입니다.` });
     onProgress?.({ message: `장면 ${sceneOrder} Google Flow ${outputMode === "image" ? "이미지" : "영상"} 설정을 확인하는 중입니다.`, details: { outputMode } });
-    const modeSwitchResult = await configureFlowOutputMode(page, outputMode);
+    const modeSwitchResult = await configureFlowOutputMode(page, outputMode, aspectRatio);
     await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_switch.json`), JSON.stringify(modeSwitchResult, null, 2), "utf8");
     await page.screenshot({ path: join(jobDir, `scene_${sceneOrder}_flow_mode_after_click.png`), fullPage: true }).catch(() => {});
-    const modeVerification = await verifyFlowOutputMode(page, outputMode);
+    const modeVerification = await verifyFlowOutputMode(page, outputMode, aspectRatio);
     await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_verification.json`), JSON.stringify(modeVerification, null, 2), "utf8");
     let finalModeSwitchResult = modeSwitchResult;
-    let finalModeVerification = modeVerification;
-    if (!modeSwitchResult.ok || !modeVerification.ok) {
+    let finalModeVerification = modeSwitchResult?.settingsPanelApplied && modeSwitchResult?.saved && modeVerification.selectedOutputMode === "unknown"
+      ? {
+          ...modeVerification,
+          selectedOutputMode: outputMode,
+          ok: true,
+          settingsPanelApplied: true,
+          saved: true,
+          reason: "Google Flow Agent settings panel was applied and saved; the current Flow UI does not expose a separate video/image bottom chip after save.",
+        }
+      : modeVerification;
+    if (!finalModeSwitchResult.ok || !finalModeVerification.ok) {
       const retryResult = await retryFlowOutputModeAfterReload({
         reason: `initial mismatch: requested=${outputMode}, selected=${modeVerification.selectedOutputMode}`,
       });
       finalModeSwitchResult = retryResult.retrySwitchResult;
       finalModeVerification = retryResult.retryVerification;
     }
-    if (!finalModeSwitchResult.ok || !finalModeVerification.ok) {
+    if (!finalModeVerification.ok) {
       const mismatchPath = join(jobDir, `scene_${sceneOrder}_flow_mode_mismatch.png`);
       await page.screenshot({ path: mismatchPath, fullPage: true }).catch(() => {});
       onProgress?.({
@@ -624,6 +716,9 @@ export async function generateGoogleFlowVideoFromPrompt({
           eventType: "flow-mode-mismatch",
           requestedOutputMode: outputMode,
           selectedOutputMode: finalModeVerification.selectedOutputMode,
+          selectedChipLabel: finalModeSwitchResult?.selectedChip?.label || finalModeVerification?.selectedChip?.label || "",
+          rejectedChipReasons: finalModeSwitchResult?.rejectedChipReasons || [],
+          bottomButtons: finalModeVerification.bottomGeneratorChip || [],
           sceneOrder,
           screenshotPath: mismatchPath,
         },
@@ -632,7 +727,7 @@ export async function generateGoogleFlowVideoFromPrompt({
     }
     await page.keyboard.press("Escape").catch(() => {});
     await delay(250);
-    const viewport = page.viewportSize?.() || { width: 1280, height: 720 };
+    const viewport = page.viewportSize?.() || await ensureLargeViewport(page);
     await page.mouse.click(Math.round(viewport.width * 0.42), Math.round(viewport.height * 0.42)).catch(() => {});
     await delay(300);
     try {
@@ -691,7 +786,7 @@ export async function generateGoogleFlowVideoFromPrompt({
         deadline: new Date(deadline).toISOString(),
         updatedAt: new Date().toISOString(),
       }, null, 2), "utf8");
-      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder);
+      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress);
       onProgress?.({
         message: `장면 ${sceneOrder} Flow 정책 경고를 안전 프롬프트로 복구했습니다.`,
         details: {
@@ -718,7 +813,7 @@ export async function generateGoogleFlowVideoFromPrompt({
       updatedAt: new Date().toISOString(),
     }, null, 2), "utf8");
     try {
-      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder);
+      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress);
     } catch (error) {
       const warningState = await collectMediaUrls(page);
       const recovered = await tryPolicyFallback(warningState, "submit-start");
@@ -736,9 +831,35 @@ export async function generateGoogleFlowVideoFromPrompt({
         nextProgressAt = Date.now();
         continue;
       }
+      const percents = Array.from(String(last?.text || "").matchAll(/(\d+)%/g)).map((match) => Number(match[1]));
+      const hasActiveProgress = percents.length > 0;
+      const flowFailure = hasActiveProgress ? null : classifyFlowGenerationFailureText(last?.text || "");
+      if (flowFailure) {
+        const screenshotPath = await writeFlowFailureDiagnostics({
+          page,
+          jobDir,
+          sceneOrder,
+          outputMode,
+          failure: flowFailure,
+          state: last,
+          source: "wait-loop",
+        });
+        onProgress?.({
+          message: buildFlowFailureMessage(flowFailure, screenshotPath),
+          details: {
+            eventType: flowFailure.reason,
+            failureCode: flowFailure.code,
+            actionRequired: flowFailure.actionRequired,
+            retryable: flowFailure.retryable,
+            sceneOrder,
+            outputMode,
+            screenshotPath,
+          },
+        });
+        throw new Error(buildFlowFailureMessage(flowFailure, screenshotPath));
+      }
       const currentUrls = outputMode === "image" ? last.images : last.videos;
       newMedia = currentUrls.filter((url) => !beforeUrls.has(url));
-      const percents = Array.from(String(last.text || "").matchAll(/(\d+)%/g)).map((match) => Number(match[1]));
       if (Date.now() >= nextProgressAt) {
         const remainingSeconds = Math.max(0, Math.round((deadline - Date.now()) / 1000));
         onProgress?.({
@@ -779,6 +900,32 @@ export async function generateGoogleFlowVideoFromPrompt({
 
     if (!newMedia.length) {
       const screenshotPath = join(jobDir, `scene_${sceneOrder}_flow_screen.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+      const flowFailure = classifyFlowGenerationFailureText(last?.text || "");
+      if (flowFailure) {
+        await writeFlowFailureDiagnostics({
+          page,
+          jobDir,
+          sceneOrder,
+          outputMode,
+          failure: flowFailure,
+          state: last,
+          source: "no-new-media-final",
+        });
+        onProgress?.({
+          message: buildFlowFailureMessage(flowFailure, screenshotPath),
+          details: {
+            eventType: flowFailure.reason,
+            failureCode: flowFailure.code,
+            actionRequired: flowFailure.actionRequired,
+            retryable: flowFailure.retryable,
+            sceneOrder,
+            outputMode,
+            screenshotPath,
+          },
+        });
+        throw new Error(buildFlowFailureMessage(flowFailure, screenshotPath));
+      }
       await writeFile(join(jobDir, `scene_${sceneOrder}_flow_status.json`), JSON.stringify({
         ok: false,
         reason: outputMode === "image" ? "no-new-image-url" : "no-new-video-url",

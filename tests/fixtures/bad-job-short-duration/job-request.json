@@ -1,0 +1,9 @@
+{
+  "id": "bad-job-short-duration",
+  "sourceType": "keyword",
+  "sourceValue": "AI 개발 플랫폼",
+  "options": {
+    "scriptStructure": "hpsl",
+    "customDurationSeconds": 60
+  }
+}

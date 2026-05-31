@@ -5,11 +5,15 @@ export const DEFAULT_CONFIG = {
   version: 1,
   ttsRoot: "",
   chromePath: "",
+  webwrightDiagnosticsEnabled: false,
+  webwrightCommand: "webwright",
   auth: {
     chatgpt: { status: "unknown" },
     gemini: { status: "unknown" },
     googleFlow: { status: "unknown" },
     youtube: { status: "unknown" },
+    notebooklm: { status: "unknown" },
+    googleWorkspace: { status: "unknown" },
   },
   defaults: {
     scriptLengthMode: "preset",

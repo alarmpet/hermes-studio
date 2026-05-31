@@ -1,0 +1,191 @@
+{
+  "title": "AI픽: 노션 개발자 플랫폼 공개",
+  "character_profile": "A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor",
+  "duration_seconds": 60,
+  "structure": "HPSL",
+  "hpsl": {
+    "hook": {
+      "goal": "Hook",
+      "narration": "노션이 드디어 개발자 플랫폼을 공개했습니다!",
+      "target_seconds": 7
+    },
+    "point": {
+      "goal": "Point",
+      "narration": "이 플랫폼은 AI를 활용한 업무 자동화를 지원합니다.",
+      "target_seconds": 13
+    },
+    "story": {
+      "goal": "Story",
+      "narration": "예를 들어, 개발자들은 이제 노션을 통해 코드를 작성하고 관리할 수 있으며, AI가 코드를 최적화해줍니다. 이는 팀의 생산성을 크게 향상시킬 수 있는 기회를 제공합니다.",
+      "target_seconds": 30
+    },
+    "lesson": {
+      "goal": "Lesson",
+      "narration": "결국, AI와 플랫폼의 결합은 우리 일하는 방식을 혁신할 수 있습니다.",
+      "target_seconds": 10
+    }
+  },
+  "script": "노션이 드디어 개발자 플랫폼을 공개했습니다! 이 플랫폼은 AI를 활용한 업무 자동화를 지원합니다. 예를 들어, 개발자들은 이제 노션을 통해 코드를 작성하고 관리할 수 있으며, AI가 코드를 최적화해줍니다. 이는 팀의 생산성을 크게 향상시킬 수 있는 기회를 제공합니다. 결국, AI와 플랫폼의 결합은 우리 일하는 방식을 혁신할 수 있습니다.",
+  "scenes": [
+    {
+      "order": 1,
+      "section": "hook",
+      "sectionGoal": "Hook",
+      "visual_category": "curiosity-object",
+      "outputMode": "video",
+      "flowOutputMode": "video",
+      "narration": "노션이 드디어 개발자 플랫폼을 공개했습니다!",
+      "duration_seconds": 7,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: curiosity-object. Visual goal: make this narration instantly understandable without showing subtitles or text: Hook. 노션이 드디어 개발자 플랫폼을 공개했습니다! Main subject: AI tools transforming real work on screens and devices. Action: a newsroom desk where article drafts, charts, and model outputs update rapidly. Scene keywords: Hook, 노션이, 드디어, 개발자, 플랫폼을, 공개했습니다. Variation: show cause and effect through visible motion. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: video. Generate a short cinematic motion shot with clear subject action. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+      "flow_prompt_safety": {
+        "prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: curiosity-object. Visual goal: make this narration instantly understandable without showing subtitles or text: Hook. 노션이 드디어 개발자 플랫폼을 공개했습니다! Main subject: AI tools transforming real work on screens and devices. Action: a newsroom desk where article drafts, charts, and model outputs update rapidly. Scene keywords: Hook, 노션이, 드디어, 개발자, 플랫폼을, 공개했습니다. Variation: show cause and effect through visible motion. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: video. Generate a short cinematic motion shot with clear subject action. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+        "changed": true,
+        "flags": [],
+        "replacements": [],
+        "context": {
+          "title": "AI픽: 노션 개발자 플랫폼 공개",
+          "sceneOrder": 1,
+          "visualCategory": "curiosity-object"
+        }
+      }
+    },
+    {
+      "order": 2,
+      "section": "point",
+      "sectionGoal": "Point",
+      "visual_category": "simple-comparison",
+      "outputMode": "image",
+      "flowOutputMode": "image",
+      "narration": "이 플랫폼은 AI를",
+      "duration_seconds": 5,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: simple-comparison. Visual goal: make this narration instantly understandable without showing subtitles or text: Point. 이 플랫폼은 AI를 Main subject: AI tools transforming real work on screens and devices. Action: a designer reviewing AI-generated storyboard frames on a large monitor. Scene keywords: Point, 플랫폼은, AI를. Variation: use a close-up detail shot before revealing the wider situation. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+      "flow_prompt_safety": {
+        "prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: simple-comparison. Visual goal: make this narration instantly understandable without showing subtitles or text: Point. 이 플랫폼은 AI를 Main subject: AI tools transforming real work on screens and devices. Action: a designer reviewing AI-generated storyboard frames on a large monitor. Scene keywords: Point, 플랫폼은, AI를. Variation: use a close-up detail shot before revealing the wider situation. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+        "changed": true,
+        "flags": [],
+        "replacements": [],
+        "context": {
+          "title": "AI픽: 노션 개발자 플랫폼 공개",
+          "sceneOrder": 2,
+          "visualCategory": "simple-comparison"
+        }
+      },
+      "motionPreset": "diagonal-drift"
+    },
+    {
+      "order": 3,
+      "section": "point",
+      "sectionGoal": "Point",
+      "visual_category": "core-fact-demo",
+      "outputMode": "image",
+      "flowOutputMode": "image",
+      "narration": "활용한 업무 자동화를 지원합니다.",
+      "duration_seconds": 8,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: core-fact-demo. Visual goal: make this narration instantly understandable without showing subtitles or text: Point. 활용한 업무 자동화를 지원합니다. Main subject: AI tools transforming real work on screens and devices. Action: a small business owner automating repetitive tasks on a laptop dashboard. Scene keywords: Point, 활용한, 업무, 자동화를, 지원합니다. Variation: contrast the old way and the new way in one continuous shot. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+      "flow_prompt_safety": {
+        "prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: core-fact-demo. Visual goal: make this narration instantly understandable without showing subtitles or text: Point. 활용한 업무 자동화를 지원합니다. Main subject: AI tools transforming real work on screens and devices. Action: a small business owner automating repetitive tasks on a laptop dashboard. Scene keywords: Point, 활용한, 업무, 자동화를, 지원합니다. Variation: contrast the old way and the new way in one continuous shot. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+        "changed": true,
+        "flags": [],
+        "replacements": [],
+        "context": {
+          "title": "AI픽: 노션 개발자 플랫폼 공개",
+          "sceneOrder": 3,
+          "visualCategory": "core-fact-demo"
+        }
+      },
+      "motionPreset": "tilt-reveal"
+    },
+    {
+      "order": 4,
+      "section": "story",
+      "sectionGoal": "Story",
+      "visual_category": "real-world-use-case",
+      "outputMode": "image",
+      "flowOutputMode": "image",
+      "narration": "예를 들어, 개발자들은 이제 노션을 통해 코드를",
+      "duration_seconds": 10,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: real-world-use-case. Visual goal: make this narration instantly understandable without showing subtitles or text: Story. 예를 들어, 개발자들은 이제 노션을 통해 코드를 Main subject: AI tools transforming real work on screens and devices. Action: a newsroom desk where article drafts, charts, and model outputs update rapidly. Scene keywords: Story, 예를, 들어, 개발자들은, 이제, 노션을, 통해, 코드를. Variation: show the user interaction from the viewer's point of view. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+      "flow_prompt_safety": {
+        "prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: real-world-use-case. Visual goal: make this narration instantly understandable without showing subtitles or text: Story. 예를 들어, 개발자들은 이제 노션을 통해 코드를 Main subject: AI tools transforming real work on screens and devices. Action: a newsroom desk where article drafts, charts, and model outputs update rapidly. Scene keywords: Story, 예를, 들어, 개발자들은, 이제, 노션을, 통해, 코드를. Variation: show the user interaction from the viewer's point of view. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+        "changed": true,
+        "flags": [],
+        "replacements": [],
+        "context": {
+          "title": "AI픽: 노션 개발자 플랫폼 공개",
+          "sceneOrder": 4,
+          "visualCategory": "real-world-use-case"
+        }
+      },
+      "motionPreset": "slow-pull-back"
+    },
+    {
+      "order": 5,
+      "section": "story",
+      "sectionGoal": "Story",
+      "visual_category": "cause-effect-sequence",
+      "outputMode": "image",
+      "flowOutputMode": "image",
+      "narration": "작성하고 관리할 수 있으며, AI가 코드를 최적화해줍니다. 이는",
+      "duration_seconds": 10,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: cause-effect-sequence. Visual goal: make this narration instantly understandable without showing subtitles or text: Story. 작성하고 관리할 수 있으며, AI가 코드를 최적화해줍니다. 이는 Main subject: AI tools transforming real work on screens and devices. Action: a designer reviewing AI-generated storyboard frames on a large monitor. Scene keywords: Story, 작성하고, 관리할, 있으며, AI가, 코드를, 최적화해줍니다, 이는. Variation: use foreground object movement to lead into the next idea. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+      "flow_prompt_safety": {
+        "prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: cause-effect-sequence. Visual goal: make this narration instantly understandable without showing subtitles or text: Story. 작성하고 관리할 수 있으며, AI가 코드를 최적화해줍니다. 이는 Main subject: AI tools transforming real work on screens and devices. Action: a designer reviewing AI-generated storyboard frames on a large monitor. Scene keywords: Story, 작성하고, 관리할, 있으며, AI가, 코드를, 최적화해줍니다, 이는. Variation: use foreground object movement to lead into the next idea. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+        "changed": true,
+        "flags": [],
+        "replacements": [],
+        "context": {
+          "title": "AI픽: 노션 개발자 플랫폼 공개",
+          "sceneOrder": 5,
+          "visualCategory": "cause-effect-sequence"
+        }
+      },
+      "motionPreset": "cinematic-push-in"
+    },
+    {
+      "order": 6,
+      "section": "story",
+      "sectionGoal": "Story",
+      "visual_category": "risk-or-tension",
+      "outputMode": "image",
+      "flowOutputMode": "image",
+      "narration": "팀의 생산성을 크게 향상시킬 수 있는 기회를 제공합니다.",
+      "duration_seconds": 10,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: risk-or-tension. Visual goal: make this narration instantly understandable without showing subtitles or text: Story. 팀의 생산성을 크게 향상시킬 수 있는 기회를 제공합니다. Main subject: AI tools transforming real work on screens and devices. Action: a small business owner automating repetitive tasks on a laptop dashboard. Scene keywords: Story, 팀의, 생산성을, 크게, 향상시킬, 있는, 기회를, 제공합니다. Variation: show a realistic problem being solved on screen without readable text. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+      "flow_prompt_safety": {
+        "prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: risk-or-tension. Visual goal: make this narration instantly understandable without showing subtitles or text: Story. 팀의 생산성을 크게 향상시킬 수 있는 기회를 제공합니다. Main subject: AI tools transforming real work on screens and devices. Action: a small business owner automating repetitive tasks on a laptop dashboard. Scene keywords: Story, 팀의, 생산성을, 크게, 향상시킬, 있는, 기회를, 제공합니다. Variation: show a realistic problem being solved on screen without readable text. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+        "changed": true,
+        "flags": [],
+        "replacements": [],
+        "context": {
+          "title": "AI픽: 노션 개발자 플랫폼 공개",
+          "sceneOrder": 6,
+          "visualCategory": "risk-or-tension"
+        }
+      },
+      "motionPreset": "diagonal-drift"
+    },
+    {
+      "order": 7,
+      "section": "lesson",
+      "sectionGoal": "Lesson",
+      "visual_category": "takeaway-metaphor",
+      "outputMode": "image",
+      "flowOutputMode": "image",
+      "narration": "결국, AI와 플랫폼의 결합은 우리 일하는 방식을 혁신할 수 있습니다.",
+      "duration_seconds": 10,
+      "image_prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: takeaway-metaphor. Visual goal: make this narration instantly understandable without showing subtitles or text: Lesson. 결국, AI와 플랫폼의 결합은 우리 일하는 방식을 혁신할 수 있습니다. Main subject: AI tools transforming real work on screens and devices. Action: a newsroom desk where article drafts, charts, and model outputs update rapidly. Scene keywords: Lesson, 결국, AI와, 플랫폼의, 결합은, 우리, 일하는, 방식을. Variation: show cause and effect through visible motion. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+      "flow_prompt_safety": {
+        "prompt": "9:16 cinematic YouTube shorts B-roll scene. Visual category: takeaway-metaphor. Visual goal: make this narration instantly understandable without showing subtitles or text: Lesson. 결국, AI와 플랫폼의 결합은 우리 일하는 방식을 혁신할 수 있습니다. Main subject: AI tools transforming real work on screens and devices. Action: a newsroom desk where article drafts, charts, and model outputs update rapidly. Scene keywords: Lesson, 결국, AI와, 플랫폼의, 결합은, 우리, 일하는, 방식을. Variation: show cause and effect through visible motion. Context keywords: AI픽: 노션 개발자 플랫폼 공개; clean data overlays, fast iteration, human using AI as a tool. Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting. GLOBAL STYLE LOCK: clear cinematic YouTube Shorts visuals. Output mode: image. Generate one strong still image that can be animated later with slow pan or zoom. Character continuity: keep the same character identity, age, wardrobe, body type, and visual proportions across every scene. World continuity: keep the same palette, lighting, camera language, and scene design across every scene. Negative constraints: no readable text, no logos, no watermarks, no random character identity changes. Character consistency: if a recurring human is needed, use this exact character sheet: A young Korean male tech enthusiast, wearing casual attire and glasses, with a friendly demeanor. Do not change age, gender, ethnicity, hairstyle, outfit, or role between scenes. If reference images are attached in Flow, match the same identity and outfit. No talking head, avoid a person simply speaking to camera, no presenter reading the script. No subtitles, no readable text, no logos, no watermarks. Do not depict any identifiable real public figure, celebrity, politician, athlete, influencer, or named private person. Use only fictional, anonymous, non-identifiable people or symbolic B-roll. Avoid faces when the story involves a real person; show objects, locations, silhouettes, hands, crowds, devices, charts, or contextual scenes instead. No logos, no readable text, no subtitles, no watermarks.",
+        "changed": true,
+        "flags": [],
+        "replacements": [],
+        "context": {
+          "title": "AI픽: 노션 개발자 플랫폼 공개",
+          "sceneOrder": 7,
+          "visualCategory": "takeaway-metaphor"
+        }
+      },
+      "motionPreset": "tilt-reveal"
+    }
+  ]
+}

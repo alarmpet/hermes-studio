@@ -3,6 +3,7 @@ import { outputModeForScene } from "./scene-output-mode-policy.mjs";
 
 const MIN_SCENES = 3;
 const MAX_SCENES = 18;
+const MAX_LONGFORM_SECONDS = 1200;
 
 export function splitKoreanSentences(script = "") {
   const normalized = String(script).replace(/\s+/g, " ").trim();
@@ -29,20 +30,21 @@ export function targetSceneCount({ sentenceCount, targetSeconds }) {
   return Math.min(MAX_SCENES, Math.max(byTime, bySentence));
 }
 
-export function planScenesFromScript({ script, title, targetSeconds, customDurationSeconds, characterProfile, stylePreset, characterSheet, flowOutputMode = "video", hybridIntroVideoSceneCount = 2 }) {
-  const totalDuration = Math.max(15, Math.min(600, Number(customDurationSeconds || targetSeconds || 60)));
+export function planScenesFromScript({ script, title, targetSeconds, customDurationSeconds, characterProfile, stylePreset, characterSheet, flowOutputMode = "video", hybridIntroVideoSceneCount = 2, aspectRatio = "9:16" }) {
+  const totalDuration = Math.max(15, Math.min(MAX_LONGFORM_SECONDS, Number(customDurationSeconds || targetSeconds || 60)));
   const sentences = splitKoreanSentences(script);
   const sourceSentences = sentences.length ? sentences : [String(script || title || "Scene").trim()].filter(Boolean);
   const count = Math.min(sourceSentences.length || 1, targetSceneCount({
     sentenceCount: sourceSentences.length,
     targetSeconds: totalDuration,
   }));
-  const perScene = Math.max(1, Math.ceil(sourceSentences.length / count));
   const tempScenes = [];
   let totalSyllables = 0;
 
   for (let index = 0; index < count; index += 1) {
-    const narration = sourceSentences.slice(index * perScene, (index + 1) * perScene).join(" ") || script || title;
+    const start = Math.floor((index * sourceSentences.length) / count);
+    const end = Math.floor(((index + 1) * sourceSentences.length) / count);
+    const narration = sourceSentences.slice(start, Math.max(start + 1, end)).join(" ") || sourceSentences[index] || title;
     const syllables = narration.replace(/\s+/g, "").length;
     totalSyllables += syllables;
     tempScenes.push({ order: index + 1, narration, syllables });
@@ -68,6 +70,7 @@ export function planScenesFromScript({ script, title, targetSeconds, customDurat
       stylePreset,
       characterSheet,
       flowOutputMode: outputMode,
+      aspectRatio,
     });
     const safe = finalizeFlowPrompt({ prompt, title, order: scene.order, visualCategory });
     return {
@@ -90,8 +93,8 @@ export function planScenesFromScript({ script, title, targetSeconds, customDurat
   return scenes;
 }
 
-export function planScenesFromHpsl({ title, hpsl = {}, targetSeconds = 60, characterProfile, stylePreset, characterSheet, flowOutputMode = "video", hybridIntroVideoSceneCount = 2 }) {
-  const totalDuration = Math.max(15, Math.min(600, Number(targetSeconds || 60)));
+export function planScenesFromHpsl({ title, hpsl = {}, targetSeconds = 60, characterProfile, stylePreset, characterSheet, flowOutputMode = "video", hybridIntroVideoSceneCount = 2, aspectRatio = "9:16" }) {
+  const totalDuration = Math.max(15, Math.min(MAX_LONGFORM_SECONDS, Number(targetSeconds || 60)));
   const sectionSeconds = allocateSectionSeconds(hpsl, totalDuration);
   const sections = ["hook", "point", "story", "lesson"];
   const tempScenes = [];
@@ -135,6 +138,7 @@ export function planScenesFromHpsl({ title, hpsl = {}, targetSeconds = 60, chara
       stylePreset,
       characterSheet,
       flowOutputMode: outputMode,
+      aspectRatio,
     });
     const safe = finalizeFlowPrompt({ prompt, title, order, visualCategory });
     return {
@@ -354,12 +358,12 @@ function finalizeFlowPrompt({ prompt, title, order, visualCategory }) {
   };
 }
 
-function buildVisualStoryPrompt({ title, narration, order, visualCategory, characterProfile, stylePreset, characterSheet, flowOutputMode = "video" }) {
+function buildVisualStoryPrompt({ title, narration, order, visualCategory, characterProfile, stylePreset, characterSheet, flowOutputMode = "video", aspectRatio = "9:16" }) {
   const visual = inferVisualKeywords({ title, narration });
   const environment = visual.environments[(order - 1) % visual.environments.length];
   const variation = sceneVariation({ order, narration });
   return [
-    "9:16 cinematic YouTube shorts B-roll scene.",
+    aspectRatio === "16:9" ? "16:9 horizontal cinematic YouTube longform B-roll scene." : "9:16 vertical cinematic YouTube shorts B-roll scene.",
     visualCategory ? `Visual category: ${visualCategory}.` : "",
     `Visual goal: make this narration instantly understandable without showing subtitles or text: ${narration}`,
     `Main subject: ${visual.subject}.`,

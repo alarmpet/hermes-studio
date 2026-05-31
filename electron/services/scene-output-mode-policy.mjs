@@ -1,7 +1,7 @@
 export function outputModeForScene({ sceneOrder, flowOutputMode = "video", hybridIntroVideoSceneCount = 2 } = {}) {
   const mode = String(flowOutputMode || "video").toLowerCase();
   const order = Math.max(1, Number(sceneOrder || 1));
-  const introCount = Math.max(0, Math.min(6, Math.round(Number(hybridIntroVideoSceneCount ?? 2))));
+  const introCount = Math.max(0, Math.min(10, Math.round(Number(hybridIntroVideoSceneCount ?? 2))));
   if (mode === "hybrid") return order <= introCount ? "video" : "image";
   if (mode === "image") return "image";
   return "video";

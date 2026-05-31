@@ -69,6 +69,87 @@ assert.doesNotMatch(celebrityDraft.scenes[0].image_prompt, /Elon Musk/i);
 assert.match(celebrityDraft.scenes[0].image_prompt, /tech company CEO|anonymous|public figure|technology company executive/i);
 assert.ok(celebrityDraft.scenes[0].flow_prompt_safety?.changed);
 
+const geminiKeywordJob = {
+  sourceType: "keyword",
+  sourceValue: "최신 gemini 소식",
+  options: { scriptStructure: "hpsl", aspectRatio: "9:16" },
+};
+
+const genericAiDraft = {
+  title: "요즘 AI 뉴스가 갑자기 커진 진짜 이유",
+  structure: "HPSL",
+  hpsl: {
+    hook: { narration: "요즘 AI 뉴스가 매일 쏟아지고 있습니다.", target_seconds: 7 },
+    point: { narration: "핵심은 데이터센터와 전력 경쟁입니다.", target_seconds: 13 },
+    story: { narration: "거대 기업들이 인프라를 확장하고 있습니다.", target_seconds: 30 },
+    lesson: { narration: "기술 이름보다 구조를 봐야 합니다.", target_seconds: 10 },
+  },
+  script: "요즘 AI 뉴스가 매일 쏟아지고 있습니다. 핵심은 데이터센터와 전력 경쟁입니다. 거대 기업들이 인프라를 확장하고 있습니다. 기술 이름보다 구조를 봐야 합니다.",
+  scenes: [
+    { order: 1, narration: "요즘 AI 뉴스가 매일 쏟아지고 있습니다.", image_prompt: "9:16 cinematic data center scene" },
+  ],
+};
+
+const groundingResult = validateDraftQuality({
+  draft: genericAiDraft,
+  job: geminiKeywordJob,
+  stage: "unit-keyword-grounding",
+});
+assert.equal(groundingResult.ok, false, "draft must not pass when the required keyword subject Gemini is missing");
+assert.equal(groundingResult.failureCode, "SOURCE_GROUNDING_MISMATCH");
+
+const josaKeywordJob = {
+  sourceType: "keyword",
+  sourceValue: "gemini의 소식",
+  options: { scriptStructure: "hpsl", aspectRatio: "9:16" },
+};
+const josaDraft = {
+  ...genericAiDraft,
+  title: "Gemini 최신 변화",
+  script: "Gemini가 바꾸는 검색 경험을 쉽게 설명합니다.",
+  hpsl: {
+    hook: { narration: "Gemini가 검색을 바꾸고 있습니다.", target_seconds: 7 },
+    point: { narration: "핵심은 답변 방식의 변화입니다.", target_seconds: 13 },
+    story: { narration: "사용자는 긴 검색 대신 요약된 맥락을 먼저 봅니다.", target_seconds: 30 },
+    lesson: { narration: "도구 변화는 습관 변화로 이어집니다.", target_seconds: 10 },
+  },
+  scenes: [{ order: 1, narration: "Gemini가 검색을 바꾸고 있습니다.", image_prompt: "9:16 cinematic browser search workflow" }],
+};
+assert.equal(validateDraftQuality({ draft: josaDraft, job: josaKeywordJob, stage: "unit-keyword-josa" }).ok, true);
+assert.equal(validateDraftQuality({ draft: josaDraft, job: { ...josaKeywordJob, sourceValue: "제미나이를 분석" }, stage: "unit-korean-josa" }).ok, true);
+
+const malformedHybridDraft = {
+  title: "AI 뉴스",
+  structure: "Hybrid",
+  hpsl: {
+    hook: "문자열 후킹",
+    point: "문자열 포인트",
+    story: "문자열 스토리",
+    lesson: "문자열 교훈",
+  },
+  script: "AI 뉴스 이야기입니다.",
+  scenes: [{ order: 1, narration: "AI 뉴스 이야기입니다.", image_prompt: "aspect ratio 16:9" }],
+};
+
+const malformedResult = validateDraftQuality({
+  draft: malformedHybridDraft,
+  job: { options: { scriptStructure: "hpsl", aspectRatio: "9:16" } },
+  stage: "unit-hpsl-malformed",
+});
+assert.equal(malformedResult.ok, false);
+assert.equal(malformedResult.failureCode, "HPSL_STRUCTURE_MISMATCH");
+
+const aspectResult = validateDraftQuality({
+  draft: {
+    ...josaDraft,
+    scenes: [{ order: 1, narration: "Gemini가 검색을 바꾸고 있습니다.", image_prompt: "cinematic search workflow, aspect ratio 16:9" }],
+  },
+  job: { options: { scriptStructure: "hpsl", aspectRatio: "9:16" } },
+  stage: "unit-aspect",
+});
+assert.equal(aspectResult.ok, false);
+assert.equal(aspectResult.failureCode, "FLOW_PROMPT_ASPECT_MISMATCH");
+
 if (process.argv[2]) {
   const jobDir = resolve(process.argv[2]);
   const draft = JSON.parse(readFileSync(join(jobDir, "draft.json"), "utf8"));

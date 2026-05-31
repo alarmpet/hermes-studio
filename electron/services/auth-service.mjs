@@ -1,13 +1,18 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { startYouTubeOAuth } from "../../pipeline/youtube-auth.mjs";
 import { claimBrowserProfile, findChromeExecutable, writeBrowserProfileLock } from "./browser-profile-service.mjs";
+import { clearSavedToken } from "./secure-token-store.mjs";
 
 export const AUTH_TARGETS = {
   chatgpt: { label: "ChatGPT", url: "https://chatgpt.com/" },
   gemini: { label: "Gemini", url: "https://gemini.google.com/" },
   googleFlow: { label: "Google Flow", url: "https://labs.google/fx/ko/tools/flow" },
   youtube: { label: "YouTube Upload", url: "youtube-oauth" },
+  notebooklm: { label: "NotebookLM", url: "https://notebooklm.google.com/" },
+  googleWorkspace: { label: "Google Workspace", url: "workspace-oauth" },
 };
 
 export function getAuthStatus(config = {}) {
@@ -16,6 +21,8 @@ export function getAuthStatus(config = {}) {
     gemini: config.auth?.gemini || { status: "unknown" },
     googleFlow: config.auth?.googleFlow || { status: "unknown" },
     youtube: config.auth?.youtube || { status: "unknown" },
+    notebooklm: config.auth?.notebooklm || { status: "unknown" },
+    googleWorkspace: config.auth?.googleWorkspace || { status: "unknown" },
   };
 }
 
@@ -23,6 +30,7 @@ export function resolveProfileDir(target, paths) {
   if (target === "chatgpt") return paths.chatgptProfileDir;
   if (target === "gemini") return paths.geminiProfileDir;
   if (target === "googleFlow") return paths.flowProfileDir;
+  if (target === "notebooklm") return paths.notebooklmProfileDir;
   throw new Error(`No browser profile for auth target: ${target}`);
 }
 
@@ -30,6 +38,9 @@ export function openPersistentChrome({ chromePath, profileDir, url }) {
   const child = spawn(chromePath, [
     `--user-data-dir=${profileDir}`,
     "--no-first-run",
+    "--start-maximized",
+    "--window-size=1920,1080",
+    "--window-position=0,0",
     "--new-window",
     url,
   ], {
@@ -43,6 +54,16 @@ export function openPersistentChrome({ chromePath, profileDir, url }) {
 
 export async function startAuth(target, { config, paths, openExternal }) {
   if (!AUTH_TARGETS[target]) throw new Error(`Unknown auth target: ${target}`);
+  if (target === "googleWorkspace") {
+    return {
+      ok: false,
+      target,
+      label: AUTH_TARGETS[target].label,
+      status: "oauth-not-configured",
+      message: "Google Workspace MCP OAuth is planned for the first MCP wave. Token storage will use Electron safeStorage.",
+      tokenPath: paths.googleWorkspaceTokenPath,
+    };
+  }
   if (target === "youtube") {
     if (!existsSync(paths.youtubeClientSecretsPath)) {
       return {
@@ -75,4 +96,31 @@ export async function startAuth(target, { config, paths, openExternal }) {
     lockPath,
     status: "auth-window-opened",
   };
+}
+
+export async function changeAuthAccount(target, context) {
+  await clearAuthSession(target, { ...context, requireKnownTarget: true });
+  return startAuth(target, context);
+}
+
+export async function clearAuthSession(target, { paths, requireKnownTarget = false } = {}) {
+  if (!AUTH_TARGETS[target]) {
+    if (requireKnownTarget) throw new Error(`Unknown auth target: ${target}`);
+    return { ok: false, target, status: "unknown-target" };
+  }
+  if (target === "youtube") {
+    await rm(paths.youtubeTokenPath, { force: true });
+    return { ok: true, target, status: "cleared", clearedPath: paths.youtubeTokenPath };
+  }
+  if (target === "googleWorkspace") {
+    await clearSavedToken(paths.googleWorkspaceTokenPath);
+    return { ok: true, target, status: "cleared", clearedPath: paths.googleWorkspaceTokenPath };
+  }
+  const profileDir = resolve(resolveProfileDir(target, paths));
+  const profilesRoot = resolve(join(paths.userData, "browser-profiles"));
+  if (!profileDir.toLowerCase().startsWith(profilesRoot.toLowerCase())) {
+    throw new Error(`Refusing to clear auth profile outside browser-profiles: ${profileDir}`);
+  }
+  await rm(profileDir, { recursive: true, force: true });
+  return { ok: true, target, status: "cleared", clearedPath: profileDir };
 }

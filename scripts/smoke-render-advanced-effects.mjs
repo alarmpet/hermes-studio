@@ -16,7 +16,7 @@ await sharp(svgPath).jpeg({ quality: 90 }).toFile(imagePath);
 
 for (const preset of ["cinematic-push-in", "diagonal-drift", "tilt-reveal", "hook-punch-zoom"]) {
   const outputPath = join(dir, `${preset}.mp4`);
-  renderImageSceneClip({
+  await renderImageSceneClip({
     ffmpegBin: ffmpegPath,
     imagePath,
     outputPath,

@@ -16,9 +16,9 @@ assert.match(normalizer, /format=yuv420p/, "video normalizer should force yuv420
 assert.match(normalizer, /fade=t=in/, "video normalizer should add a short fade-in");
 assert.match(normalizer, /fade=t=out/, "video normalizer should add a short fade-out");
 
-assert.match(imageRenderer, /fps=30/, "image motion renderer should use 30fps");
-assert.match(imageRenderer, /fade=t=in/, "image motion renderer should add fade-in");
-assert.match(imageRenderer, /fade=t=out/, "image motion renderer should add fade-out");
+assert.match(imageRenderer, /renderStableImageSequenceClip/, "image motion renderer should use the shared stable sequence renderer");
+assert.match(imageRenderer, /fps\s*=\s*30/, "image motion renderer should default to 30fps");
+assert.doesNotMatch(imageRenderer, /zoompan=z=/, "image motion renderer should not use a separate zoompan path");
 
 assert.match(stages, /normalizeSceneVideoClip/, "workflow stages should normalize Flow video clips before final render");
 assert.match(stages, /scene_\$\{scene\.order\}_flow_raw/, "workflow should preserve raw Flow video separately");
@@ -27,6 +27,7 @@ assert.match(stages, /flow-video-normalize/, "workflow should emit a video norma
 assert.match(stages, /chooseSceneMotionPreset/, "workflow should choose scene-aware motion presets");
 assert.match(stages, /renderEffectPreset/, "workflow should pass render effect preset to scene rendering");
 assert.match(stages, /motionPreset:\s*motion\.name/, "workflow should render images with selected motion preset");
+assert.match(stages, /await renderImageSceneClip/, "workflow should await image motion rendering");
 
 assert.match(renderScript, /scene-render-manifest\.json/, "final renderer should write a scene render manifest");
 assert.match(renderScript, /sourceMode|sceneOutputMode/, "scene render manifest should include each scene's source mode");

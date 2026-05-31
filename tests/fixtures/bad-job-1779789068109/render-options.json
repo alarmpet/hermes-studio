@@ -1,0 +1,30 @@
+{
+  "jobId": "youtube-1779789068109",
+  "voiceId": "male_30_announcer",
+  "voiceLabel": "30대 남성 아나운서",
+  "engineVoice": "M1",
+  "pitch": 0,
+  "speechSpeed": 1.08,
+  "subtitleStyleId": "bold-shorts",
+  "subtitleAss": {
+    "fontName": "Malgun Gothic",
+    "fontSize": 13,
+    "outline": 4,
+    "shadow": 2,
+    "marginV": 90,
+    "primaryColour": "&H00FFFFFF",
+    "maxLineChars": 10,
+    "maxLines": 2
+  },
+  "aspectRatio": "9:16",
+  "renderQuality": "shorts-hq",
+  "renderEffectPreset": "cinematic",
+  "transitionPreset": "scene-fade",
+  "transitionSeconds": 0.3,
+  "motionIntensity": "medium",
+  "smoothFrameInterpolation": false,
+  "scriptLengthPreset": "standard",
+  "targetSeconds": 60,
+  "sceneCount": 5,
+  "characterMode": "consistent-presenter"
+}

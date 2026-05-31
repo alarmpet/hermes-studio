@@ -17,5 +17,7 @@ assert.match(renderScript, /renderEffectPreset/, "render report should include r
 assert.match(renderScript, /transitionPreset/, "render report should include transition preset");
 assert.match(renderScript, /motionPreset/, "render report should include per-scene motion preset");
 assert.match(renderScript, /advancedEffectsFallback/, "render report should expose effect fallback");
+assert.match(renderScript, /titleOverlay/, "render report should expose title overlay metadata");
+assert.match(workflow, /titleOverlay:\s*\{/, "workflow should write title overlay render options");
 
 console.log(JSON.stringify({ ok: true, checked: "final-output-qa-observability" }));

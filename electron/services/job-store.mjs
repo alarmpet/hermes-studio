@@ -19,6 +19,9 @@ export async function upsertJob(jobsDir, job) {
     title: job.title || job.sourceValue || job.id,
     status: job.status || "unknown",
     jobDir: job.jobDir,
+    finalVideo: job.finalVideo || job.finalPath || "",
+    finalPath: job.finalPath || job.finalVideo || "",
+    thumbnailPath: job.thumbnailPath || "",
     updatedAt: new Date().toISOString(),
   };
   const next = [summary, ...current.filter((item) => item.id !== job.id)].slice(0, 500);

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { normalizeYouTubeJobRequest } from "../../youtube-job-schema.mjs";
@@ -7,13 +7,23 @@ import { createDefaultYouTubeStages } from "../../youtube-workflow-stages.mjs";
 import { findChromeExecutable } from "./browser-profile-service.mjs";
 import { emitJobProgress } from "./job-progress-events.mjs";
 import { ingestCharacterSheet } from "./character-sheet-ingest.mjs";
+import { maybeRunWebwrightDiagnostics } from "./webwright-diagnostics-service.mjs";
+import { createThumbnailForJob } from "../../pipeline/youtube-thumbnail.mjs";
 
 export function buildDesktopJobRequest(input = {}) {
   return normalizeYouTubeJobRequest({
+    id: input.id,
     sourceType: input.sourceType,
     sourceValue: input.sourceValue,
     requestedBy: "desktop",
     options: {
+      videoFormat: input.videoFormat || "shorts",
+      longformTargetSeconds: input.longformTargetSeconds || input.customDurationSeconds || 720,
+      introVideoSeconds: input.introVideoSeconds || 60,
+      introVideoClipCount: input.introVideoClipCount || input.hybridIntroVideoSceneCount || 10,
+      bodyVisualMode: input.bodyVisualMode || "image",
+      bodyImageSeconds: input.bodyImageSeconds || 18,
+      enableLiveMcp: Boolean(input.enableLiveMcp),
       scriptLengthPreset: input.scriptLengthPreset || "standard",
       scriptLengthMode: input.scriptLengthMode || "preset",
       customDurationSeconds: input.customDurationSeconds || 60,
@@ -23,13 +33,23 @@ export function buildDesktopJobRequest(input = {}) {
       speechSpeed: Number(input.speechSpeed || 1.08),
       subtitleStyleId: input.subtitleStyleId || "bold-shorts",
       subtitleStyle: input.subtitleStyle || {},
+      titleOverlayEnabled: input.titleOverlayEnabled !== false,
+      titleOverlayText: input.titleOverlayText || "",
+      titleOverlayStyleId: input.titleOverlayStyleId || "bold-black-accent",
+      titleOverlayMaxLines: input.titleOverlayMaxLines || 2,
+      titleOverlaySafeTop: input.titleOverlaySafeTop ?? 84,
+      aspectRatio: input.aspectRatio || "9:16",
+      autoLandscapeLongform: Boolean(input.autoLandscapeLongform),
       thumbnailMode: input.thumbnailMode || "auto",
       flowOutputMode: input.flowOutputMode || "video",
       hybridIntroVideoSceneCount: input.hybridIntroVideoSceneCount,
       renderEffectPreset: input.renderEffectPreset || "cinematic",
       transitionPreset: input.transitionPreset || "scene-fade",
       transitionSeconds: input.transitionSeconds ?? 0.3,
+      motionIntensity: input.motionIntensity || "light",
       stylePresetId: input.stylePresetId || "cinematic-tech-news",
+      researchProvider: input.researchProvider || "gemini-gems-browser",
+      archiveProvider: input.archiveProvider || "local-files",
       characterSheet: input.characterSheet || {},
       openaiProviderMode: input.openaiProviderMode || "disabled",
       openaiApiKeyConfigured: Boolean(input.openaiApiKeyConfigured),
@@ -73,7 +93,13 @@ export async function createYouTubeJob(input, context = {}) {
   progress({
     phase: "submitted",
     message: "작업을 접수했습니다. 입력값을 정리하는 중입니다.",
-    details: { sourceType: job.sourceType, sourceValue: job.sourceValue },
+    details: {
+      sourceType: job.sourceType,
+      sourceValue: job.sourceValue,
+      researchProvider: job.options.researchProvider,
+      archiveProvider: job.options.archiveProvider,
+      videoFormat: job.options.videoFormat,
+    },
   });
 
   const stages = createDefaultYouTubeStages({
@@ -83,6 +109,7 @@ export async function createYouTubeJob(input, context = {}) {
     paths: context.paths,
     chromePath,
     ffmpegBin: context.ffmpegBin,
+    enableLiveMcp: Boolean(job.options.enableLiveMcp),
     emit: emitWorkflow,
     onFlowProgress: ({ message, details }) => progress({
       phase: "flow-media",
@@ -109,13 +136,129 @@ export async function createYouTubeJob(input, context = {}) {
   });
 
   const thumbnail = await stages.generateThumbnail(result, { ...context, job, jobDir });
+  if (thumbnail?.primaryProviderFailure) {
+    const chatGptThumbnailActionRequired = createChatGptThumbnailActionRequired(thumbnail.primaryProviderFailure);
+    const diagnostics = await maybeRunWebwrightDiagnostics({
+      config: context.config || {},
+      jobDir,
+      provider: "chatgpt-thumbnail",
+      failure: thumbnail.primaryProviderFailure,
+      sourceUrl: job.sourceType === "url" ? job.sourceValue : "",
+    });
+    progress({
+      phase: "diagnostics",
+      status: thumbnail.primaryProviderFailure.actionRequired ? "action-required" : "running",
+      message: diagnostics.skipped
+        ? "브라우저 진단은 비활성화되어 건너뜁니다."
+        : `브라우저 진단 리포트가 생성되었습니다: ${diagnostics.reportPath}`,
+      details: {
+        ...diagnostics,
+        primaryProviderFailure: thumbnail.primaryProviderFailure,
+        thumbnailPath: thumbnail.path,
+      },
+      actionRequired: chatGptThumbnailActionRequired,
+    });
+  }
+  const chatGptThumbnailActionRequired = thumbnail?.primaryProviderFailure
+    ? createChatGptThumbnailActionRequired(thumbnail.primaryProviderFailure)
+    : null;
   progress({
     phase: "completed",
-    status: "completed",
-    message: "최종 영상 생성이 완료되었습니다.",
-    details: { finalPath: result.finalVideo?.finalPath, thumbnailPath: thumbnail?.path },
+    status: chatGptThumbnailActionRequired ? "action-required" : "completed",
+    message: chatGptThumbnailActionRequired
+      ? "최종 영상은 완료됐지만 ChatGPT 썸네일은 사용자 확인이 필요합니다."
+      : "최종 영상 생성이 완료되었습니다.",
+    details: {
+      finalPath: result.finalVideo?.finalPath,
+      thumbnailPath: thumbnail?.path,
+      primaryProviderFailure: thumbnail?.primaryProviderFailure,
+    },
+    actionRequired: chatGptThumbnailActionRequired,
   });
   return { ...result, thumbnail };
+}
+
+export async function retryThumbnailForJob({ job, jobDir, paths, chromePath, config = {}, emit }) {
+  const draftPath = join(jobDir, "draft.json");
+  if (!existsSync(draftPath)) throw new Error(`draft.json was not found for thumbnail retry: ${draftPath}`);
+  const draft = JSON.parse(await readFile(draftPath, "utf8"));
+  const progress = (event) => emitJobProgress(emit, { jobId: job.id, ...event });
+  progress({
+    phase: "thumbnail",
+    status: "running",
+    message: "Retrying ChatGPT thumbnail generation only.",
+    details: { jobDir },
+  });
+  const thumbnail = await createThumbnailForJob({
+    draft,
+    paths,
+    jobDir,
+    chromePath,
+    aspectRatio: job?.options?.aspectRatio || "9:16",
+    emit,
+  });
+  if (thumbnail?.primaryProviderFailure) {
+    const chatGptThumbnailActionRequired = createChatGptThumbnailActionRequired(thumbnail.primaryProviderFailure);
+    const diagnostics = await maybeRunWebwrightDiagnostics({
+      config,
+      jobDir,
+      provider: "chatgpt-thumbnail",
+      failure: thumbnail.primaryProviderFailure,
+      sourceUrl: job.sourceType === "url" ? job.sourceValue : "",
+    });
+    progress({
+      phase: "diagnostics",
+      status: thumbnail.primaryProviderFailure.actionRequired ? "action-required" : "running",
+      message: diagnostics.skipped
+        ? "ChatGPT thumbnail retry needs user action; browser diagnostics were skipped."
+        : `ChatGPT thumbnail retry needs user action; diagnostics report: ${diagnostics.reportPath}`,
+      details: {
+        jobDir,
+        thumbnailPath: thumbnail.path,
+        primaryProviderFailure: thumbnail.primaryProviderFailure,
+        diagnostics,
+      },
+      actionRequired: chatGptThumbnailActionRequired,
+    });
+  }
+  const chatGptThumbnailActionRequired = thumbnail?.primaryProviderFailure
+    ? createChatGptThumbnailActionRequired(thumbnail.primaryProviderFailure)
+    : null;
+  progress({
+    phase: "thumbnail",
+    status: thumbnail?.primaryProviderFailure?.actionRequired ? "action-required" : "completed",
+    message: thumbnail?.primaryProviderFailure
+      ? "ChatGPT thumbnail retry fell back to a local thumbnail. Complete ChatGPT verification and retry thumbnail only."
+      : "ChatGPT thumbnail retry completed.",
+    details: {
+      jobDir,
+      thumbnailPath: thumbnail?.path,
+      primaryProviderFailure: thumbnail?.primaryProviderFailure,
+    },
+    actionRequired: chatGptThumbnailActionRequired,
+  });
+  return { ok: true, job, jobDir, thumbnail };
+}
+
+function createChatGptThumbnailActionRequired(failure = {}) {
+  if (!failure?.actionRequired) return null;
+  const code = failure.code || failure.failureCode || "";
+  if (code === "CHATGPT_HUMAN_VERIFICATION_REQUIRED") {
+    return {
+      title: "ChatGPT human verification required",
+      message: "Open Authenticate ChatGPT, complete the Cloudflare human verification manually, then click Retry Thumbnail Only.",
+    };
+  }
+  if (code === "CHATGPT_AUTH_REQUIRED") {
+    return {
+      title: "ChatGPT login required",
+      message: "Open Authenticate ChatGPT, sign in manually, then click Retry Thumbnail Only.",
+    };
+  }
+  return {
+    title: "ChatGPT thumbnail action required",
+    message: "Open Authenticate ChatGPT, resolve the browser prompt manually, then click Retry Thumbnail Only.",
+  };
 }
 
 export function findNodeExecutable(env = process.env) {

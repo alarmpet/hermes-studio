@@ -73,6 +73,9 @@ assert.match(html, /subtitlePreviewText/, "renderer should include subtitle prev
 assert.match(renderer, /updateSubtitlePreview/, "renderer should update subtitle preview");
 assert.match(workflow, /subtitleAss/, "workflow should write subtitle ASS render options");
 assert.match(renderScript, /subtitleForceStyle/, "render script should derive ffmpeg subtitle style from options");
+assert.match(renderScript, /createTitleOverlayImage/, "final renderer should support top title overlays");
+assert.match(renderScript, /filter_complex/, "title overlay and subtitles should be composed in one final ffmpeg pass");
+assert.match(html, /titleOverlayEnabled/, "Studio should expose top title overlay controls");
 assert.match(styles, /text-shadow:\s*[\s\S]*-2px -2px 0 #000/, "subtitle preview should use multi-direction outline shadow");
 assert.match(jobService, /runYouTubeJob/, "desktop job service should use shared runner");
 assert.match(jobService, /mockMediaMode/, "desktop job service should support explicit mock media mode");

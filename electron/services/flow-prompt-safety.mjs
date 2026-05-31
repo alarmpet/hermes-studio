@@ -94,9 +94,10 @@ export function sanitizeFlowPrompt(prompt = "", context = {}) {
   };
 }
 
-export function buildFlowSafeFallbackPrompt({ title = "", narration = "", visualCategory = "", sceneOrder = 1 } = {}) {
+export function buildFlowSafeFallbackPrompt({ title = "", narration = "", visualCategory = "", sceneOrder = 1, aspectRatio = "9:16" } = {}) {
   return sanitizeFlowPrompt([
-    "9:16 cinematic YouTube shorts B-roll scene.",
+    "cinematic YouTube B-roll scene.",
+    `Aspect ratio ${aspectRatio === "16:9" ? "16:9" : "9:16"}.`,
     visualCategory ? `Visual category: ${visualCategory}.` : "",
     `Topic context: ${title}.`,
     `Narration meaning: ${narration}.`,

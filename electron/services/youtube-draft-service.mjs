@@ -1,8 +1,10 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { normalizeYouTubeDraft, parseJsonMarkdown } from "../../youtube-workflow.mjs";
 import { SCRIPT_LENGTH_PRESETS } from "../../youtube-job-schema.mjs";
+import { assertDraftQuality } from "../../scripts/youtube-draft-quality.mjs";
+import { assertDraftDurationContract } from "../../scripts/youtube-draft-duration.mjs";
 
 const OPENROUTER_MODELS = (process.env.HERMES_OPENROUTER_MODELS
   || process.env.HERMES_OPENROUTER_MODEL
@@ -28,8 +30,35 @@ export async function buildDesktopYouTubeDraft(job, context = {}) {
   for (const model of OPENROUTER_MODELS) {
     try {
       const draft = await requestDraft({ key, model, prompt });
-      assertDraftMatchesSource(draft, source);
-      return normalizeYouTubeDraft(draft);
+      if (context.jobDir) {
+        const safeModel = model.replace(/[^a-z0-9.-]+/gi, "_");
+        await writeFile(join(context.jobDir, `openrouter-response-${safeModel}.json`), JSON.stringify(draft, null, 2), "utf8");
+      }
+      const normalized = normalizeYouTubeDraft(draft);
+      assertDraftMatchesSource(normalized, source);
+      assertDraftQuality({ draft: normalized, job, stage: `openrouter:${model}`, jobDir: context.jobDir || "" });
+      try {
+        assertDraftDurationContract({ draft: normalized, job, stage: `openrouter:${model}`, jobDir: context.jobDir || "" });
+      } catch (error) {
+        if (error?.code !== "DRAFT_DURATION_TOO_SHORT" && error?.code !== "DRAFT_DURATION_TOO_LONG") throw error;
+        const repairPrompt = buildDurationRepairPrompt({
+          source,
+          target,
+          previousDraft: normalized,
+          durationQa: error.durationQa || error.qa,
+        });
+        const repaired = await requestDraft({ key, model, prompt: repairPrompt, maxTokens: 3600 });
+        if (context.jobDir) {
+          const safeModel = model.replace(/[^a-z0-9.-]+/gi, "_");
+          await writeFile(join(context.jobDir, `openrouter-response-${safeModel}-repair.json`), JSON.stringify(repaired, null, 2), "utf8");
+        }
+        const normalizedRepair = normalizeYouTubeDraft(repaired);
+        assertDraftMatchesSource(normalizedRepair, source);
+        assertDraftQuality({ draft: normalizedRepair, job, stage: `openrouter:${model}:repair`, jobDir: context.jobDir || "" });
+        assertDraftDurationContract({ draft: normalizedRepair, job, stage: `openrouter:${model}:repair`, jobDir: context.jobDir || "" });
+        return normalizedRepair;
+      }
+      return normalized;
     } catch (error) {
       errors.push(`${model}: ${error?.message || String(error)}`);
     }
@@ -70,10 +99,12 @@ function resolveScriptTarget(job) {
     sceneCount: Math.max(3, Math.min(10, Math.round(seconds / 12))),
     wordsMin: Math.max(70, Math.round(seconds * 2.2)),
     wordsMax: Math.max(95, Math.round(seconds * 2.8)),
+    charsMin: Math.max(220, Math.round(seconds * 6.0)),
+    charsMax: Math.max(280, Math.round(seconds * 7.8)),
   };
 }
 
-async function fetchArticleSource(url) {
+export async function fetchArticleSource(url) {
   const response = await fetch(url, {
     headers: {
       "user-agent": "Mozilla/5.0 Hermes YouTube Studio article fetcher",
@@ -138,6 +169,8 @@ function buildDraftPrompt({ job, source, target }) {
     `Target duration: ${target.seconds} seconds.`,
     `Target scenes: ${target.sceneCount}.`,
     `Target Korean narration length: ${target.wordsMin}-${target.wordsMax} Korean words/spaces-equivalent.`,
+    `Target Korean spoken narration length: ${target.charsMin}-${target.charsMax} non-space Korean characters across hook, point, story, and lesson.`,
+    "For Korean, prioritize the character-count target over English-style word count. Short one-line sections will fail QA.",
     "Make scene count proportional to the script. Each scene should have one clear visual beat.",
     "Use HPSL timing: Hook short, Point concise, Story expanded, Lesson clear. For custom length, expand the Story beats instead of repeating the same 60-second script.",
   ].join("\n");
@@ -161,6 +194,35 @@ function buildDraftPrompt({ job, source, target }) {
   ].join("\n\n");
 }
 
+function buildDurationRepairPrompt({ source, target, previousDraft, durationQa }) {
+  const direction = durationQa?.failureCode === "DRAFT_DURATION_TOO_LONG" ? "shorten" : "expand";
+  const sourceContext = source.mode === "url"
+    ? [
+        `Source URL: ${source.url}`,
+        `Source title: ${source.title}`,
+        `Source body:\n${source.body}`,
+      ].join("\n")
+    : `Keyword: ${source.keyword}`;
+  return [
+    "Repair this Korean YouTube draft and return one valid JSON object only.",
+    "Do not include markdown or commentary.",
+    `The previous draft failed duration QA. It must ${direction} the Korean narration.`,
+    `Target duration: ${target.seconds} seconds.`,
+    `Previous estimated narration: ${durationQa?.estimatedSeconds || "unknown"} seconds.`,
+    `Allowed narration estimate: ${durationQa?.minSeconds || Math.round(target.seconds * 0.7)}-${durationQa?.maxSeconds || Math.round(target.seconds * (target.seconds >= 600 ? 1.18 : 1.14))} seconds.`,
+    `Target Korean spoken narration length: ${target.charsMin}-${target.charsMax} non-space Korean characters.`,
+    "Keep HPSL structure. Expand mainly the Story section with concrete context, contrast, example, and consequence. Do not repeat sentences.",
+    "For URL jobs, rewrite the source idea in a copyright-safe way instead of copying article sentences.",
+    "Keep every scene narration aligned with the repaired HPSL script, and keep Flow prompts policy-safe.",
+    "",
+    "SOURCE:",
+    sourceContext,
+    "",
+    "PREVIOUS_DRAFT_JSON:",
+    JSON.stringify(previousDraft),
+  ].join("\n");
+}
+
 function assertDraftMatchesSource(draft, source) {
   if (source.mode !== "keyword") return;
   const tokens = String(source.keyword || "")
@@ -179,7 +241,7 @@ function assertDraftMatchesSource(draft, source) {
   }
 }
 
-async function requestDraft({ key, model, prompt }) {
+async function requestDraft({ key, model, prompt, maxTokens = 2600 }) {
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -195,7 +257,7 @@ async function requestDraft({ key, model, prompt }) {
         { role: "user", content: prompt },
       ],
       temperature: 0.6,
-      max_tokens: 2600,
+      max_tokens: maxTokens,
       response_format: { type: "json_object" },
     }),
   });

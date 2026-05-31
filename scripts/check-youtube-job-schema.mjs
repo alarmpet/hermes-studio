@@ -30,7 +30,9 @@ assert.equal(keywordJob.options.sceneStrategy, "sentence-proportional");
 assert.equal(keywordJob.options.customDurationSeconds, 60);
 assert.equal(keywordJob.options.scriptStructure, "hpsl");
 assert.equal(keywordJob.options.sendIntermediateMedia, false);
-assert.equal(keywordJob.options.flowOutputMode, "video");
+assert.equal(keywordJob.options.flowOutputMode, "hybrid");
+assert.equal(keywordJob.options.titleOverlayEnabled, true);
+assert.equal(keywordJob.options.titleOverlayStyleId, "bold-black-accent");
 assert.equal(keywordJob.upload.enabled, false);
 assert.equal(keywordJob.upload.containsSyntheticMedia, true);
 
@@ -44,6 +46,14 @@ const urlJob = normalizeYouTubeJobRequest({
 assert.equal(urlJob.sourceType, "url");
 assert.match(urlJob.sourceValue, /^https:\/\//);
 
+const pastedUrlInKeywordTabJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "https://example.com/pasted-article",
+  options: DEFAULT_YOUTUBE_JOB_OPTIONS,
+});
+
+assert.equal(pastedUrlInKeywordTabJob.sourceType, "url", "pasted URLs should be treated as URL jobs even when the Keyword tab is selected");
+
 const customJob = normalizeYouTubeJobRequest({
   sourceType: "keyword",
   sourceValue: "custom length",
@@ -52,6 +62,28 @@ const customJob = normalizeYouTubeJobRequest({
 
 assert.equal(customJob.options.scriptLengthMode, "custom");
 assert.equal(customJob.options.customDurationSeconds, 180);
+assert.equal(customJob.options.aspectRatio, "9:16", "default output aspect should remain vertical");
+
+const landscapeJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "custom landscape",
+  options: { scriptLengthMode: "custom", customDurationSeconds: 180, autoLandscapeLongform: true },
+});
+assert.equal(landscapeJob.options.aspectRatio, "16:9", "checked 3min+ jobs should switch to horizontal output");
+
+const longformTitleDefaultJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "history longform",
+  options: { videoFormat: "longform", scriptLengthMode: "custom", customDurationSeconds: 600 },
+});
+assert.equal(longformTitleDefaultJob.options.titleOverlayEnabled, false, "longform title overlay should be opt-in by default");
+
+const longformTitleOptInJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "history longform",
+  options: { videoFormat: "longform", scriptLengthMode: "custom", customDurationSeconds: 600, titleOverlayEnabled: true },
+});
+assert.equal(longformTitleOptInJob.options.titleOverlayEnabled, true, "longform should preserve explicit title overlay opt-in");
 
 const professionalVoiceJob = normalizeYouTubeJobRequest({
   sourceType: "keyword",
@@ -91,7 +123,7 @@ const clampedHybridJob = normalizeYouTubeJobRequest({
   sourceValue: "google glass",
   options: { flowOutputMode: "hybrid", hybridIntroVideoSceneCount: 99 },
 });
-assert.equal(clampedHybridJob.options.hybridIntroVideoSceneCount, 6);
+assert.equal(clampedHybridJob.options.hybridIntroVideoSceneCount, 10);
 
 const effectsJob = normalizeYouTubeJobRequest({
   sourceType: "keyword",
@@ -105,8 +137,15 @@ const effectsJob = normalizeYouTubeJobRequest({
 assert.equal(effectsJob.options.renderEffectPreset, "cinematic");
 assert.equal(effectsJob.options.transitionPreset, "smooth-crossfade");
 assert.equal(effectsJob.options.transitionSeconds, 0.35);
-assert.equal(effectsJob.options.motionIntensity, "medium");
+assert.equal(effectsJob.options.motionIntensity, "strong");
 assert.equal(effectsJob.options.smoothFrameInterpolation, false);
+
+const strongEffectsJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "google glass",
+  options: { motionIntensity: "high" },
+});
+assert.equal(strongEffectsJob.options.motionIntensity, "strong");
 
 assert.throws(() => normalizeYouTubeJobRequest({
   sourceType: "keyword",

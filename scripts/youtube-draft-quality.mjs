@@ -6,6 +6,40 @@ function normalizeText(text = "") {
     .trim();
 }
 
+function countMatches(text = "", pattern) {
+  return Array.from(String(text || "").matchAll(pattern)).length;
+}
+
+function detectCorruptedKorean(text = "") {
+  const value = normalizeText(text);
+  const length = Array.from(value).length;
+  const hangulCount = countMatches(value, /[\uac00-\ud7af]/gu);
+  const hangulRatio = hangulCount / Math.max(1, length);
+  if (length < 30) {
+    return {
+      hangulCount,
+      hangulRatio: Number(hangulRatio.toFixed(3)),
+      mojibakeCount: 0,
+      questionClusterCount: 0,
+      corrupted: false,
+    };
+  }
+  const mojibakeCount = countMatches(value, /[\u5360\u63f6\u7b4c\u91ce\uf9cf\u0080\ufffd]|[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/gu);
+  const questionClusterCount = countMatches(value, /\?{3,}/g);
+  return {
+    hangulCount,
+    hangulRatio: Number(hangulRatio.toFixed(3)),
+    mojibakeCount,
+    questionClusterCount,
+    corrupted: (
+      (mojibakeCount >= 3 && hangulRatio < 0.35)
+      || (mojibakeCount >= 8 && questionClusterCount >= 2)
+      || (questionClusterCount >= 4 && hangulRatio < 0.15)
+      || (hangulCount < 4 && length > 30)
+    ),
+  };
+}
+
 function textSet(text = "") {
   return new Set(normalizeText(text).toLowerCase().split(/\s+/).filter(Boolean));
 }
@@ -25,6 +59,42 @@ function compactHangul(text = "") {
   return normalizeText(text).replace(/[^\p{L}\p{N}]/gu, "").toLowerCase();
 }
 
+function cleanJosa(token = "") {
+  return String(token)
+    .replace(/(?:으로|로|에서|에게|한테|와|과|을|를|이|가|은|는|의|도|만|에)$/u, "")
+    .trim();
+}
+
+function requiredKeywordTokens(sourceValue = "") {
+  const stopwords = new Set([
+    "최신",
+    "소식",
+    "뉴스",
+    "이슈",
+    "기사",
+    "정리",
+    "요약",
+    "영상",
+    "유튜브",
+    "분석",
+  ]);
+  return String(sourceValue || "")
+    .split(/\s+/)
+    .map((token) => cleanJosa(token.trim()))
+    .filter((token) => token.length >= 2)
+    .filter((token) => !stopwords.has(token.toLowerCase()));
+}
+
+function keywordAliases(token = "") {
+  const value = token.toLowerCase();
+  const aliases = new Set([value]);
+  if (value === "gemini" || value === "제미나이") {
+    aliases.add("gemini");
+    aliases.add("제미나이");
+  }
+  return Array.from(aliases);
+}
+
 function includesMostOfScript(sceneText = "", script = "") {
   const scene = compactHangul(sceneText);
   const full = compactHangul(script);
@@ -35,7 +105,7 @@ function includesMostOfScript(sceneText = "", script = "") {
   return jaccardSimilarity(sceneText, script) >= 0.8;
 }
 
-export function validateDraftQuality({ draft = {}, stage = "", jobDir = "" } = {}) {
+export function validateDraftQuality({ draft = {}, job = {}, stage = "", jobDir = "" } = {}) {
   const scenes = Array.isArray(draft.scenes) ? draft.scenes : [];
   const combined = [
     draft.title,
@@ -71,7 +141,45 @@ export function validateDraftQuality({ draft = {}, stage = "", jobDir = "" } = {
     };
   }
 
-  const hpslResult = validateHpslStructure(draft, stage, jobDir);
+  const language = detectCorruptedKorean([
+    draft.title,
+    draft.script,
+    ...scenes.map((scene) => scene?.narration),
+  ].join(" "));
+  if (language.corrupted) {
+    return {
+      ok: false,
+      failureCode: "CORRUPTED_KOREAN_DRAFT",
+      reason: "Draft Korean text appears corrupted or mojibake.",
+      stage,
+      jobDir,
+      language,
+    };
+  }
+
+  if (job?.sourceType === "keyword") {
+    const requiredTokens = requiredKeywordTokens(job.sourceValue);
+    const haystack = normalizeText([
+      draft.title,
+      draft.script,
+      ...scenes.map((scene) => scene?.narration),
+    ].join(" ")).toLowerCase();
+    const missingTokens = requiredTokens.filter((token) => (
+      !keywordAliases(token).some((alias) => haystack.includes(alias.toLowerCase()))
+    ));
+    if (missingTokens.length) {
+      return {
+        ok: false,
+        failureCode: "SOURCE_GROUNDING_MISMATCH",
+        reason: `Draft does not include required keyword subject: ${missingTokens.join(", ")}`,
+        missingTokens,
+        stage,
+        jobDir,
+      };
+    }
+  }
+
+  const hpslResult = validateHpslStructure(draft, stage, jobDir, job);
   if (!hpslResult.ok) return hpslResult;
 
   const qualityWarnings = [];
@@ -96,6 +204,17 @@ export function validateDraftQuality({ draft = {}, stage = "", jobDir = "" } = {
         length: Array.from(narration).length,
         message: `Scene ${order} narration is long for a single Flow clip.`,
       });
+    }
+    const prompt = normalizeText(scene?.image_prompt);
+    if ((job?.options?.aspectRatio || "9:16") === "9:16" && /aspect ratio 16:9|\b16:9\b/i.test(prompt) && !/9:16/i.test(prompt)) {
+      return {
+        ok: false,
+        failureCode: "FLOW_PROMPT_ASPECT_MISMATCH",
+        reason: `Scene ${order} prompt requests 16:9 for a 9:16 job.`,
+        failedSceneOrder: order,
+        stage,
+        jobDir,
+      };
     }
   }
 
@@ -124,13 +243,34 @@ export function validateDraftQuality({ draft = {}, stage = "", jobDir = "" } = {
   };
 }
 
-function validateHpslStructure(draft = {}, stage = "", jobDir = "") {
+function validateHpslStructure(draft = {}, stage = "", jobDir = "", job = {}) {
+  const hasScriptStructureContract = typeof job?.options?.scriptStructure === "string";
+  const expectsHpsl = hasScriptStructureContract && String(job.options.scriptStructure).toLowerCase() === "hpsl";
+  if (expectsHpsl && String(draft.structure || "").toUpperCase() !== "HPSL") {
+    return {
+      ok: false,
+      failureCode: "HPSL_STRUCTURE_MISMATCH",
+      reason: `Expected HPSL draft but got "${draft.structure || "missing"}".`,
+      stage,
+      jobDir,
+    };
+  }
   if (String(draft.structure || "").toUpperCase() !== "HPSL") {
     return { ok: true };
   }
   const required = ["hook", "point", "story", "lesson"];
   for (const sectionName of required) {
     const section = draft.hpsl?.[sectionName];
+    if (!section || typeof section !== "object" || Array.isArray(section)) {
+      return {
+        ok: false,
+        failureCode: "HPSL_SECTION_MISSING",
+        reason: `HPSL section "${sectionName}" must be an object with narration and target_seconds.`,
+        missingSection: sectionName,
+        stage,
+        jobDir,
+      };
+    }
     if (!normalizeText(section?.narration) || !(Number(section?.target_seconds) > 0)) {
       return {
         ok: false,

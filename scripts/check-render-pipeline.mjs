@@ -37,6 +37,10 @@ assert.match(scriptText, /splitSubtitleChunks/, "renderer should split long narr
 assert.match(scriptText, /subtitleCueBlocks/, "renderer should create multiple timed subtitle blocks per scene");
 assert.match(scriptText, /Math\.min\(12,\s*Number\(ass\.fontSize/, "renderer should cap subtitle font size for readable lower-third captions");
 assert.match(scriptText, /MarginV:\s*Math\.max\(60,\s*Math\.min\(150/, "renderer should keep subtitles in a lower-middle safe zone");
+assert.match(scriptText, /createTitleOverlayImage/, "renderer should create a separate top-title overlay image");
+assert.match(scriptText, /title-overlay\.png/, "renderer should persist the generated title overlay image");
+assert.match(scriptText, /titleOverlay/, "render report should expose title overlay metadata");
+assert.doesNotMatch(scriptText, /drawtext=.*title/i, "renderer should avoid brittle ffmpeg drawtext for Korean title text");
 
 const schemaText = readFileSync(resolve(ROOT, "youtube-job-schema.mjs"), "utf8");
 assert.match(schemaText, /maxLineChars:\s*10/, "bold shorts preset should keep each subtitle line short");

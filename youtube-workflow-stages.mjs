@@ -11,7 +11,10 @@ import { normalizeSceneVideoClip } from "./electron/services/scene-video-normali
 import { chooseSceneMotionPreset } from "./electron/services/render-effect-presets.mjs";
 import { createThumbnailForJob } from "./pipeline/youtube-thumbnail.mjs";
 import { assertDraftQuality, validateDraftQuality } from "./scripts/youtube-draft-quality.mjs";
+import { assertDraftDurationContract } from "./scripts/youtube-draft-duration.mjs";
 import { analyzeYouTubeOutput } from "./scripts/analyze-youtube-output.mjs";
+import { classifyNotebookLmFailure, requestNotebookLmResearch } from "./electron/services/notebooklm-provider.mjs";
+import { normalizeResearchBrief, persistResearchBrief } from "./electron/services/longform-research-brief.mjs";
 
 export function createDefaultYouTubeStages(context = {}) {
   return {
@@ -62,12 +65,84 @@ export async function buildResearchDraft(job, context = {}) {
       ? "Gemini Gems에서 URL 자료 확인과 HPSL 대본 작성을 먼저 시도합니다."
       : "Gemini Gems에서 키워드 자료 확인과 HPSL 대본 작성을 먼저 시도합니다.",
   });
-  const draft = await buildGeminiResearchDraft(job, context);
+  if (context.jobDir) {
+    const sourceEvidence = job.sourceType === "url"
+      ? {
+          provider: "gemini-gems-browser",
+          notes: ["URL source must be transformed into HPSL narration without copying article text."],
+          citations: [job.sourceValue],
+        }
+      : {
+          provider: "gemini-gems-browser",
+          notes: [`Keyword jobs must keep the exact keyword subject in the title or first narration: ${job.sourceValue}`],
+          citations: [],
+        };
+    await persistResearchBrief({
+      jobDir: context.jobDir,
+      brief: sourceEvidence,
+    }).catch(() => {});
+  }
+  const researchContext = { ...context };
+  let draftJob = job;
+  if (job?.options?.researchProvider === "notebooklm-mcp") {
+    context.emit?.({
+      type: "workflow-progress",
+      jobId: job.id,
+      phase: "research",
+      message: "NotebookLM MCP에서 출처 기반 리서치 노트를 먼저 요청합니다.",
+      details: { researchProvider: "notebooklm-mcp" },
+    });
+    try {
+      const notebooklmResearch = await requestNotebookLmResearch(job, {
+        ...context,
+        enableLiveMcp: Boolean(job.options?.enableLiveMcp || context.enableLiveMcp),
+      });
+      if (context.jobDir) {
+        await persistResearchBrief({
+          jobDir: context.jobDir,
+          brief: normalizeResearchBrief(notebooklmResearch),
+        }).catch(() => {});
+      }
+      researchContext.notebooklmResearch = notebooklmResearch;
+      draftJob = {
+        ...job,
+        options: {
+          ...(job.options || {}),
+          notebooklmResearch,
+        },
+      };
+      context.emit?.({
+        type: "workflow-progress",
+        jobId: job.id,
+        phase: "research",
+        message: "NotebookLM MCP 리서치 노트를 Gemini HPSL 작성에 참고자료로 전달합니다.",
+        details: {
+          researchProvider: "notebooklm-mcp",
+          notes: notebooklmResearch.notes?.length || 0,
+          citations: notebooklmResearch.citations?.length || 0,
+        },
+      });
+    } catch (error) {
+      context.emit?.({
+        type: "workflow-warning",
+        jobId: job.id,
+        phase: "research",
+        message: `NotebookLM MCP research failed; falling back to Gemini Gems. ${error.message}`,
+        details: {
+          researchProvider: "notebooklm-mcp",
+          fallbackProvider: "gemini-gems-browser",
+          failureClass: classifyNotebookLmFailure(error),
+        },
+      });
+    }
+  }
+  const draft = await buildGeminiResearchDraft(draftJob, researchContext);
   const qaPreview = validateDraftQuality({ draft, job, stage: "research" });
   if (!qaPreview.ok) {
     throw new Error(`Draft QA failed: ${qaPreview.reason}`);
   }
   const qa = assertDraftQuality({ draft, job, stage: "research" });
+  const durationQa = assertDraftDurationContract({ draft, job, stage: "normalized-draft:research", jobDir: context.jobDir || "" });
   if (qa.qualityWarnings?.length) {
     context.emit?.({
       type: "workflow-warning",
@@ -77,6 +152,13 @@ export async function buildResearchDraft(job, context = {}) {
       details: { qualityWarnings: qa.qualityWarnings },
     });
   }
+  context.emit?.({
+    type: "workflow-progress",
+    jobId: job.id,
+    phase: "draft-duration-qa",
+    message: "Draft duration QA passed before Flow generation.",
+    details: { durationQa },
+  });
   context.emit?.({
     type: "workflow-progress",
     jobId: job.id,
@@ -101,6 +183,7 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
     narration: scene.narration,
     visualCategory: scene.visual_category,
     sceneOrder: scene.order,
+    aspectRatio: job?.options?.aspectRatio || "9:16",
   });
   context.emit?.({
     type: "workflow-progress",
@@ -138,11 +221,15 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
     chromePath: context.chromePath,
     profileDir: context.paths?.flowProfileDir,
     outputMode,
+    aspectRatio: job?.options?.aspectRatio || "9:16",
     timeoutMs: context.flowTimeoutMs,
     safeFallbackPrompt: fallback.prompt,
     ingredientImagePaths: job?.options?.characterSheet?.referenceImagePaths || [],
     onProgress: ({ message, details } = {}) => {
       const isFlowModeMismatch = details?.eventType === "flow-mode-mismatch";
+      const isFlowHardFailure = details?.eventType === "flow-abnormal-activity"
+        || details?.failureCode === "FLOW_ABNORMAL_ACTIVITY"
+        || details?.actionRequired === true;
       const enrichedDetails = {
         ...details,
         flowOutputMode: jobFlowOutputMode,
@@ -151,8 +238,8 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
         sceneOrder: scene.order,
       };
       context.emit?.({
-        type: details?.eventType === "flow-policy-warning" || isFlowModeMismatch ? "workflow-warning" : "workflow-progress",
-        status: isFlowModeMismatch ? "failed" : undefined,
+        type: details?.eventType === "flow-policy-warning" || isFlowModeMismatch || isFlowHardFailure ? "workflow-warning" : "workflow-progress",
+        status: isFlowModeMismatch || isFlowHardFailure ? "failed" : undefined,
         jobId: job?.id || context.job?.id || "",
         phase: details?.eventType || "flow-progress",
         message: isFlowModeMismatch ? `Google Flow output mode mismatch: ${message}` : message,
@@ -165,9 +252,11 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
     const renderPath = join(jobDir, `scene_${scene.order}.mp4`);
     const motion = chooseSceneMotionPreset({
       renderEffectPreset: job?.options?.renderEffectPreset || "cinematic",
+      motionIntensity: job?.options?.motionIntensity || "light",
       order: scene.order,
       section: scene.section,
       visualCategory: scene.visual_category,
+      jobId: job?.id || "",
     });
     context.emit?.({
       type: "workflow-progress",
@@ -180,17 +269,20 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
         sceneOutputMode: "image",
         hybridIntroVideoSceneCount,
         renderEffectPreset: job?.options?.renderEffectPreset || "cinematic",
+        motionIntensity: job?.options?.motionIntensity || "light",
         motionPreset: motion.name,
         phase: "flow-image-motion-render",
       },
     });
     try {
-      const rendered = renderImageSceneClip({
+      const rendered = await renderImageSceneClip({
         ffmpegBin: context.ffmpegBin,
         imagePath: media.path,
         outputPath: renderPath,
         durationSeconds: scene.duration_seconds || 8,
         motionPreset: motion.name,
+        motionStrength: job?.options?.motionIntensity || "light",
+        jobDir,
       });
       return {
         path: renderPath,
@@ -268,10 +360,60 @@ function mediaExtension(contentType = "", path = "") {
 export async function generateMockMedia({ scene, jobDir }, context = {}) {
   const ffmpegBin = context.ffmpegBin;
   if (!ffmpegBin) throw new Error("ffmpegBin is required for Mock Media Mode.");
+  const outputMode = isImageSceneMode(scene) ? "image" : "video";
   const outputPath = join(jobDir, `scene_${scene.order}.mp4`);
   const colors = ["0f766e", "334155", "7c2d12", "4338ca", "166534", "9f1239"];
   const color = colors[(Number(scene.order || 1) - 1) % colors.length];
   const duration = Math.max(4, Number(scene.duration_seconds || 8));
+
+  if (outputMode === "image") {
+    const stillPath = join(jobDir, `scene_${scene.order}_flow.png`);
+    const stillResult = spawnSync(ffmpegBin, [
+      "-y",
+      "-f", "lavfi",
+      "-i", `color=c=0x${color}:s=1080x1920:d=1:r=1`,
+      "-vf", "drawbox=x=81:y=144:w=918:h=390:color=black@0.28:t=fill",
+      "-frames:v", "1",
+      stillPath,
+    ], {
+      cwd: context.paths?.appRoot || process.cwd(),
+      encoding: "utf8",
+      maxBuffer: 40 * 1024 * 1024,
+    });
+    if (stillResult.status !== 0) {
+      throw new Error(`Mock image generation failed\nSTDOUT:\n${stillResult.stdout}\nSTDERR:\n${stillResult.stderr}`);
+    }
+
+    const motion = chooseSceneMotionPreset({
+      renderEffectPreset: context.job?.options?.renderEffectPreset || "cinematic",
+      motionIntensity: context.job?.options?.motionIntensity || "light",
+      order: scene.order,
+      section: scene.section,
+      visualCategory: scene.visual_category,
+      jobId: context.job?.id || "",
+    });
+    const rendered = await renderImageSceneClip({
+      ffmpegBin,
+      imagePath: stillPath,
+      outputPath,
+      durationSeconds: duration,
+      motionPreset: motion.name,
+      motionStrength: context.job?.options?.motionIntensity || "light",
+      jobDir,
+    });
+    return {
+      path: outputPath,
+      originalPath: stillPath,
+      bytes: 0,
+      contentType: "video/mp4",
+      sourceContentType: "image/png",
+      flowOutputMode: "image",
+      sceneOutputMode: "image",
+      motionPreset: rendered.motionPreset,
+      motionStrategy: rendered.motionStrategy,
+    };
+  }
+
   const result = spawnSync(ffmpegBin, [
     "-y",
     "-f", "lavfi",
@@ -291,7 +433,16 @@ export async function generateMockMedia({ scene, jobDir }, context = {}) {
   if (result.status !== 0) {
     throw new Error(`Mock video generation failed\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`);
   }
-  return { path: outputPath };
+  return {
+    path: outputPath,
+    contentType: "video/mp4",
+    flowOutputMode: "video",
+    sceneOutputMode: "video",
+  };
+}
+
+function isImageSceneMode(scene = {}) {
+  return String(scene.outputMode || scene.flowOutputMode || "").toLowerCase() === "image";
 }
 
 export async function renderFinalVideo(job, assets, context = {}) {
@@ -329,5 +480,8 @@ export async function generateThumbnail(result, context = {}) {
     draft: result.assets?.draft,
     paths: context.paths,
     jobDir: result.assets?.jobDir,
+    chromePath: context.chromePath,
+    aspectRatio: result.job?.options?.aspectRatio || context.job?.options?.aspectRatio || "9:16",
+    emit: context.emit,
   });
 }

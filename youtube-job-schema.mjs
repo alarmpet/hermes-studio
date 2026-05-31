@@ -1,4 +1,5 @@
 import { VOICE_PRESETS } from "./electron/services/voice-presets.mjs";
+import { TITLE_OVERLAY_STYLE_IDS } from "./electron/services/title-overlay-presets.mjs";
 
 export { VOICE_PRESETS };
 
@@ -31,15 +32,28 @@ export const SUBTITLE_STYLE_PRESETS = [
 
 export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
   scriptLengthMode: "preset",
+  videoFormat: "shorts",
+  longformTargetSeconds: 720,
+  introVideoSeconds: 60,
+  introVideoClipCount: 10,
+  bodyVisualMode: "image",
+  bodyImageSeconds: 18,
+  enableLiveMcp: false,
   scriptLengthPreset: "standard",
   customDurationSeconds: 60,
   scriptStructure: "hpsl",
   sceneStrategy: "sentence-proportional",
-  voiceId: "male_30_announcer",
+  voiceId: "female_30_announcer",
   speechSpeed: 1.06,
   subtitleStyleId: "bold-shorts",
   subtitleStyle: {},
+  titleOverlayEnabled: true,
+  titleOverlayText: "",
+  titleOverlayStyleId: "bold-black-accent",
+  titleOverlayMaxLines: 2,
+  titleOverlaySafeTop: 84,
   aspectRatio: "9:16",
+  autoLandscapeLongform: false,
   renderQuality: "shorts-hq",
   characterMode: "consistent-presenter",
   thumbnailMode: "auto",
@@ -47,15 +61,17 @@ export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
   thumbnailUsesScriptContext: true,
   useChatGptThumbnail: true,
   sendIntermediateMedia: false,
-  flowOutputMode: "video",
-  hybridIntroVideoSceneCount: 2,
+  flowOutputMode: "hybrid",
+  hybridIntroVideoSceneCount: 1,
   renderEffectPreset: "cinematic",
   transitionPreset: "scene-fade",
   transitionSeconds: 0.3,
-  motionIntensity: "medium",
+  motionIntensity: "strong",
   smoothFrameInterpolation: false,
   stylePresetId: "cinematic-tech-news",
   stylePreset: {},
+  researchProvider: "gemini-gems-browser",
+  archiveProvider: "local-files",
   characterSheet: {
     mode: "none",
     profileText: "",
@@ -77,25 +93,52 @@ export const DEFAULT_UPLOAD_OPTIONS = {
 
 const RENDER_EFFECT_PRESETS = ["clean", "cinematic", "dynamic-shorts"];
 const TRANSITION_PRESETS = ["none", "scene-fade", "smooth-crossfade", "directional-wipe", "hook-whip"];
-const MOTION_INTENSITIES = ["low", "medium", "high"];
+const MOTION_INTENSITIES = ["none", "light", "strong"];
+const RESEARCH_PROVIDERS = ["gemini-gems-browser", "notebooklm-mcp"];
+const ARCHIVE_PROVIDERS = ["local-files", "google-workspace-mcp"];
+const VIDEO_FORMATS = ["shorts", "longform"];
 
 function hasPreset(list, id) {
   return list.some((item) => item.id === id);
 }
 
 export function normalizeYouTubeJobRequest(input = {}) {
-  const sourceType = ["keyword", "url", "script"].includes(input.sourceType) ? input.sourceType : "keyword";
+  const requestedSourceType = ["keyword", "url", "script"].includes(input.sourceType) ? input.sourceType : "url";
   const sourceValue = String(input.sourceValue || "").trim();
   if (!sourceValue) throw new Error("sourceValue is required");
+  const sourceType = requestedSourceType !== "script" && /^https?:\/\//i.test(sourceValue)
+    ? "url"
+    : requestedSourceType;
   if (sourceType === "url" && !/^https?:\/\//i.test(sourceValue)) {
     throw new Error("url sourceValue must start with http:// or https://");
   }
 
-  const options = { ...DEFAULT_YOUTUBE_JOB_OPTIONS, ...(input.options || {}) };
+  const explicitOptions = input.options || {};
+  const hasExplicitResearchProvider = Object.prototype.hasOwnProperty.call(explicitOptions, "researchProvider");
+  const hasExplicitEnableLiveMcp = Object.prototype.hasOwnProperty.call(explicitOptions, "enableLiveMcp");
+  const hasExplicitTitleOverlayEnabled = Object.prototype.hasOwnProperty.call(explicitOptions, "titleOverlayEnabled");
+  const options = { ...DEFAULT_YOUTUBE_JOB_OPTIONS, ...explicitOptions };
+  options.videoFormat = String(options.videoFormat || "shorts").toLowerCase();
+  if (!VIDEO_FORMATS.includes(options.videoFormat)) {
+    throw new Error(`Unknown videoFormat: ${options.videoFormat}`);
+  }
   if (!SCRIPT_LENGTH_PRESETS[options.scriptLengthPreset]) {
     throw new Error(`Unknown scriptLengthPreset: ${options.scriptLengthPreset}`);
   }
-  options.customDurationSeconds = Math.max(15, Math.min(600, Number(options.customDurationSeconds || 60)));
+  options.customDurationSeconds = Math.max(15, Math.min(1200, Number(options.customDurationSeconds || 60)));
+  if (options.videoFormat === "longform") {
+    options.customDurationSeconds = Math.max(600, options.customDurationSeconds);
+  }
+  options.longformTargetSeconds = options.videoFormat === "longform"
+    ? Math.max(600, Math.min(1200, Number(options.longformTargetSeconds || options.customDurationSeconds || 720)))
+    : options.customDurationSeconds;
+  if (options.videoFormat === "longform") {
+    options.customDurationSeconds = options.longformTargetSeconds;
+    options.scriptLengthMode = "custom";
+    options.flowOutputMode = "hybrid";
+    if (!hasExplicitResearchProvider) options.researchProvider = "notebooklm-mcp";
+    if (!hasExplicitEnableLiveMcp) options.enableLiveMcp = true;
+  }
   options.scriptStructure = sourceType === "script"
     ? "direct-script"
     : String(options.scriptStructure || "hpsl").toLowerCase();
@@ -117,12 +160,51 @@ export function normalizeYouTubeJobRequest(input = {}) {
   }
   options.stylePresetId = String(options.stylePresetId || "cinematic-tech-news");
   options.stylePreset = options.stylePreset && typeof options.stylePreset === "object" ? options.stylePreset : {};
+  options.researchProvider = String(options.researchProvider || "gemini-gems-browser");
+  if (!RESEARCH_PROVIDERS.includes(options.researchProvider)) {
+    throw new Error(`Unknown researchProvider: ${options.researchProvider}`);
+  }
+  options.archiveProvider = String(options.archiveProvider || "local-files");
+  if (!ARCHIVE_PROVIDERS.includes(options.archiveProvider)) {
+    throw new Error(`Unknown archiveProvider: ${options.archiveProvider}`);
+  }
   options.characterSheet = normalizeCharacterSheet(options.characterSheet);
+  options.enableLiveMcp = Boolean(options.enableLiveMcp);
+  options.introVideoSeconds = Math.max(30, Math.min(90, Number(options.introVideoSeconds || 60)));
+  options.introVideoClipCount = Math.max(1, Math.min(10, Math.round(Number(options.introVideoClipCount || options.hybridIntroVideoSceneCount || 10))));
+  options.bodyVisualMode = String(options.bodyVisualMode || "image").toLowerCase();
+  if (!["image"].includes(options.bodyVisualMode)) {
+    throw new Error(`Unknown bodyVisualMode: ${options.bodyVisualMode}`);
+  }
+  options.bodyImageSeconds = Math.max(10, Math.min(30, Number(options.bodyImageSeconds || 18)));
   options.flowOutputMode = String(options.flowOutputMode || "video").toLowerCase();
   if (!["video", "image", "hybrid"].includes(options.flowOutputMode)) {
     throw new Error(`Unknown flowOutputMode: ${options.flowOutputMode}`);
   }
-  options.hybridIntroVideoSceneCount = Math.max(0, Math.min(6, Math.round(Number(options.hybridIntroVideoSceneCount ?? 2))));
+  options.autoLandscapeLongform = Boolean(options.autoLandscapeLongform);
+  const longformLikeDuration = Number(options.customDurationSeconds || options.longformTargetSeconds || 0) >= 180;
+  if (options.autoLandscapeLongform && (options.videoFormat === "longform" || longformLikeDuration)) {
+    options.aspectRatio = "16:9";
+  } else {
+    options.aspectRatio = String(options.aspectRatio || "9:16") === "16:9" ? "16:9" : "9:16";
+  }
+  options.titleOverlayEnabled = options.videoFormat === "longform"
+    ? (hasExplicitTitleOverlayEnabled ? Boolean(explicitOptions.titleOverlayEnabled) : false)
+    : options.titleOverlayEnabled !== false;
+  options.titleOverlayText = String(options.titleOverlayText || "").replace(/\s+/g, " ").trim().slice(0, 80);
+  options.titleOverlayStyleId = String(options.titleOverlayStyleId || "bold-black-accent");
+  if (!TITLE_OVERLAY_STYLE_IDS.includes(options.titleOverlayStyleId)) {
+    throw new Error(`Unknown titleOverlayStyleId: ${options.titleOverlayStyleId}`);
+  }
+  options.titleOverlayMaxLines = Math.max(1, Math.min(2, Math.round(Number(options.titleOverlayMaxLines || 2))));
+  options.titleOverlaySafeTop = Math.max(
+    0,
+    Math.min(options.aspectRatio === "16:9" ? 90 : 160, Number(options.titleOverlaySafeTop ?? 84)),
+  );
+  options.hybridIntroVideoSceneCount = Math.max(0, Math.min(10, Math.round(Number(options.hybridIntroVideoSceneCount ?? 2))));
+  if (options.videoFormat === "longform") {
+    options.hybridIntroVideoSceneCount = options.introVideoClipCount;
+  }
   options.renderEffectPreset = String(options.renderEffectPreset || "cinematic").toLowerCase();
   if (!RENDER_EFFECT_PRESETS.includes(options.renderEffectPreset)) {
     throw new Error(`Unknown renderEffectPreset: ${options.renderEffectPreset}`);
@@ -132,7 +214,7 @@ export function normalizeYouTubeJobRequest(input = {}) {
     throw new Error(`Unknown transitionPreset: ${options.transitionPreset}`);
   }
   options.transitionSeconds = Math.max(0, Math.min(0.6, Number(options.transitionSeconds ?? 0.3)));
-  options.motionIntensity = String(options.motionIntensity || "medium").toLowerCase();
+  options.motionIntensity = normalizeMotionIntensity(options.motionIntensity || "light");
   if (!MOTION_INTENSITIES.includes(options.motionIntensity)) {
     throw new Error(`Unknown motionIntensity: ${options.motionIntensity}`);
   }
@@ -154,6 +236,13 @@ export function normalizeYouTubeJobRequest(input = {}) {
     createdAt: input.createdAt || new Date().toISOString(),
     requestedBy: input.requestedBy || "desktop",
   };
+}
+
+function normalizeMotionIntensity(value = "light") {
+  const normalized = String(value || "light").trim().toLowerCase();
+  if (normalized === "low" || normalized === "medium") return "light";
+  if (normalized === "high") return "strong";
+  return normalized;
 }
 
 function normalizeCharacterSheet(value = {}) {

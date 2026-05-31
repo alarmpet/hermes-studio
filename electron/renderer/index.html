@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ko">
   <head>
     <meta charset="utf-8">
@@ -46,10 +46,27 @@
             <div class="field-group">
               <label for="sourceValue">입력 방식</label>
               <div class="segmented">
-                <label><input type="radio" name="sourceType" value="keyword" checked><span>Keyword</span></label>
-                <label><input type="radio" name="sourceType" value="url"><span>URL</span></label>
+                <label><input type="radio" name="sourceType" value="keyword"><span>Keyword</span></label>
+                <label><input type="radio" name="sourceType" value="url" checked><span>URL</span></label>
                 <label><input type="radio" name="sourceType" value="script"><span>Script</span></label>
               </div>
+            </div>
+
+            <div class="field-group">
+              <label>영상 포맷</label>
+              <div class="segmented" id="videoFormatControl">
+                <label><input type="radio" name="videoFormat" value="shorts" checked><span>Shorts</span></label>
+                <label><input type="radio" name="videoFormat" value="longform"><span>Longform</span></label>
+              </div>
+              <div id="videoFormatHint" class="preset-preview">Shorts: 30-90초 중심의 빠른 영상입니다.</div>
+            </div>
+
+            <div class="field-group">
+              <label class="checkbox-line">
+                <input id="autoLandscapeLongform" type="checkbox">
+                3분 이상/Longform은 가로(16:9)로 생성
+              </label>
+              <div id="aspectRatioHint" class="preset-preview">기본값은 영상과 썸네일 모두 세로(9:16)입니다.</div>
             </div>
 
             <div class="field-group">
@@ -80,13 +97,38 @@
 
               <div class="field-group">
                 <label for="customDurationSeconds">수동 길이(초)</label>
-                <input id="customDurationSeconds" type="number" min="15" max="600" value="60">
+                <input id="customDurationSeconds" type="number" min="15" max="1200" value="60">
+              </div>
+
+              <div class="field-group longform-controls" id="longformControls" hidden>
+                <label for="longformTargetSeconds">장편 목표 길이(초)</label>
+                <input id="longformTargetSeconds" type="number" min="600" max="1200" value="720">
+                <label for="introVideoClipCount">초반 영상 클립 수</label>
+                <input id="introVideoClipCount" type="number" min="1" max="10" value="10">
+                <label for="bodyImageSeconds">본문 이미지 길이(초)</label>
+                <input id="bodyImageSeconds" type="number" min="10" max="30" value="18">
               </div>
 
               <div class="field-group">
                 <label for="voiceId">음성</label>
                 <select id="voiceId">
                   <option value="male_30_announcer" selected>30대 남성 아나운서</option>
+                </select>
+              </div>
+
+              <div class="field-group">
+                <label for="researchProvider">자료 조사 Provider</label>
+                <select id="researchProvider">
+                  <option value="gemini-gems-browser" selected>Gemini Gems</option>
+                  <option value="notebooklm-mcp">NotebookLM MCP</option>
+                </select>
+              </div>
+
+              <div class="field-group">
+                <label for="archiveProvider">아카이브 Provider</label>
+                <select id="archiveProvider">
+                  <option value="local-files" selected>Local Files</option>
+                  <option value="google-workspace-mcp">Google Workspace MCP</option>
                 </select>
               </div>
 
@@ -133,7 +175,13 @@
                   <option value="cinematic" selected>Cinematic</option>
                   <option value="dynamic-shorts">Dynamic Shorts</option>
                 </select>
-                <div id="renderEffectPreview" class="effect-preview">Cinematic: 부드러운 줌/팬과 안정적인 장면 전환을 적용합니다.</div>
+                <label for="motionIntensity">렌더 효과 강도</label>
+                <select id="motionIntensity">
+                  <option value="none">효과없음</option>
+                  <option value="light">약하게</option>
+                  <option value="strong" selected>강하게</option>
+                </select>
+                <div id="renderEffectPreview" class="effect-preview">약하게: 장면마다 은은한 줌/팬 효과를 랜덤 적용합니다.</div>
               </div>
 
               <div class="field-group">
@@ -155,15 +203,15 @@
               <div class="field-group">
                 <label>Google Flow 생성 방식</label>
                 <div class="segmented" id="flowOutputModeControl">
-                  <label><input type="radio" name="flowOutputMode" value="video" checked><span>Video</span></label>
+                  <label><input type="radio" name="flowOutputMode" value="video"><span>Video</span></label>
                   <label><input type="radio" name="flowOutputMode" value="image"><span>Image</span></label>
-                  <label><input type="radio" name="flowOutputMode" value="hybrid"><span>Hybrid</span></label>
+                  <label><input type="radio" name="flowOutputMode" value="hybrid" checked><span>Hybrid</span></label>
                 </div>
                 <div id="flowOutputModeHint" class="preset-preview"></div>
                 <div id="hybridFlowControls" class="hybrid-controls" hidden>
                   <label for="hybridIntroVideoSceneCount">Opening video scenes</label>
-                  <input id="hybridIntroVideoSceneCount" type="number" min="0" max="6" value="2">
-                  <div id="hybridFlowPreview" class="preset-preview">First 2 scenes: video / remaining scenes: image</div>
+                  <input id="hybridIntroVideoSceneCount" type="number" min="0" max="10" value="1">
+                  <div id="hybridFlowPreview" class="preset-preview">First 1 scene: video / remaining scenes: image</div>
                 </div>
               </div>
             </div>
@@ -190,6 +238,32 @@
               <div id="subtitlePreviewText">최신 AI 뉴스 핵심만 빠르게 정리합니다.</div>
             </div>
 
+            <section class="sub-panel title-overlay-panel">
+              <h4>Top Title</h4>
+              <label class="checkbox-line">
+                <input id="titleOverlayEnabled" type="checkbox" checked>
+                Show title at top of video
+              </label>
+              <div class="form-grid">
+                <div class="field-group">
+                  <label for="titleOverlayText">Title text</label>
+                  <input id="titleOverlayText" type="text" maxlength="80" placeholder="Use generated title when empty">
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayStyleId">Title style</label>
+                  <select id="titleOverlayStyleId">
+                    <option value="bold-black-accent" selected>Bold Black Accent</option>
+                    <option value="white-editorial">White Editorial</option>
+                    <option value="black-green-hook">Black Green Hook</option>
+                    <option value="minimal-shadow">Minimal Shadow</option>
+                  </select>
+                </div>
+              </div>
+              <div class="title-overlay-preview" id="titleOverlayPreview" data-style="bold-black-accent" data-enabled="true">
+                <div id="titleOverlayPreviewText">Video title preview</div>
+              </div>
+            </section>
+
             <div class="option-row">
               <label class="switch">
                 <input id="uploadEnabled" type="checkbox">
@@ -205,6 +279,11 @@
                 <input id="mockMediaMode" type="checkbox">
                 <span></span>
                 Mock Media Mode
+              </label>
+              <label class="switch">
+                <input id="enableLiveMcp" type="checkbox">
+                <span></span>
+                Live MCP research
               </label>
             </div>
 
@@ -242,10 +321,28 @@
             </div>
             <div class="auth-grid">
               <button id="auth-chatgpt" type="button">Authenticate ChatGPT</button>
+              <button id="auth-change-chatgpt" type="button">Change Account</button>
+              <button id="auth-clear-chatgpt" type="button">Clear Saved Session</button>
               <button id="auth-gemini" type="button">Authenticate Gemini</button>
+              <button id="auth-change-gemini" type="button">Change Account</button>
+              <button id="auth-clear-gemini" type="button">Clear Saved Session</button>
               <button id="auth-googleFlow" type="button">Authenticate Google Flow</button>
+              <button id="auth-change-googleFlow" type="button">Change Account</button>
+              <button id="auth-clear-googleFlow" type="button">Clear Saved Session</button>
               <button id="auth-youtube" type="button">Authenticate YouTube Upload</button>
+              <button id="auth-change-youtube" type="button">Change Account</button>
+              <button id="auth-clear-youtube" type="button">Clear Saved Session</button>
+              <button id="auth-notebooklm" type="button">Authenticate NotebookLM</button>
+              <button id="auth-change-notebooklm" type="button">Change Account</button>
+              <button id="auth-clear-notebooklm" type="button">Clear Saved Session</button>
+              <button id="auth-googleWorkspace" type="button">Authenticate Google Workspace</button>
+              <button id="auth-change-googleWorkspace" type="button">Change Account</button>
+              <button id="auth-clear-googleWorkspace" type="button">Clear Saved Session</button>
             </div>
+            <label class="checkbox-line">
+              <input id="webwrightDiagnosticsEnabled" type="checkbox">
+              Webwright 진단 리포트 생성
+            </label>
             <pre id="authStatusBox"></pre>
           </section>
 
@@ -269,7 +366,12 @@
               <button data-filter="artifact" type="button">Artifacts</button>
             </div>
             <div id="artifactPanel" class="artifact-panel"></div>
-            <button id="copyJobSummaryBtn" class="secondary-button compact-button" type="button">Copy Summary</button>
+            <div class="recovery-actions">
+              <button id="retryFailedScenesBtn" class="secondary-button compact-button" type="button" disabled>Retry Failed Scenes</button>
+              <button id="renderExistingAssetsBtn" class="secondary-button compact-button" type="button" disabled>Render Existing Assets</button>
+              <button id="retryThumbnailBtn" class="secondary-button compact-button" type="button" disabled>Retry Thumbnail Only</button>
+              <button id="copyJobSummaryBtn" class="secondary-button compact-button" type="button">Copy Summary</button>
+            </div>
             <div id="consoleLog" class="console-log" aria-live="polite"></div>
             <div class="result-box">
               <span>Latest output</span>
