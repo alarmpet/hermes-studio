@@ -16,6 +16,21 @@ The current ChatGPT browser thumbnail path keeps failing because ChatGPT web aut
 
 However, Google Flow must not be trusted to render Korean text. The thumbnail prompt should explicitly ask for **no readable text, no captions, no logos, no watermarks**. Hermes should render all Korean text locally with `sharp`. This gives us both: Flow's visual generation and reliable Korean typography.
 
+## Review Validation
+
+`HERMES_FLOW_THUMBNAIL_GENERATION_REVIEW.md` was checked against the current codebase and this plan. The following recommendations are technically valid and must be included:
+
+- User-controlled `positionYPercent` and `bandHeightPercent` must drive the actual SVG band coordinates, not only the Studio preview.
+- User-controlled `backgroundColor` and `backgroundOpacity` must drive the SVG band gradient and rectangle position.
+- User-controlled `textColor`, `highlightColor`, `outlineColor`, `outlineWidth`, `fontFamily`, `fontWeight`, and `shadowOpacity` must drive the SVG text and shadow filter.
+- `thumbnailTextEnabled: false` must render only the Flow background image, with no overlay SVG.
+- Local fallback thumbnails must reuse the same `overlayPlan`, including manual text and style choices.
+- `retryThumbnailForJob` must pass `flowTimeoutMs`, `flowProfileDir` through `paths`, and `thumbnailOverlay`, and its user-facing text must no longer say ChatGPT retry.
+- Flow thumbnail provider failures must be mirrored through `workflow-db-events.mjs`.
+- Telegram `/diagnose` can be updated because `triageDiagnostic` exists in `telegram-flow-news-bot.mjs`.
+
+The review's broad direction is accepted. Its examples are treated as implementation guidance, not exact code to paste, because the final code must stay consistent with the existing stage runner, event payloads, and contract tests.
+
 ## Target User Flow
 
 1. User generates a video in Hermes Studio.
@@ -50,6 +65,10 @@ However, Google Flow must not be trusted to render Korean text. The thumbnail pr
   - Read thumbnail controls into job input and update the preview.
 - Modify: `C:\Users\amd\hermes\electron\renderer\styles.css`
   - Style the thumbnail preview and compact control grid.
+- Modify: `C:\Users\amd\hermes\workflow-db-events.mjs`
+  - Mirror Flow thumbnail provider failures into the existing failure log path.
+- Modify: `C:\Users\amd\hermes\telegram-flow-news-bot.mjs`
+  - Teach `/diagnose` triage to classify Flow thumbnail failures.
 - Modify: `C:\Users\amd\hermes\scripts\check-chatgpt-thumbnail-pipeline.mjs`
   - Replace ChatGPT-primary assertions with Flow-primary thumbnail assertions.
 - Modify: `C:\Users\amd\hermes\scripts\check-local-studio-product.mjs`
@@ -58,6 +77,8 @@ However, Google Flow must not be trusted to render Korean text. The thumbnail pr
   - Dedicated contract test for Flow thumbnail generation.
 - Create: `C:\Users\amd\hermes\scripts\check-thumbnail-overlay-controls.mjs`
   - Dedicated contract test for Studio thumbnail text controls and schema normalization.
+- Create: `C:\Users\amd\hermes\scripts\check-flow-thumbnail-diagnostics.mjs`
+  - Contract test for Flow thumbnail retry, DB mirroring, and `/diagnose` classification.
 - Modify: `C:\Users\amd\hermes\package.json`
   - Add `check:flow-thumbnail` and `check:thumbnail-overlay` and wire them into `npm run check`.
 - Leave unchanged in this plan: `C:\Users\amd\hermes\automation\chatgpt-thumbnail-source.mjs`
@@ -903,6 +924,43 @@ Add `normalizeThumbnailOverlayStyle` in the same module so the compositor and sc
 
 In `C:\Users\amd\hermes\pipeline\youtube-thumbnail.mjs`, add `thumbnailOverlay = {}` to `createThumbnailForJob`, pass it into `buildThumbnailOverlayPlan`, and use `overlayPlan.style` inside `composeFlowThumbnail` for font family, weight, title size, sub size, text color, highlight color, background color, background opacity, outline, shadow, vertical position, and band height.
 
+The compositor must not leave any user-editable style value as a preview-only option. Implement these concrete rules:
+
+```js
+const style = overlayPlan.style || {};
+const yPercent = style.positionYPercent ?? 5.5;
+const hPercent = style.bandHeightPercent ?? (aspectRatio === "16:9" ? 29 : 22);
+const topPad = Math.round(height * (yPercent / 100));
+const bandHeight = Math.round(height * (hPercent / 100));
+const bgColor = style.backgroundColor || "#050505";
+const bgOpacity = style.backgroundOpacity ?? 0.72;
+const stop1Opacity = Math.min(0.98, bgOpacity * 1.22);
+const stop2Opacity = Math.max(0, Math.min(0.92, bgOpacity * 0.85));
+```
+
+The SVG band must start at `y="${topPad}"`, not always at `y="0"`. Text nodes must use the normalized style:
+
+```js
+font-family="${style.fontFamily || "Malgun Gothic"}"
+font-weight="${style.fontWeight || 900}"
+stroke="${style.outlineColor || "#000000"}"
+stroke-width="${style.outlineWidth ?? 8}"
+fill="${style.textColor || "#ffffff"}"
+filter="url(#text-shadow)"
+```
+
+Add a `<filter id="text-shadow">` with `flood-opacity="${style.shadowOpacity ?? 0.45}"`. Keyword `<tspan>` must use `style.highlightColor || "#fde047"`.
+
+If `overlayPlan.enabled === false`, skip `buildOverlaySvg` entirely and render only the resized Flow background:
+
+```js
+let image = sharp(backgroundPath).resize(width, height, { fit: "cover", position: "center" });
+if (overlayPlan.enabled !== false) {
+  image = image.composite([{ input: Buffer.from(titleSvg), top: 0, left: 0 }]);
+}
+await image.png().toFile(outputPath);
+```
+
 - [ ] **Step 8: Forward thumbnail overlay through service and stages**
 
 In `C:\Users\amd\hermes\electron\services\youtube-job-service.mjs`, add:
@@ -916,6 +974,29 @@ In `C:\Users\amd\hermes\youtube-workflow-stages.mjs`, pass:
 ```js
     thumbnailOverlay: result.job?.options?.thumbnailOverlay || context.job?.options?.thumbnailOverlay || {},
 ```
+
+In `C:\Users\amd\hermes\electron\services\youtube-job-service.mjs`, update `retryThumbnailForJob` so thumbnail-only retry uses the same Flow path and user style:
+
+```js
+  progress({
+    phase: "thumbnail",
+    status: "running",
+    message: "Retrying Google Flow thumbnail generation only.",
+    details: { jobDir, provider: "google-flow-image" },
+  });
+  const thumbnail = await createThumbnailForJob({
+    draft,
+    paths,
+    jobDir,
+    chromePath,
+    flowTimeoutMs: config.flowTimeoutMs,
+    aspectRatio: job?.options?.aspectRatio || "9:16",
+    thumbnailOverlay: job?.options?.thumbnailOverlay || {},
+    emit,
+  });
+```
+
+Also replace ChatGPT-specific retry messages and diagnostic provider labels with Flow-neutral labels such as `google-flow-thumbnail`.
 
 - [ ] **Step 9: Wire package checks**
 
@@ -954,7 +1035,121 @@ git commit -m "feat: add editable thumbnail text controls"
 
 ---
 
-### Task 7: Validate With Mock and Full Checks
+### Task 7: Add Flow Thumbnail Failure Diagnostics
+
+**Files:**
+- Modify: `C:\Users\amd\hermes\workflow-db-events.mjs`
+- Modify: `C:\Users\amd\hermes\telegram-flow-news-bot.mjs`
+- Modify: `C:\Users\amd\hermes\electron\services\youtube-job-service.mjs`
+- Create: `C:\Users\amd\hermes\scripts\check-flow-thumbnail-diagnostics.mjs`
+
+- [ ] **Step 1: Write the failing diagnostics contract**
+
+Create `C:\Users\amd\hermes\scripts\check-flow-thumbnail-diagnostics.mjs`:
+
+```js
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const root = resolve(import.meta.dirname, "..");
+const workflowDb = readFileSync(resolve(root, "workflow-db-events.mjs"), "utf8");
+const telegramBot = readFileSync(resolve(root, "telegram-flow-news-bot.mjs"), "utf8");
+const jobService = readFileSync(resolve(root, "electron/services/youtube-job-service.mjs"), "utf8");
+
+assert.match(workflowDb, /FLOW_THUMBNAIL_GENERATION_FAILED/, "workflow DB mirror should classify Flow thumbnail generation failures");
+assert.match(workflowDb, /primaryProviderFailure/, "workflow DB mirror should inspect primary provider failures");
+assert.match(telegramBot, /flow_thumbnail_generation_failed/, "telegram diagnose should classify Flow thumbnail failures");
+assert.match(telegramBot, /Google Flow thumbnail/i, "telegram diagnose should explain Google Flow thumbnail recovery");
+assert.match(jobService, /google-flow-thumbnail/, "thumbnail retry diagnostics should use the Flow thumbnail provider label");
+assert.match(jobService, /Retrying Google Flow thumbnail generation only/, "thumbnail retry message should no longer say ChatGPT");
+assert.match(jobService, /flowTimeoutMs:\s*config\.flowTimeoutMs/, "thumbnail retry should pass Flow timeout");
+assert.match(jobService, /thumbnailOverlay:\s*job\?\.options\?\.thumbnailOverlay/, "thumbnail retry should preserve user thumbnail overlay style");
+
+console.log(JSON.stringify({ ok: true, checked: "flow-thumbnail-diagnostics" }));
+```
+
+- [ ] **Step 2: Run the failing contract**
+
+Run:
+
+```powershell
+node scripts/check-flow-thumbnail-diagnostics.mjs
+```
+
+Expected: FAIL until the DB mirror, diagnose classifier, and retry text are updated.
+
+- [ ] **Step 3: Mirror Flow thumbnail failures to DB**
+
+In `C:\Users\amd\hermes\workflow-db-events.mjs`, update `isFailureEvent` so it recognizes Flow thumbnail provider failures:
+
+```js
+    || String(event.details?.failureCode || "").startsWith("FLOW_THUMBNAIL_")
+    || String(event.details?.primaryProviderFailure?.code || event.details?.primaryProviderFailure?.failureCode || "").startsWith("FLOW_THUMBNAIL_")
+```
+
+Update `failureCodeOf` after the ChatGPT primary-provider branch:
+
+```js
+  if (String(primaryProviderFailureCode).startsWith("FLOW_THUMBNAIL_")) {
+    return String(primaryProviderFailureCode);
+  }
+```
+
+Also add this text classifier before the generic YouTube thumbnail fallback:
+
+```js
+  if (/FLOW_THUMBNAIL_GENERATION_FAILED|Google Flow thumbnail|flow thumbnail/i.test(text)) return "FLOW_THUMBNAIL_GENERATION_FAILED";
+```
+
+- [ ] **Step 4: Add Telegram diagnose classification**
+
+In `C:\Users\amd\hermes\telegram-flow-news-bot.mjs`, inside `triageDiagnostic`, add a branch near other Flow failure classification:
+
+```js
+  if (/FLOW_THUMBNAIL_GENERATION_FAILED|Google Flow thumbnail|flow thumbnail/i.test(errorText)) {
+    failureType = "flow_thumbnail_generation_failed";
+    rootCause = "Google Flow image generation failed while creating the thumbnail background.";
+    recommendedAction = "Open Hermes Studio Authentication, verify the Google Flow account/session, check for Flow policy or account limit warnings, then retry thumbnail only.";
+    confidence = Math.max(confidence, 0.9);
+  }
+```
+
+Use the local variable names that already exist in `triageDiagnostic`; if the function uses an object return instead of mutable locals in the target area, preserve its current return shape and add the same failure type/root cause/action values there.
+
+- [ ] **Step 5: Update retry diagnostics provider**
+
+In `C:\Users\amd\hermes\electron\services\youtube-job-service.mjs`, update thumbnail retry diagnostics so it uses:
+
+```js
+provider: "google-flow-thumbnail",
+```
+
+and user-facing retry messages mention Google Flow thumbnail generation, not ChatGPT verification. If the failure is `actionRequired`, the recovery text should point to `Authenticate Google Flow`, not `Authenticate ChatGPT`.
+
+- [ ] **Step 6: Run diagnostics contract**
+
+Run:
+
+```powershell
+node scripts/check-flow-thumbnail-diagnostics.mjs
+```
+
+Expected: PASS.
+
+- [ ] **Step 7: Commit diagnostics**
+
+Run:
+
+```powershell
+git add workflow-db-events.mjs telegram-flow-news-bot.mjs electron/services/youtube-job-service.mjs scripts/check-flow-thumbnail-diagnostics.mjs
+git commit -m "feat: diagnose Flow thumbnail failures"
+```
+
+---
+
+### Task 8: Validate With Mock and Full Checks
 
 **Files:**
 - No source files should be modified in this task unless checks reveal a concrete issue.
@@ -968,6 +1163,7 @@ node --check pipeline/youtube-thumbnail.mjs
 node --check pipeline/youtube-thumbnail-prompt.mjs
 npm.cmd run check:flow-thumbnail
 npm.cmd run check:thumbnail-overlay
+node scripts/check-flow-thumbnail-diagnostics.mjs
 npm.cmd run check:chatgpt-thumbnail
 node scripts/check-local-studio-product.mjs
 ```
@@ -1023,7 +1219,7 @@ Do not roll back to ChatGPT as the default provider unless the user explicitly r
 
 ## Self-Review
 
-- Spec coverage: The plan covers Flow thumbnail generation, Korean text reliability, hook-driven title/subtitle generation, user-editable thumbnail text controls, live preview, schema normalization, context-aware background prompts, upload-review artifacts, tests, full check, and packaging.
+- Spec coverage: The plan covers Flow thumbnail generation, Korean text reliability, hook-driven title/subtitle generation, user-editable thumbnail text controls, live preview, schema normalization, style application in the real SVG compositor, disabled-overlay handling, fallback style preservation, retry parameter preservation, DB/diagnose failure classification, context-aware background prompts, upload-review artifacts, tests, full check, and packaging.
 - Placeholder scan: No placeholder or deferred implementation items remain.
-- Type consistency: The plan consistently uses `buildFlowThumbnailPrompt`, `buildThumbnailOverlayPlan`, `normalizeThumbnailOverlayStyle`, `thumbnailOverlay`, `composeFlowThumbnail`, `generateGoogleFlowVideoFromPrompt`, and `primaryProvider: "google-flow-image"`.
+- Type consistency: The plan consistently uses `buildFlowThumbnailPrompt`, `buildThumbnailOverlayPlan`, `normalizeThumbnailOverlayStyle`, `thumbnailOverlay`, `composeFlowThumbnail`, `generateGoogleFlowVideoFromPrompt`, `primaryProvider: "google-flow-image"`, `FLOW_THUMBNAIL_GENERATION_FAILED`, and `google-flow-thumbnail`.
 - Risk note: Google Flow may still fail due to account/session/policy limits. The plan handles this with local fallback and metadata, but live Flow reliability still depends on the authenticated Flow account.
