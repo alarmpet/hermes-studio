@@ -26,6 +26,21 @@ const titleOverlayEnabled = document.querySelector("#titleOverlayEnabled");
 const titleOverlayText = document.querySelector("#titleOverlayText");
 const titleOverlayStyleId = document.querySelector("#titleOverlayStyleId");
 const titleOverlayPreviewText = document.querySelector("#titleOverlayPreviewText");
+const thumbnailTextEnabled = document.querySelector("#thumbnailTextEnabled");
+const thumbnailHeadlineText = document.querySelector("#thumbnailHeadlineText");
+const thumbnailSubheadlineText = document.querySelector("#thumbnailSubheadlineText");
+const thumbnailFontFamily = document.querySelector("#thumbnailFontFamily");
+const thumbnailFontWeight = document.querySelector("#thumbnailFontWeight");
+const thumbnailTitleFontSize = document.querySelector("#thumbnailTitleFontSize");
+const thumbnailSubFontSize = document.querySelector("#thumbnailSubFontSize");
+const thumbnailTextColor = document.querySelector("#thumbnailTextColor");
+const thumbnailHighlightColor = document.querySelector("#thumbnailHighlightColor");
+const thumbnailBackgroundColor = document.querySelector("#thumbnailBackgroundColor");
+const thumbnailBackgroundOpacity = document.querySelector("#thumbnailBackgroundOpacity");
+const thumbnailPositionY = document.querySelector("#thumbnailPositionY");
+const thumbnailBandHeight = document.querySelector("#thumbnailBandHeight");
+const thumbnailPreview = document.querySelector("#thumbnailPreview");
+const thumbnailPreviewText = document.querySelector("#thumbnailPreviewText");
 const mockMediaModeInput = document.querySelector("#mockMediaMode");
 const jobProgressPercent = document.querySelector("#jobProgressPercent");
 const currentProgressMessage = document.querySelector("#currentProgressMessage");
@@ -81,7 +96,7 @@ const retryThumbnailBtn = document.querySelector("#retryThumbnailBtn");
 const copyJobSummaryBtn = document.querySelector("#copyJobSummaryBtn");
 const enableLiveMcp = document.querySelector("#enableLiveMcp");
 const webwrightDiagnosticsEnabled = document.querySelector("#webwrightDiagnosticsEnabled");
-const thumbnailProviderName = "ChatGPT";
+const thumbnailProviderName = "Flow";
 
 const presetSeconds = { micro: 30, short: 45, standard: 60, extended: 90 };
 const presetScenes = { micro: 3, short: 4, standard: 5, extended: 6 };
@@ -167,7 +182,7 @@ function renderConsoleEvent(event = {}) {
   const modeHint = event.details?.flowOutputMode ? `mode=${event.details.flowOutputMode}` : "";
   if (event.details?.primaryProviderFailure) {
     return {
-      title: "ChatGPT thumbnail fallback",
+      title: "Google Flow thumbnail fallback",
       severity: "warning",
       message: explainThumbnailFailure(event.details.primaryProviderFailure),
       detail: event.details.primaryProviderFailure,
@@ -279,6 +294,7 @@ function readJobInput() {
     titleOverlayStyleId: titleOverlayStyleId?.value || "bold-black-accent",
     titleOverlayMaxLines: 2,
     titleOverlaySafeTop: getRequestedAspectRatio() === "16:9" ? 40 : 84,
+    thumbnailOverlay: readThumbnailOverlayInput(),
     aspectRatio: getRequestedAspectRatio(),
     autoLandscapeLongform: Boolean(autoLandscapeLongform?.checked),
     speechSpeed: Number(speed.value),
@@ -306,6 +322,7 @@ async function loadConfig() {
   await populateStylePresets();
   updateSubtitlePreview();
   updateTitleOverlayPreview();
+  updateThumbnailPreview();
   updateDurationPreview();
   updateSourceModeUi();
   updateFlowOutputModeHint();
@@ -347,8 +364,8 @@ function updateAspectRatioHint() {
   if (!aspectRatioHint) return;
   const aspect = getRequestedAspectRatio();
   aspectRatioHint.textContent = aspect === "16:9"
-    ? "Landscape 16:9: Flow prompts, final render, and ChatGPT thumbnail target horizontal longform output."
-    : "Portrait 9:16: Flow prompts, final render, and ChatGPT thumbnail target vertical output.";
+    ? "Landscape 16:9: Flow prompts, final render, and thumbnail target horizontal longform output."
+    : "Portrait 9:16: Flow prompts, final render, and thumbnail target vertical output.";
 }
 
 for (const selector of ["#scriptLengthMode", "#scriptLengthPreset", "#customDurationSeconds"]) {
@@ -500,9 +517,77 @@ function updateTitleOverlayPreview() {
   titleOverlayPreviewText.parentElement.dataset.enabled = titleOverlayEnabled?.checked ? "true" : "false";
 }
 
+function readThumbnailOverlayInput() {
+  return {
+    enabled: thumbnailTextEnabled?.checked !== false,
+    headlineText: thumbnailHeadlineText?.value.trim() || "",
+    subheadlineText: thumbnailSubheadlineText?.value.trim() || "",
+    fontFamily: thumbnailFontFamily?.value || "Malgun Gothic",
+    fontWeight: Number(thumbnailFontWeight?.value || 900),
+    titleFontSize: Number(thumbnailTitleFontSize?.value || 96),
+    subFontSize: Number(thumbnailSubFontSize?.value || 52),
+    textColor: thumbnailTextColor?.value || "#ffffff",
+    highlightColor: thumbnailHighlightColor?.value || "#fde047",
+    backgroundColor: thumbnailBackgroundColor?.value || "#050505",
+    backgroundOpacity: Number(thumbnailBackgroundOpacity?.value ?? 0.72),
+    positionYPercent: Number(thumbnailPositionY?.value ?? 5.5),
+    bandHeightPercent: Number(thumbnailBandHeight?.value ?? 22),
+    maxLines: 2,
+  };
+}
+
+function updateThumbnailPreview() {
+  if (!thumbnailPreview || !thumbnailPreviewText) return;
+  const style = readThumbnailOverlayInput();
+  const headline = style.headlineText || titleOverlayText?.value.trim() || sourceValue?.value.trim().slice(0, 18) || "후킹 썸네일 제목";
+  const subline = style.subheadlineText || "지금 확인해야 할 핵심";
+  thumbnailPreview.dataset.enabled = style.enabled ? "true" : "false";
+  thumbnailPreview.style.setProperty("--thumb-bg", style.backgroundColor);
+  thumbnailPreview.style.setProperty("--thumb-bg-opacity", String(style.backgroundOpacity));
+  thumbnailPreview.style.setProperty("--thumb-y", `${style.positionYPercent}%`);
+  thumbnailPreview.style.setProperty("--thumb-band-h", `${style.bandHeightPercent}%`);
+  thumbnailPreview.style.setProperty("--thumb-font", style.fontFamily);
+  thumbnailPreview.style.setProperty("--thumb-title-size", `${Math.round(style.titleFontSize / 3)}px`);
+  thumbnailPreview.style.setProperty("--thumb-sub-size", `${Math.round(style.subFontSize / 3)}px`);
+  thumbnailPreview.style.setProperty("--thumb-text", style.textColor);
+  thumbnailPreview.style.setProperty("--thumb-highlight", style.highlightColor);
+  thumbnailPreviewText.innerHTML = `<strong>${escapeHtml(headline)}</strong><span>${escapeHtml(subline)}</span>`;
+}
+
+function escapeHtml(value) {
+  return String(value || "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  }[char]));
+}
+
 for (const input of [titleOverlayEnabled, titleOverlayText, titleOverlayStyleId, sourceValue]) {
   input?.addEventListener("input", updateTitleOverlayPreview);
   input?.addEventListener("change", updateTitleOverlayPreview);
+}
+
+for (const input of [
+  thumbnailTextEnabled,
+  thumbnailHeadlineText,
+  thumbnailSubheadlineText,
+  thumbnailFontFamily,
+  thumbnailFontWeight,
+  thumbnailTitleFontSize,
+  thumbnailSubFontSize,
+  thumbnailTextColor,
+  thumbnailHighlightColor,
+  thumbnailBackgroundColor,
+  thumbnailBackgroundOpacity,
+  thumbnailPositionY,
+  thumbnailBandHeight,
+  sourceValue,
+  titleOverlayText,
+]) {
+  input?.addEventListener("input", updateThumbnailPreview);
+  input?.addEventListener("change", updateThumbnailPreview);
 }
 
 function buildSubtitleShadow(outline, shadow) {

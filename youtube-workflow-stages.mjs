@@ -479,9 +479,12 @@ export async function generateThumbnail(result, context = {}) {
   return createThumbnailForJob({
     draft: result.assets?.draft,
     paths: context.paths,
+    flowProfileDir: context.paths?.flowProfileDir,
     jobDir: result.assets?.jobDir,
     chromePath: context.chromePath,
+    flowTimeoutMs: context.flowTimeoutMs,
     aspectRatio: result.job?.options?.aspectRatio || context.job?.options?.aspectRatio || "9:16",
+    thumbnailOverlay: result.job?.options?.thumbnailOverlay || context.job?.options?.thumbnailOverlay || {},
     emit: context.emit,
   });
 }

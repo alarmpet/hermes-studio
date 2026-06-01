@@ -364,6 +364,76 @@ output {
   background: linear-gradient(180deg, rgba(0, 0, 0, .72), rgba(0, 0, 0, 0));
 }
 
+.thumbnail-overlay-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.compact-grid {
+  gap: 10px;
+}
+
+.thumbnail-preview {
+  --thumb-bg: #050505;
+  --thumb-bg-opacity: 0.72;
+  --thumb-y: 5.5%;
+  --thumb-band-h: 22%;
+  --thumb-font: "Malgun Gothic";
+  --thumb-title-size: 32px;
+  --thumb-sub-size: 17px;
+  --thumb-text: #ffffff;
+  --thumb-highlight: #fde047;
+  position: relative;
+  aspect-ratio: 9 / 16;
+  max-height: 360px;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: linear-gradient(160deg, #1f2937, #0f766e 48%, #7c2d12);
+}
+
+.thumbnail-preview::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--thumb-y);
+  height: var(--thumb-band-h);
+  background: var(--thumb-bg);
+  opacity: var(--thumb-bg-opacity);
+}
+
+.thumbnail-preview[data-enabled="false"]::before,
+.thumbnail-preview[data-enabled="false"] #thumbnailPreviewText {
+  opacity: 0.25;
+}
+
+#thumbnailPreviewText {
+  position: absolute;
+  left: 7%;
+  right: 7%;
+  top: calc(var(--thumb-y) + 3%);
+  display: grid;
+  gap: 6px;
+  text-align: center;
+  font-family: var(--thumb-font), sans-serif;
+  color: var(--thumb-text);
+  text-shadow: -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000;
+}
+
+#thumbnailPreviewText strong {
+  font-size: var(--thumb-title-size);
+  line-height: 1.08;
+  font-weight: 900;
+}
+
+#thumbnailPreviewText span {
+  color: var(--thumb-highlight);
+  font-size: var(--thumb-sub-size);
+  line-height: 1.15;
+  font-weight: 850;
+}
+
 .option-row {
   display: grid;
   gap: 10px;

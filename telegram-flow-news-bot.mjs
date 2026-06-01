@@ -1866,6 +1866,11 @@ function triageDiagnostic({ job, reclassified, routeMismatch, recentFailures = [
       rootCause = "Telegram transport failed while processing or reporting the job.";
       recommendedAction = "Check retry/backoff behavior and Telegram API availability.";
       confidence = 0.85;
+    } else if (/FLOW_THUMBNAIL_GENERATION_FAILED|Google Flow thumbnail|flow thumbnail/i.test(errorText)) {
+      failureType = "flow_thumbnail_generation_failed";
+      rootCause = "Google Flow thumbnail image generation failed while creating the thumbnail background.";
+      recommendedAction = "Open Hermes Studio Authentication, verify the Google Flow account/session, check for Flow policy or account limit warnings, then retry thumbnail only.";
+      confidence = 0.9;
     } else if (/timed out|timeout|watchdog/i.test(errorText)) {
       failureType = "tool_timeout";
       rootCause = "A tool or model call exceeded its allowed time.";

@@ -42,6 +42,7 @@ export function buildDesktopJobRequest(input = {}) {
       aspectRatio: input.aspectRatio || "9:16",
       autoLandscapeLongform: Boolean(input.autoLandscapeLongform),
       thumbnailMode: input.thumbnailMode || "auto",
+      thumbnailOverlay: input.thumbnailOverlay || {},
       flowOutputMode: input.flowOutputMode || "video",
       hybridIntroVideoSceneCount: input.hybridIntroVideoSceneCount,
       renderEffectPreset: input.renderEffectPreset || "cinematic",
@@ -138,11 +139,11 @@ export async function createYouTubeJob(input, context = {}) {
 
   const thumbnail = await stages.generateThumbnail(result, { ...context, job, jobDir });
   if (thumbnail?.primaryProviderFailure) {
-    const chatGptThumbnailActionRequired = createChatGptThumbnailActionRequired(thumbnail.primaryProviderFailure);
+    const thumbnailActionRequired = createThumbnailActionRequired(thumbnail.primaryProviderFailure);
     const diagnostics = await maybeRunWebwrightDiagnostics({
       config: context.config || {},
       jobDir,
-      provider: "chatgpt-thumbnail",
+      provider: "google-flow-thumbnail",
       failure: thumbnail.primaryProviderFailure,
       sourceUrl: job.sourceType === "url" ? job.sourceValue : "",
     });
@@ -157,24 +158,24 @@ export async function createYouTubeJob(input, context = {}) {
         primaryProviderFailure: thumbnail.primaryProviderFailure,
         thumbnailPath: thumbnail.path,
       },
-      actionRequired: chatGptThumbnailActionRequired,
+      actionRequired: thumbnailActionRequired,
     });
   }
-  const chatGptThumbnailActionRequired = thumbnail?.primaryProviderFailure
-    ? createChatGptThumbnailActionRequired(thumbnail.primaryProviderFailure)
+  const thumbnailActionRequired = thumbnail?.primaryProviderFailure
+    ? createThumbnailActionRequired(thumbnail.primaryProviderFailure)
     : null;
   progress({
     phase: "completed",
-    status: chatGptThumbnailActionRequired ? "action-required" : "completed",
-    message: chatGptThumbnailActionRequired
-      ? "최종 영상은 완료됐지만 ChatGPT 썸네일은 사용자 확인이 필요합니다."
+    status: thumbnailActionRequired ? "action-required" : "completed",
+    message: thumbnailActionRequired
+      ? "Final video completed, but Google Flow thumbnail generation needs user action."
       : "최종 영상 생성이 완료되었습니다.",
     details: {
       finalPath: result.finalVideo?.finalPath,
       thumbnailPath: thumbnail?.path,
       primaryProviderFailure: thumbnail?.primaryProviderFailure,
     },
-    actionRequired: chatGptThumbnailActionRequired,
+    actionRequired: thumbnailActionRequired,
   });
   return { ...result, thumbnail };
 }
@@ -187,23 +188,25 @@ export async function retryThumbnailForJob({ job, jobDir, paths, chromePath, con
   progress({
     phase: "thumbnail",
     status: "running",
-    message: "Retrying ChatGPT thumbnail generation only.",
-    details: { jobDir },
+    message: "Retrying Google Flow thumbnail generation only.",
+    details: { jobDir, provider: "google-flow-image" },
   });
   const thumbnail = await createThumbnailForJob({
     draft,
     paths,
     jobDir,
     chromePath,
+    flowTimeoutMs: config.flowTimeoutMs,
     aspectRatio: job?.options?.aspectRatio || "9:16",
+    thumbnailOverlay: job?.options?.thumbnailOverlay || {},
     emit,
   });
   if (thumbnail?.primaryProviderFailure) {
-    const chatGptThumbnailActionRequired = createChatGptThumbnailActionRequired(thumbnail.primaryProviderFailure);
+    const thumbnailActionRequired = createThumbnailActionRequired(thumbnail.primaryProviderFailure);
     const diagnostics = await maybeRunWebwrightDiagnostics({
       config,
       jobDir,
-      provider: "chatgpt-thumbnail",
+      provider: "google-flow-thumbnail",
       failure: thumbnail.primaryProviderFailure,
       sourceUrl: job.sourceType === "url" ? job.sourceValue : "",
     });
@@ -211,39 +214,45 @@ export async function retryThumbnailForJob({ job, jobDir, paths, chromePath, con
       phase: "diagnostics",
       status: thumbnail.primaryProviderFailure.actionRequired ? "action-required" : "running",
       message: diagnostics.skipped
-        ? "ChatGPT thumbnail retry needs user action; browser diagnostics were skipped."
-        : `ChatGPT thumbnail retry needs user action; diagnostics report: ${diagnostics.reportPath}`,
+        ? "Google Flow thumbnail retry needs user action; browser diagnostics were skipped."
+        : `Google Flow thumbnail retry needs user action; diagnostics report: ${diagnostics.reportPath}`,
       details: {
         jobDir,
         thumbnailPath: thumbnail.path,
         primaryProviderFailure: thumbnail.primaryProviderFailure,
         diagnostics,
       },
-      actionRequired: chatGptThumbnailActionRequired,
+      actionRequired: thumbnailActionRequired,
     });
   }
-  const chatGptThumbnailActionRequired = thumbnail?.primaryProviderFailure
-    ? createChatGptThumbnailActionRequired(thumbnail.primaryProviderFailure)
+  const thumbnailActionRequired = thumbnail?.primaryProviderFailure
+    ? createThumbnailActionRequired(thumbnail.primaryProviderFailure)
     : null;
   progress({
     phase: "thumbnail",
     status: thumbnail?.primaryProviderFailure?.actionRequired ? "action-required" : "completed",
     message: thumbnail?.primaryProviderFailure
-      ? "ChatGPT thumbnail retry fell back to a local thumbnail. Complete ChatGPT verification and retry thumbnail only."
-      : "ChatGPT thumbnail retry completed.",
+      ? "Google Flow thumbnail retry fell back to a local thumbnail. Complete Google Flow authentication or account recovery and retry thumbnail only."
+      : "Google Flow thumbnail retry completed.",
     details: {
       jobDir,
       thumbnailPath: thumbnail?.path,
       primaryProviderFailure: thumbnail?.primaryProviderFailure,
     },
-    actionRequired: chatGptThumbnailActionRequired,
+    actionRequired: thumbnailActionRequired,
   });
   return { ok: true, job, jobDir, thumbnail };
 }
 
-function createChatGptThumbnailActionRequired(failure = {}) {
+function createThumbnailActionRequired(failure = {}) {
   if (!failure?.actionRequired) return null;
   const code = failure.code || failure.failureCode || "";
+  if (String(code).startsWith("FLOW_THUMBNAIL_") || String(code).startsWith("FLOW_")) {
+    return {
+      title: "Google Flow thumbnail action required",
+      message: "Open Authenticate Google Flow, verify the account/session or policy warning, then click Retry Thumbnail Only.",
+    };
+  }
   if (code === "CHATGPT_HUMAN_VERIFICATION_REQUIRED") {
     return {
       title: "ChatGPT human verification required",
@@ -257,8 +266,8 @@ function createChatGptThumbnailActionRequired(failure = {}) {
     };
   }
   return {
-    title: "ChatGPT thumbnail action required",
-    message: "Open Authenticate ChatGPT, resolve the browser prompt manually, then click Retry Thumbnail Only.",
+    title: "Thumbnail action required",
+    message: "Open the related authentication button, resolve the browser prompt manually, then click Retry Thumbnail Only.",
   };
 }
 

@@ -6,7 +6,9 @@ function isFailureEvent(event = {}) {
     || event.details?.eventType === "flow-mode-mismatch"
     || event.details?.eventType === "flow-abnormal-activity"
     || event.details?.failureCode === "FLOW_ABNORMAL_ACTIVITY"
+    || String(event.details?.failureCode || "").startsWith("FLOW_THUMBNAIL_")
     || String(event.details?.failureCode || "").startsWith("CHATGPT_")
+    || String(event.details?.primaryProviderFailure?.code || event.details?.primaryProviderFailure?.failureCode || "").startsWith("FLOW_THUMBNAIL_")
     || String(event.details?.primaryProviderFailure?.code || event.details?.primaryProviderFailure?.failureCode || "").startsWith("CHATGPT_")
     || event.details?.actionRequired === true
     || event.status === "failed"
@@ -36,6 +38,9 @@ function failureCodeOf(event = {}) {
   if (String(primaryProviderFailureCode).startsWith("CHATGPT_")) {
     return String(primaryProviderFailureCode);
   }
+  if (String(primaryProviderFailureCode).startsWith("FLOW_THUMBNAIL_")) {
+    return String(primaryProviderFailureCode);
+  }
 
   const text = [
     event.message,
@@ -60,6 +65,7 @@ function failureCodeOf(event = {}) {
   if (/HPSL_STRUCTURE_MISMATCH|Expected HPSL/i.test(text)) return "HPSL_STRUCTURE_MISMATCH";
   if (/output mode mismatch|flow-mode-mismatch/i.test(text)) return "FLOW_MODE_MISMATCH";
   if (/FLOW_ABNORMAL_ACTIVITY|flow-abnormal-activity|비정상적인\s*활동|abnormal activity|unusual activity|automated traffic|too many requests|rate limit|鍮꾩젙|媛먯|怨좉컼|쇳꽣/i.test(text)) return "FLOW_ABNORMAL_ACTIVITY";
+  if (/FLOW_THUMBNAIL_GENERATION_FAILED|Google Flow thumbnail|flow thumbnail/i.test(text)) return "FLOW_THUMBNAIL_GENERATION_FAILED";
   if (/YOUTUBE_OAUTH_EXPIRED|invalid_grant|unauthorized/i.test(text)) return "YOUTUBE_OAUTH_EXPIRED";
   if (/YOUTUBE_TOKEN_MISSING|oauth-token-missing/i.test(text)) return "YOUTUBE_TOKEN_MISSING";
   if (/YOUTUBE_QUOTA_EXCEEDED|quotaExceeded|quota/i.test(text)) return "YOUTUBE_QUOTA_EXCEEDED";

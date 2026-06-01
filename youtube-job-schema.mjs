@@ -92,6 +92,26 @@ export const DEFAULT_UPLOAD_OPTIONS = {
   autoThumbnail: true,
 };
 
+export const DEFAULT_THUMBNAIL_OVERLAY = {
+  enabled: true,
+  headlineText: "",
+  subheadlineText: "",
+  fontFamily: "Malgun Gothic",
+  fontWeight: 900,
+  titleFontSize: 96,
+  subFontSize: 52,
+  textColor: "#ffffff",
+  highlightColor: "#fde047",
+  backgroundColor: "#050505",
+  backgroundOpacity: 0.72,
+  outlineColor: "#000000",
+  outlineWidth: 8,
+  shadowOpacity: 0.45,
+  positionYPercent: 5.5,
+  bandHeightPercent: 22,
+  maxLines: 2,
+};
+
 const RENDER_EFFECT_PRESETS = ["clean", "cinematic", "dynamic-shorts"];
 const TRANSITION_PRESETS = ["none", "scene-fade", "smooth-crossfade", "directional-wipe", "hook-whip"];
 const MOTION_INTENSITIES = ["none", "light", "strong"];
@@ -231,6 +251,10 @@ export function normalizeYouTubeJobRequest(input = {}) {
     throw new Error(`Unknown openaiProviderMode: ${options.openaiProviderMode}`);
   }
   options.openaiApiKeyConfigured = Boolean(options.openaiApiKeyConfigured);
+  options.thumbnailOverlay = normalizeThumbnailOverlay({
+    ...DEFAULT_THUMBNAIL_OVERLAY,
+    ...(explicitOptions.thumbnailOverlay || {}),
+  });
 
   const upload = { ...DEFAULT_UPLOAD_OPTIONS, ...(input.upload || {}) };
 
@@ -262,4 +286,41 @@ function normalizeCharacterSheet(value = {}) {
       ? value.referenceImagePaths.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 4)
       : [],
   };
+}
+
+function normalizeThumbnailOverlay(input = {}) {
+  return {
+    enabled: input.enabled !== false,
+    headlineText: String(input.headlineText || "").replace(/\s+/g, " ").trim().slice(0, 32),
+    subheadlineText: String(input.subheadlineText || "").replace(/\s+/g, " ").trim().slice(0, 36),
+    fontFamily: ["Malgun Gothic", "Pretendard", "Arial"].includes(input.fontFamily) ? input.fontFamily : "Malgun Gothic",
+    fontWeight: clampInt(input.fontWeight, 500, 1000, 900),
+    titleFontSize: clampInt(input.titleFontSize, 42, 140, 96),
+    subFontSize: clampInt(input.subFontSize, 24, 80, 52),
+    textColor: normalizeHex(input.textColor, "#ffffff"),
+    highlightColor: normalizeHex(input.highlightColor, "#fde047"),
+    backgroundColor: normalizeHex(input.backgroundColor, "#050505"),
+    backgroundOpacity: clampNumber(input.backgroundOpacity, 0, 0.92, 0.72),
+    outlineColor: normalizeHex(input.outlineColor, "#000000"),
+    outlineWidth: clampInt(input.outlineWidth, 0, 16, 8),
+    shadowOpacity: clampNumber(input.shadowOpacity, 0, 0.9, 0.45),
+    positionYPercent: clampNumber(input.positionYPercent, 0, 55, 5.5),
+    bandHeightPercent: clampNumber(input.bandHeightPercent, 12, 38, 22),
+    maxLines: clampInt(input.maxLines, 1, 2, 2),
+  };
+}
+
+function clampInt(value, min, max, fallback) {
+  const number = Math.round(Number(value));
+  return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+}
+
+function normalizeHex(value, fallback) {
+  const text = String(value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(text) ? text : fallback;
 }
