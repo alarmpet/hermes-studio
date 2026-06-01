@@ -7,6 +7,7 @@ const root = resolve(import.meta.dirname, "..");
 const html = readFileSync(resolve(root, "electron/renderer/index.html"), "utf8");
 const renderer = readFileSync(resolve(root, "electron/renderer/app.js"), "utf8");
 const preload = readFileSync(resolve(root, "electron/preload.mjs"), "utf8");
+const styles = readFileSync(resolve(root, "electron/renderer/styles.css"), "utf8");
 
 for (const id of [
   "youtubeUploadPanel",
@@ -29,6 +30,10 @@ for (const id of [
 }
 
 assert.doesNotMatch(html, /id="youtubeUploadPanel"[^>]*hidden/, "upload panel should be visible in idle state with disabled controls");
+assert.match(styles, /\.progress-panel\s*{[\s\S]*grid-column:\s*2/, "progress panel should be placed in the right column");
+assert.match(styles, /\.upload-panel\s*{[\s\S]*grid-column:\s*2/, "upload panel should be placed in the right column under progress");
+assert.match(styles, /\.auth-panel\s*{[\s\S]*grid-column:\s*2/, "auth panel should stay in the right column below upload");
+assert.match(styles, /#jobForm\s*{[\s\S]*grid-column:\s*1/, "main form should stay in the left column");
 assert.match(preload, /youtubeGetUploadDraft/, "preload should expose youtubeGetUploadDraft");
 assert.match(preload, /youtubeSaveUploadDraft/, "preload should expose youtubeSaveUploadDraft");
 assert.match(preload, /youtubeUploadJob/, "preload should expose youtubeUploadJob");
