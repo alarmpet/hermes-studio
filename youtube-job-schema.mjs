@@ -48,6 +48,7 @@ export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
   subtitleStyleId: "bold-shorts",
   subtitleStyle: {},
   titleOverlayEnabled: true,
+  titleOverlayMode: "auto",
   titleOverlayText: "",
   titleOverlayStyleId: "bold-black-accent",
   titleOverlayMaxLines: 2,
@@ -191,6 +192,13 @@ export function normalizeYouTubeJobRequest(input = {}) {
   options.titleOverlayEnabled = options.videoFormat === "longform"
     ? (hasExplicitTitleOverlayEnabled ? Boolean(explicitOptions.titleOverlayEnabled) : false)
     : options.titleOverlayEnabled !== false;
+  options.titleOverlayMode = String(options.titleOverlayMode || (options.titleOverlayText ? "manual" : "auto")).toLowerCase();
+  if (!["auto", "manual"].includes(options.titleOverlayMode)) {
+    throw new Error(`Unknown titleOverlayMode: ${options.titleOverlayMode}`);
+  }
+  if (options.titleOverlayText && options.titleOverlayMode === "auto") {
+    options.titleOverlayMode = "manual";
+  }
   options.titleOverlayText = String(options.titleOverlayText || "").replace(/\s+/g, " ").trim().slice(0, 80);
   options.titleOverlayStyleId = String(options.titleOverlayStyleId || "bold-black-accent");
   if (!TITLE_OVERLAY_STYLE_IDS.includes(options.titleOverlayStyleId)) {

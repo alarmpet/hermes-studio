@@ -247,7 +247,8 @@
               <div class="form-grid">
                 <div class="field-group">
                   <label for="titleOverlayText">Title text</label>
-                  <input id="titleOverlayText" type="text" maxlength="80" placeholder="Use generated title when empty">
+                  <input id="titleOverlayText" type="text" maxlength="80" placeholder="Auto from generated draft title">
+                  <small class="field-hint">Auto uses generated draft title when empty.</small>
                 </div>
                 <div class="field-group">
                   <label for="titleOverlayStyleId">Title style</label>
@@ -312,6 +313,76 @@
               <li data-phase="completed">완료</li>
             </ol>
             <div id="progressActionRequired" class="progress-action" hidden></div>
+          </section>
+
+          <section id="youtubeUploadPanel" class="panel upload-panel" hidden>
+            <div class="panel-header">
+              <h3>YouTube Upload</h3>
+              <span id="uploadStatusMessage">Draft</span>
+            </div>
+            <div class="upload-media-row">
+              <button id="uploadVideoPath" class="secondary-button compact-button path-button" type="button">Final video not selected</button>
+              <button id="uploadThumbnailPreview" class="secondary-button compact-button path-button" type="button">Thumbnail not selected</button>
+            </div>
+            <div class="form-grid">
+              <div class="field-group">
+                <label for="uploadTitleInput">Title</label>
+                <input id="uploadTitleInput" type="text" maxlength="100">
+                <small id="uploadTitleCount" class="field-hint">0/100</small>
+              </div>
+              <div class="field-group">
+                <label for="uploadPrivacySelect">Privacy</label>
+                <select id="uploadPrivacySelect">
+                  <option value="private">Private</option>
+                  <option value="unlisted">Unlisted</option>
+                  <option value="public">Public</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label for="uploadDescriptionInput">Description</label>
+                <textarea id="uploadDescriptionInput" rows="5"></textarea>
+              </div>
+              <div class="field-group">
+                <label for="uploadTagsInput">Tags</label>
+                <textarea id="uploadTagsInput" rows="5" placeholder="comma separated tags"></textarea>
+              </div>
+              <div class="field-group">
+                <label for="uploadCategorySelect">Category</label>
+                <select id="uploadCategorySelect">
+                  <option value="25" selected>News & Politics</option>
+                  <option value="22">People & Blogs</option>
+                  <option value="27">Education</option>
+                  <option value="28">Science & Technology</option>
+                  <option value="24">Entertainment</option>
+                </select>
+              </div>
+              <div class="field-group">
+                <label for="uploadCustomThumbnailInput">Custom thumbnail</label>
+                <input id="uploadCustomThumbnailInput" type="file" accept="image/png,image/jpeg">
+              </div>
+            </div>
+            <div class="option-row upload-option-row">
+              <label class="switch">
+                <input id="uploadMadeForKidsCheckbox" type="checkbox">
+                <span></span>
+                Made for kids
+              </label>
+              <label class="switch">
+                <input id="uploadSyntheticMediaCheckbox" type="checkbox" checked>
+                <span></span>
+                AI/synthetic media
+              </label>
+              <label class="switch">
+                <input id="uploadNotifySubscribersCheckbox" type="checkbox">
+                <span></span>
+                Notify subscribers
+              </label>
+            </div>
+            <div class="actions upload-actions">
+              <button id="uploadSaveMetadataBtn" class="secondary-button" type="button">Save Metadata</button>
+              <button id="uploadToYouTubeBtn" class="primary-button" type="button">Upload to YouTube</button>
+              <button id="uploadResultLink" class="secondary-button" type="button" hidden>Open Uploaded Video</button>
+            </div>
           </section>
 
           <section class="panel auth-panel">

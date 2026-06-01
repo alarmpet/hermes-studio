@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 
 function isFailureEvent(event = {}) {
   return event.type === "desktop-job-failed"
+    || event.type === "youtube-upload-failed"
     || event.details?.eventType === "flow-mode-mismatch"
     || event.details?.eventType === "flow-abnormal-activity"
     || event.details?.failureCode === "FLOW_ABNORMAL_ACTIVITY"
@@ -59,6 +60,13 @@ function failureCodeOf(event = {}) {
   if (/HPSL_STRUCTURE_MISMATCH|Expected HPSL/i.test(text)) return "HPSL_STRUCTURE_MISMATCH";
   if (/output mode mismatch|flow-mode-mismatch/i.test(text)) return "FLOW_MODE_MISMATCH";
   if (/FLOW_ABNORMAL_ACTIVITY|flow-abnormal-activity|비정상적인\s*활동|abnormal activity|unusual activity|automated traffic|too many requests|rate limit|鍮꾩젙|媛먯|怨좉컼|쇳꽣/i.test(text)) return "FLOW_ABNORMAL_ACTIVITY";
+  if (/YOUTUBE_OAUTH_EXPIRED|invalid_grant|unauthorized/i.test(text)) return "YOUTUBE_OAUTH_EXPIRED";
+  if (/YOUTUBE_TOKEN_MISSING|oauth-token-missing/i.test(text)) return "YOUTUBE_TOKEN_MISSING";
+  if (/YOUTUBE_QUOTA_EXCEEDED|quotaExceeded|quota/i.test(text)) return "YOUTUBE_QUOTA_EXCEEDED";
+  if (/YOUTUBE_NETWORK_INTERRUPTED|ECONNRESET|ETIMEDOUT|network/i.test(text)) return "YOUTUBE_NETWORK_INTERRUPTED";
+  if (/YOUTUBE_THUMBNAIL_TOO_LARGE|2MB/i.test(text)) return "YOUTUBE_THUMBNAIL_TOO_LARGE";
+  if (/YOUTUBE_THUMBNAIL_INVALID|thumbnail/i.test(text)) return "YOUTUBE_THUMBNAIL_INVALID";
+  if (/YOUTUBE_DUPLICATE_UPLOAD_BLOCKED|duplicate-upload/i.test(text)) return "YOUTUBE_DUPLICATE_UPLOAD_BLOCKED";
   if (/duration.*too short/i.test(text)) return "DRAFT_DURATION_TOO_SHORT";
   if (/duration.*too long/i.test(text)) return "DRAFT_DURATION_TOO_LONG";
   return "";

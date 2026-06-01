@@ -34,6 +34,7 @@ export function buildDesktopJobRequest(input = {}) {
       subtitleStyleId: input.subtitleStyleId || "bold-shorts",
       subtitleStyle: input.subtitleStyle || {},
       titleOverlayEnabled: input.titleOverlayEnabled !== false,
+      titleOverlayMode: input.titleOverlayMode || (input.titleOverlayText ? "manual" : "auto"),
       titleOverlayText: input.titleOverlayText || "",
       titleOverlayStyleId: input.titleOverlayStyleId || "bold-black-accent",
       titleOverlayMaxLines: input.titleOverlayMaxLines || 2,

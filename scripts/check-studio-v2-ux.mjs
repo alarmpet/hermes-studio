@@ -8,6 +8,7 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const html = readFileSync(resolve(root, "electron/renderer/index.html"), "utf8");
 const app = readFileSync(resolve(root, "electron/renderer/app.js"), "utf8");
 const css = readFileSync(resolve(root, "electron/renderer/styles.css"), "utf8");
+const service = readFileSync(resolve(root, "electron/services/youtube-job-service.mjs"), "utf8");
 
 assert.match(html, /HPSL|후킹|포인트|스토리|교훈/, "UI should expose HPSL structure");
 assert.match(html, /durationSummary/, "UI should show actual duration summary");
@@ -34,6 +35,7 @@ assert.match(html, /consoleFilters/, "UI should expose console filters");
 assert.match(html, /artifactPanel/, "UI should expose artifact panel");
 assert.match(html, /webwrightDiagnosticsEnabled|Webwright/, "Studio should expose optional Webwright diagnostics status");
 assert.match(html, /Top Title|titleOverlayEnabled/, "Studio should expose top title overlay controls");
+assert.match(html, /Auto uses generated draft title when empty/, "Top Title UI should explain automatic generated title behavior");
 assert.match(html, /titleOverlayPreview/, "Studio should show a top-title preview");
 
 assert.match(app, /updateDurationPreview/, "renderer should update duration preview");
@@ -63,6 +65,8 @@ assert.match(app, /CHATGPT_IMAGE_TOOL_NOT_FOUND/, "Studio should explain ChatGPT
 assert.match(app, /explainThumbnailFailure/, "Studio should centralize thumbnail failure explanations");
 assert.match(app, /updateTitleOverlayPreview/, "Studio should preview title overlay style");
 assert.match(app, /titleOverlayEnabled/, "Studio should submit title overlay options");
+assert.match(app, /titleOverlayMode/, "Studio should submit titleOverlayMode");
+assert.match(service, /titleOverlayMode/, "job service should forward titleOverlayMode");
 
 assert.match(css, /duration-summary|qa-summary|console-filters|artifact-panel/, "new Studio V2 summaries and console controls should be styled");
 assert.match(css, /title-overlay-preview/, "top title preview should be styled");

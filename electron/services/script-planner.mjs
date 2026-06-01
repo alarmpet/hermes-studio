@@ -4,6 +4,8 @@ import { outputModeForScene } from "./scene-output-mode-policy.mjs";
 const MIN_SCENES = 3;
 const MAX_SCENES = 18;
 const MAX_LONGFORM_SECONDS = 1200;
+const MAX_VIDEO_NARRATION_CHARS = 35;
+const MAX_IMAGE_NARRATION_CHARS = 70;
 
 export function splitKoreanSentences(script = "") {
   const normalized = String(script).replace(/\s+/g, " ").trim();
@@ -115,13 +117,18 @@ export function planScenesFromHpsl({ title, hpsl = {}, targetSeconds = 60, chara
     }
   }
 
-  const diff = totalDuration - tempScenes.reduce((sum, scene) => sum + scene.duration_seconds, 0);
-  if (diff && tempScenes.length) {
-    const last = tempScenes[tempScenes.length - 1];
+  const splitScenes = splitLongNarrationScenes(tempScenes, {
+    flowOutputMode,
+    hybridIntroVideoSceneCount,
+  });
+
+  const diff = totalDuration - splitScenes.reduce((sum, scene) => sum + scene.duration_seconds, 0);
+  if (diff && splitScenes.length) {
+    const last = splitScenes[splitScenes.length - 1];
     last.duration_seconds = Math.max(1, Math.min(10, last.duration_seconds + diff));
   }
 
-  return tempScenes.map((scene, index) => {
+  return splitScenes.map((scene, index) => {
     const order = index + 1;
     const visualCategory = visualCategoryForSection(scene.section, order);
     const outputMode = outputModeForScene({
@@ -210,6 +217,92 @@ function chunkSectionNarration(narration, duration, preferSentences) {
     chunks.splice(longestIndex, 1, ...split);
   }
   return chunks.length ? chunks : [narration];
+}
+
+function splitLongNarrationScenes(scenes = [], { flowOutputMode = "video", hybridIntroVideoSceneCount = 0 } = {}) {
+  const result = [];
+  for (const scene of scenes) {
+    const nextOrder = result.length + 1;
+    const plannedOutputMode = outputModeForScene({
+      sceneOrder: nextOrder,
+      flowOutputMode,
+      hybridIntroVideoSceneCount,
+    });
+    const maxChars = plannedOutputMode === "video" ? MAX_VIDEO_NARRATION_CHARS : MAX_IMAGE_NARRATION_CHARS;
+    const chunks = splitNarrationByCompactLength(scene.narration, maxChars);
+    if (chunks.length <= 1) {
+      result.push(scene);
+      continue;
+    }
+    const durations = allocateChunkDurations(chunks, Math.max(chunks.length, Number(scene.duration_seconds || chunks.length)));
+    for (let index = 0; index < chunks.length; index += 1) {
+      result.push({
+        ...scene,
+        narration: chunks[index],
+        duration_seconds: durations[index] || 1,
+        splitFromSection: scene.section,
+        splitPart: index + 1,
+      });
+    }
+  }
+  return result;
+}
+
+function splitNarrationByCompactLength(text = "", maxCompactChars = MAX_IMAGE_NARRATION_CHARS) {
+  const cleaned = cleanPlannerText(text);
+  if (!cleaned) return [];
+  if (compactLength(cleaned) <= maxCompactChars) return [cleaned];
+
+  const sentences = splitKoreanSentences(cleaned);
+  const units = (sentences.length ? sentences : cleaned.split(/(?<=[,，])\s*/u))
+    .flatMap((unit) => splitLongUnit(unit, maxCompactChars))
+    .map(cleanPlannerText)
+    .filter(Boolean);
+
+  const chunks = [];
+  let current = "";
+  for (const unit of units) {
+    const candidate = current ? `${current} ${unit}` : unit;
+    if (current && compactLength(candidate) > maxCompactChars) {
+      chunks.push(current);
+      current = unit;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks.flatMap((chunk) => splitLongUnit(chunk, maxCompactChars)).filter(Boolean);
+}
+
+function splitLongUnit(text = "", maxCompactChars = MAX_IMAGE_NARRATION_CHARS) {
+  const cleaned = cleanPlannerText(text);
+  if (!cleaned || compactLength(cleaned) <= maxCompactChars) return cleaned ? [cleaned] : [];
+  const words = cleaned.split(/\s+/u).filter(Boolean);
+  if (words.length <= 1) {
+    const chars = Array.from(cleaned);
+    const chunks = [];
+    for (let index = 0; index < chars.length; index += maxCompactChars) {
+      chunks.push(chars.slice(index, index + maxCompactChars).join(""));
+    }
+    return chunks;
+  }
+  const chunks = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (current && compactLength(candidate) > maxCompactChars) {
+      chunks.push(current);
+      current = word;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks;
+}
+
+function compactLength(text = "") {
+  return Array.from(String(text).replace(/\s+/g, "")).length;
 }
 
 function splitIntoChunks(text, count) {

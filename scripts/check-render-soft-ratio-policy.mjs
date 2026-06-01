@@ -16,13 +16,21 @@ assert.equal(longImageModeSoft.requiresRegeneration, false, "image-mode scenes s
 assert.equal(longImageModeSoft.strategy, "slowdown-loop");
 
 const hardByRatio = classifyDurationSyncPolicy({ order: 6, videoDuration: 8, audioDuration: 14 });
-assert.equal(hardByRatio.requiresRegeneration, true, "ratio above 1.70 should require regeneration");
-assert.equal(hardByRatio.failureCode, "SCENE_DURATION_MISMATCH");
-assert.equal(hardByRatio.failedSceneOrder, 6);
+assert.equal(hardByRatio.requiresRegeneration, false, "short Flow video clips up to 2.5x should render with loop-extension instead of failing");
+assert.equal(hardByRatio.strategy, "loop-extension");
 
 const hardByHold = classifyDurationSyncPolicy({ order: 3, videoDuration: 8, audioDuration: 12.5 });
-assert.equal(hardByHold.requiresRegeneration, true, "more than 4s of extra audio should require regeneration for short image-mode scenes");
+assert.equal(hardByHold.requiresRegeneration, false, "short Flow video clips with moderate extra audio should not fail final render");
+assert.equal(hardByHold.strategy, "slowdown-loop");
 assert.equal(hardByHold.extraHoldSeconds > 4, true);
+
+const reportedFailureCase = classifyDurationSyncPolicy({ order: 1, videoDuration: 8, audioDuration: 16.88 });
+assert.equal(reportedFailureCase.requiresRegeneration, false, "reported scene=1 ratio=2.11 should not fail final render");
+assert.equal(reportedFailureCase.strategy, "loop-extension", "reported scene=1 ratio=2.11 should loop the Flow clip instead of freezing");
+
+const extremeVideoMismatch = classifyDurationSyncPolicy({ order: 1, videoDuration: 8, audioDuration: 25 });
+assert.equal(extremeVideoMismatch.requiresRegeneration, true, "extreme video mismatch should still require regeneration");
+assert.equal(extremeVideoMismatch.failureCode, "SCENE_DURATION_MISMATCH");
 
 const longformSoftByRatio = classifyDurationSyncPolicy({ order: 5, videoDuration: 43, audioDuration: 50.46 });
 assert.equal(longformSoftByRatio.requiresRegeneration, false, "longform scenes should not fail only because absolute hold exceeds 2s when ratio is soft");

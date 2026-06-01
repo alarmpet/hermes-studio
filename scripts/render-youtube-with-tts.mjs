@@ -11,6 +11,7 @@ import { buildXfadeFilterGraph, validateXfadePlan } from "../electron/services/t
 import { getTransitionConfig } from "../electron/services/render-effect-presets.mjs";
 import { renderStableImageSequenceClip } from "../electron/services/stable-image-sequence-renderer.mjs";
 import { getTitleOverlayPreset } from "../electron/services/title-overlay-presets.mjs";
+import { wrapBalancedTitle } from "../electron/services/title-overlay-layout.mjs";
 
 const ROOT = "C:/Users/amd/hermes";
 const TTS_ROOT = "C:/Users/amd/supertonic3-local-tts-20260517-r4/supertonic3-local-tts";
@@ -115,28 +116,65 @@ function compactTitleText(text = "") {
     .slice(0, 80);
 }
 
-function wrapTitle(text, maxChars, maxLines) {
-  const lines = [];
-  const tokens = compactTitleText(text).split(/(\s+)/u).filter(Boolean);
-  let current = "";
-  for (const token of tokens) {
-    const next = current ? `${current}${token}` : token.trimStart();
-    if (Array.from(next).length > maxChars && current.trim()) {
-      lines.push(current.trim());
-      current = token.trimStart();
-    } else {
-      current = next;
+function buildTitleOverlayLayout({ overlay = {}, isLandscape = false, lines = [] } = {}) {
+  const safeTop = Math.max(0, Math.min(isLandscape ? 90 : 160, Number(overlay.safeTop ?? (isLandscape ? 40 : 84))));
+  const horizontalPadding = isLandscape ? 112 : 96;
+  const topPadding = isLandscape ? 28 : 34;
+  const bottomPadding = isLandscape ? 32 : 42;
+  const baseFontSize = isLandscape ? 58 : 78;
+  const maxLineLength = Math.max(1, ...lines.map((line) => Array.from(line).length));
+  const usableWidth = TARGET_WIDTH - horizontalPadding * 2;
+  const fittedFontSize = Math.floor(usableWidth / Math.max(1, maxLineLength * 0.92));
+  const fontSize = Math.max(isLandscape ? 42 : 58, Math.min(baseFontSize, fittedFontSize));
+  const lineHeight = Math.round(fontSize * 1.1);
+  const bandHeight = topPadding + bottomPadding + lineHeight * Math.max(1, lines.length);
+  const textY = safeTop + topPadding + Math.round(fontSize * 0.82);
+  return { safeTop, horizontalPadding, topPadding, bottomPadding, bandHeight, fontSize, lineHeight, textY };
+}
+
+function titleAccentKeywords(overlay = {}, title = "") {
+  const explicit = Array.isArray(overlay.keywords) ? overlay.keywords : [];
+  const fallback = compactTitleText(title)
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/u)
+    .map(normalizeTitleKeyword)
+    .filter((token) => token.length >= 2)
+    .slice(0, 2);
+  return Array.from(new Set([...explicit, ...fallback].map(normalizeTitleKeyword).filter((token) => token.length >= 2))).slice(0, 3);
+}
+
+function normalizeTitleKeyword(value = "") {
+  return String(value)
+    .replace(/(의|은|는|이|가|을|를|에|에서|으로|로|와|과|도|만|처럼)$/u, "")
+    .trim();
+}
+
+function splitTitleKeywordSegments(line = "", keywords = []) {
+  const segments = [];
+  let rest = String(line);
+  while (rest) {
+    const match = keywords
+      .map((keyword) => ({ keyword, index: rest.indexOf(keyword) }))
+      .filter((item) => item.index >= 0)
+      .sort((a, b) => a.index - b.index || b.keyword.length - a.keyword.length)[0];
+    if (!match) {
+      segments.push({ text: rest, accent: false });
+      break;
     }
-    if (lines.length >= maxLines) break;
+    if (match.index > 0) segments.push({ text: rest.slice(0, match.index), accent: false });
+    segments.push({ text: match.keyword, accent: true });
+    rest = rest.slice(match.index + match.keyword.length);
   }
-  if (current.trim() && lines.length < maxLines) lines.push(current.trim());
-  return lines.flatMap((line) => {
-    if (Array.from(line).length <= maxChars) return [line];
-    const chunks = [];
-    const chars = Array.from(line);
-    for (let i = 0; i < chars.length; i += maxChars) chunks.push(chars.slice(i, i + maxChars).join(""));
-    return chunks;
-  }).slice(0, maxLines).filter(Boolean);
+  return segments.filter((segment) => segment.text);
+}
+
+function buildTitleLineSvg({ line, y, preset, fontSize, accentKeywords }) {
+  const segments = splitTitleKeywordSegments(line, accentKeywords);
+  const tspans = segments.map((segment) => {
+    const fill = segment.accent && preset.accent ? preset.accent : preset.primary;
+    return `<tspan fill="${fill}">${escapeXml(segment.text)}</tspan>`;
+  }).join("");
+  return `<text x="${TARGET_WIDTH / 2}" y="${y}" text-anchor="middle" font-family="Malgun Gothic, Arial, sans-serif" font-size="${fontSize}" font-weight="900" fill="${preset.primary}" stroke="${preset.outline}" stroke-opacity="${svgOpacity(preset.outlineOpacity)}" stroke-width="7" paint-order="stroke fill">${tspans}</text>`;
 }
 
 function gradientStopsSvg() {
@@ -159,20 +197,20 @@ async function createTitleOverlayImage({ draftTitle, outputPath }) {
   if (!title) return null;
   const preset = getTitleOverlayPreset(overlay.styleId);
   const isLandscape = TARGET_ASPECT_RATIO === "16:9";
-  const safeTop = Math.max(0, Math.min(isLandscape ? 90 : 160, Number(overlay.safeTop ?? (isLandscape ? 40 : 84))));
-  const bandHeight = isLandscape ? 150 : 260;
-  const fontSize = isLandscape ? 64 : 86;
-  const maxChars = isLandscape ? 19 : 13;
-  const lines = wrapTitle(title, maxChars, Number(overlay.maxLines || 2));
-  const textY = safeTop + Math.round(bandHeight * 0.34);
-  const lineHeight = Math.round(fontSize * 1.08);
-  const lineSvg = lines.map((line, index) => {
-    const fill = index === 0 && preset.accent ? preset.accent : preset.primary;
-    return `<text x="${TARGET_WIDTH / 2}" y="${textY + index * lineHeight}" text-anchor="middle" font-family="Malgun Gothic, Arial, sans-serif" font-size="${fontSize}" font-weight="900" fill="${fill}" stroke="${preset.outline}" stroke-opacity="${svgOpacity(preset.outlineOpacity)}" stroke-width="8" paint-order="stroke fill">${escapeXml(line)}</text>`;
-  }).join("");
+  const maxChars = isLandscape ? 18 : 10;
+  const lines = wrapBalancedTitle(title, { maxChars, maxLines: Number(overlay.maxLines || 2) });
+  const layout = buildTitleOverlayLayout({ overlay, isLandscape, lines });
+  const accentKeywords = titleAccentKeywords(overlay, title);
+  const lineSvg = lines.map((line, index) => buildTitleLineSvg({
+    line,
+    y: layout.textY + index * layout.lineHeight,
+    preset,
+    fontSize: layout.fontSize,
+    accentKeywords,
+  })).join("");
   const bg = preset.id === "minimal-shadow"
-    ? `<rect x="0" y="0" width="${TARGET_WIDTH}" height="${safeTop + bandHeight}" fill="url(#topFade)"/>`
-    : `<rect x="0" y="${safeTop}" width="${TARGET_WIDTH}" height="${bandHeight}" fill="${preset.background}" fill-opacity="${svgOpacity(preset.backgroundOpacity)}" rx="0"/>`;
+    ? `<rect x="0" y="0" width="${TARGET_WIDTH}" height="${layout.safeTop + layout.bandHeight}" fill="url(#topFade)"/>`
+    : `<rect x="0" y="${layout.safeTop}" width="${TARGET_WIDTH}" height="${layout.bandHeight}" fill="${preset.background}" fill-opacity="${svgOpacity(preset.backgroundOpacity)}" rx="0"/>`;
   const svg = `<svg width="${TARGET_WIDTH}" height="${TARGET_HEIGHT}" viewBox="0 0 ${TARGET_WIDTH} ${TARGET_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
     <defs><linearGradient id="topFade" x1="0" y1="0" x2="0" y2="1">${gradientStopsSvg()}</linearGradient></defs>
     ${bg}
@@ -182,13 +220,19 @@ async function createTitleOverlayImage({ draftTitle, outputPath }) {
   const metadata = {
     enabled: true,
     title,
+    source: overlay.source || (overlay.text ? "render-options" : "draft-title"),
     styleId: preset.id,
     outputPath,
     width: TARGET_WIDTH,
     height: TARGET_HEIGHT,
-    safeTop,
-    bandHeight,
+    safeTop: layout.safeTop,
+    horizontalPadding: layout.horizontalPadding,
+    topPadding: layout.topPadding,
+    bottomPadding: layout.bottomPadding,
+    bandHeight: layout.bandHeight,
+    fontSize: layout.fontSize,
     lines,
+    accentKeywords,
   };
   writeFileSync(join(JOB_DIR, "title-overlay.json"), JSON.stringify(metadata, null, 2), "utf8");
   return outputPath;
@@ -411,7 +455,20 @@ async function renderSceneVideo({ rawVideo, audioPath, audioDuration, order, out
     throw new Error(`RENDER_QA_FAILURE: ${failure.failureCode} scene=${failure.failedSceneOrder} ratio=${failure.ratio}`);
   }
 
-  if (policy.strategy === "setpts" || policy.strategy === "slowdown-loop") {
+  if (policy.strategy === "loop-extension") {
+    run(ffmpegPath, [
+      "-y",
+      "-stream_loop", "-1",
+      "-i", rawVideo,
+      "-an",
+      "-t", String(audioDuration),
+      "-vf", TARGET_VIDEO_FILTER,
+      "-c:v", "libx264",
+      "-preset", "veryfast",
+      "-crf", "20",
+      adjustedVideo,
+    ]);
+  } else if (policy.strategy === "setpts" || policy.strategy === "slowdown-loop") {
     const setpts = ratio.toFixed(6);
     run(ffmpegPath, [
       "-y",

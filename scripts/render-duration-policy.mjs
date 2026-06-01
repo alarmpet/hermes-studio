@@ -29,10 +29,14 @@ export function classifyDurationSyncPolicy({ order, videoDuration, audioDuration
 
   const imageMotionSoftMismatch = isImageMode
     ? ratio > 1.2 && ratio <= 3 && extraHoldSeconds <= 30
-    : ratio > 1.2 && ratio <= 1.7 && extraHoldSeconds <= 4;
+    : ratio > 1.2 && ratio <= 1.7 && extraHoldSeconds <= 8;
+  const videoLoopExtensionMismatch = !isImageMode
+    && ratio > 1.7
+    && ratio <= 2.5
+    && extraHoldSeconds <= 12;
 
   if ((isImageMode && (ratio > 3 || extraHoldSeconds > 30))
-    || (!isImageMode && (ratio > 1.7 || (extraHoldSeconds > 4 && !longformSoftMismatch)))) {
+    || (!isImageMode && !videoLoopExtensionMismatch && !imageMotionSoftMismatch && (ratio > 1.7 || (extraHoldSeconds > 4 && !longformSoftMismatch)))) {
     return {
       ...base,
       strategy: "regenerate",
@@ -51,11 +55,13 @@ export function classifyDurationSyncPolicy({ order, videoDuration, audioDuration
   if (ratio > 1.2 || longformSoftMismatch || imageMotionSoftMismatch) {
     return {
       ...base,
-      strategy: "slowdown-loop",
+      strategy: videoLoopExtensionMismatch ? "loop-extension" : "slowdown-loop",
       qualityWarnings: [{
-        code: "SOFT_DURATION_MISMATCH",
+        code: videoLoopExtensionMismatch ? "VIDEO_LOOP_EXTENSION" : "SOFT_DURATION_MISMATCH",
         sceneOrder: Number(order || 0),
-        message: `Scene ${order} needs a soft slowdown/loop instead of a freeze frame.`,
+        message: videoLoopExtensionMismatch
+          ? `Scene ${order} uses a looped Flow clip extension instead of failing final render.`
+          : `Scene ${order} needs a soft slowdown/loop instead of a freeze frame.`,
         ratio: Number(ratio.toFixed(3)),
         extraHoldSeconds: Number(extraHoldSeconds.toFixed(3)),
       }],

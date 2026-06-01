@@ -32,9 +32,27 @@ assert.equal(keywordJob.options.scriptStructure, "hpsl");
 assert.equal(keywordJob.options.sendIntermediateMedia, false);
 assert.equal(keywordJob.options.flowOutputMode, "hybrid");
 assert.equal(keywordJob.options.titleOverlayEnabled, true);
+assert.equal(keywordJob.options.titleOverlayMode, "auto", "title overlay should default to auto mode");
 assert.equal(keywordJob.options.titleOverlayStyleId, "bold-black-accent");
 assert.equal(keywordJob.upload.enabled, false);
 assert.equal(keywordJob.upload.containsSyntheticMedia, true);
+
+const manualTitleJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "구글 글래스",
+  options: { titleOverlayText: "직접 쓴 상단 제목", titleOverlayMode: "manual" },
+});
+assert.equal(manualTitleJob.options.titleOverlayMode, "manual");
+assert.equal(manualTitleJob.options.titleOverlayText, "직접 쓴 상단 제목");
+
+assert.throws(
+  () => normalizeYouTubeJobRequest({
+    sourceType: "keyword",
+    sourceValue: "구글 글래스",
+    options: { titleOverlayMode: "bad-mode" },
+  }),
+  /Unknown titleOverlayMode/,
+);
 
 const urlJob = normalizeYouTubeJobRequest({
   sourceType: "url",

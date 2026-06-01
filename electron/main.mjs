@@ -13,6 +13,16 @@ import { findChromeExecutable } from "./services/browser-profile-service.mjs";
 import { listStylePresets } from "./services/style-presets.mjs";
 import { listVisibleVoicePresets } from "./services/voice-presets.mjs";
 import { getRecentWorkflowEvents } from "./services/workflow-history-service.mjs";
+import {
+  buildDefaultUploadMetadata,
+  computeFileHash,
+  readUploadMetadata,
+  readUploadState,
+  validateThumbnailForYouTube,
+  validateUploadMetadata,
+  writeUploadMetadata,
+  writeUploadState,
+} from "./services/youtube-upload-metadata.mjs";
 import { buildDesktopJobRequest, createYouTubeJob, retryThumbnailForJob, writeDesktopResult } from "./services/youtube-job-service.mjs";
 import { uploadVideoToYouTube } from "../pipeline/youtube-upload.mjs";
 import { mirrorWorkflowEventToDb } from "../workflow-db-events.mjs";
@@ -149,6 +159,155 @@ async function loadExistingAssets(jobDir) {
     sceneMedia: (manifest.scenes || []).filter((scene) => scene.status === "completed"),
     sceneMediaManifestPath: manifestPath,
   };
+}
+
+async function loadUploadDraftAssets(jobDir) {
+  const draftPath = join(jobDir, "draft.json");
+  const metadataPath = join(jobDir, "metadata.json");
+  const draft = existsSync(draftPath) ? await readJsonFile(draftPath) : {};
+  const metadata = existsSync(metadataPath) ? await readJsonFile(metadataPath) : {};
+  return { ...metadata, draft, jobDir };
+}
+
+async function getUploadDraftForJob(jobId) {
+  if (!jobId) return { ok: false, status: "job-id-required", message: "Select a completed job before uploading." };
+  const jobRecord = await readJob(paths.jobsDir, jobId);
+  if (!jobRecord?.jobDir) return { ok: false, status: "job-dir-missing", message: `Job directory is missing for ${jobId}.` };
+  const existing = await readUploadMetadata(jobRecord.jobDir);
+  const uploadState = await readUploadState(jobRecord.jobDir);
+  if (existing) return { ok: true, metadata: existing, uploadState };
+  const assets = await loadUploadDraftAssets(jobRecord.jobDir).catch(() => ({ jobDir: jobRecord.jobDir }));
+  const metadata = await writeUploadMetadata(jobRecord.jobDir, buildDefaultUploadMetadata(jobRecord, assets));
+  return { ok: true, metadata, uploadState };
+}
+
+async function saveUploadDraftForJob(jobId, draft = {}) {
+  if (!jobId) return { ok: false, status: "job-id-required", message: "Select a completed job before saving upload metadata." };
+  const jobRecord = await readJob(paths.jobsDir, jobId);
+  if (!jobRecord?.jobDir) return { ok: false, status: "job-dir-missing", message: `Job directory is missing for ${jobId}.` };
+  const current = await getUploadDraftForJob(jobId);
+  const validation = validateUploadMetadata({ ...(current.metadata || {}), ...draft, jobId });
+  if (!validation.ok) return { ok: false, status: "validation-failed", errors: validation.errors };
+  const metadata = await writeUploadMetadata(jobRecord.jobDir, validation.metadata);
+  return { ok: true, metadata, uploadState: await readUploadState(jobRecord.jobDir) };
+}
+
+async function uploadSelectedJobToYouTube(jobId, draft = {}) {
+  if (!jobId) return { ok: false, status: "job-id-required", message: "Select a completed job before uploading." };
+  const jobRecord = await readJob(paths.jobsDir, jobId);
+  if (!jobRecord?.jobDir) return { ok: false, status: "job-dir-missing", message: `Job directory is missing for ${jobId}.` };
+  const saved = await saveUploadDraftForJob(jobId, draft);
+  if (!saved.ok) return saved;
+  const metadata = saved.metadata;
+  if (!metadata.videoPath || !existsSync(metadata.videoPath)) {
+    return { ok: false, status: "video-missing", code: "YOUTUBE_VIDEO_MISSING", message: `Final video does not exist: ${metadata.videoPath}` };
+  }
+  const thumbnailValidation = await validateThumbnailForYouTube(metadata.thumbnailOptimizedPath || metadata.thumbnailPath);
+  if (!thumbnailValidation.ok) {
+    sendJobEvent({
+      type: "youtube-upload-failed",
+      jobId,
+      phase: "upload",
+      status: "failed",
+      message: thumbnailValidation.message,
+      details: { failureCode: thumbnailValidation.code, thumbnailPath: metadata.thumbnailPath },
+    });
+    return { ok: false, status: "thumbnail-invalid", ...thumbnailValidation };
+  }
+
+  const videoHash = await computeFileHash(metadata.videoPath);
+  const previousState = await readUploadState(jobRecord.jobDir);
+  if (previousState?.status === "uploaded" && previousState.videoHash === videoHash && previousState.videoId) {
+    return {
+      ok: false,
+      status: "duplicate-upload-blocked",
+      code: "YOUTUBE_DUPLICATE_UPLOAD_BLOCKED",
+      message: "This video was already uploaded for this job.",
+      uploadState: previousState,
+    };
+  }
+
+  await writeUploadState(jobRecord.jobDir, {
+    jobId,
+    status: "uploading",
+    videoPath: metadata.videoPath,
+    videoHash,
+    startedAt: new Date().toISOString(),
+  });
+  sendJobEvent({
+    type: "youtube-upload-started",
+    jobId,
+    phase: "upload",
+    status: "running",
+    percent: 96,
+    message: "YouTube upload metadata validated.",
+    details: { videoPath: metadata.videoPath },
+  });
+
+  const uploadResult = await uploadVideoToYouTube({
+    videoPath: metadata.videoPath,
+    thumbnailPath: metadata.thumbnailOptimizedPath || metadata.thumbnailPath,
+    metadata,
+    tokenPath: paths.youtubeTokenPath,
+    clientSecretsPath: paths.youtubeClientSecretsPath,
+    onProgress: (progress) => sendJobEvent({
+      type: "job-progress",
+      jobId,
+      phase: "upload",
+      status: progress.status || "running",
+      percent: 96,
+      message: progress.message || "Uploading video to YouTube.",
+      details: progress.details || {},
+    }),
+  });
+
+  if (!uploadResult.ok) {
+    const state = await writeUploadState(jobRecord.jobDir, {
+      jobId,
+      status: "failed",
+      videoPath: metadata.videoPath,
+      videoHash,
+      lastError: uploadResult.message || uploadResult.status,
+      failureCode: uploadResult.code || "YOUTUBE_UPLOAD_FAILED",
+      startedAt: previousState?.startedAt || new Date().toISOString(),
+    });
+    sendJobEvent({
+      type: "youtube-upload-failed",
+      jobId,
+      phase: "upload",
+      status: "failed",
+      message: uploadResult.message || "YouTube upload failed.",
+      details: { failureCode: uploadResult.code || "YOUTUBE_UPLOAD_FAILED", uploadState: state },
+    });
+    return { ...uploadResult, uploadState: state };
+  }
+
+  const state = await writeUploadState(jobRecord.jobDir, {
+    jobId,
+    status: "uploaded",
+    videoPath: metadata.videoPath,
+    videoHash,
+    videoId: uploadResult.videoId,
+    youtubeUrl: uploadResult.youtubeUrl,
+    thumbnailBound: Boolean(uploadResult.thumbnailBound),
+    completedAt: new Date().toISOString(),
+  });
+  await upsertJob(paths.jobsDir, {
+    ...jobRecord,
+    uploadState: state,
+    uploadedVideoId: uploadResult.videoId,
+    uploadedUrl: uploadResult.youtubeUrl,
+  });
+  sendJobEvent({
+    type: "youtube-upload-completed",
+    jobId,
+    phase: "upload",
+    status: "completed",
+    percent: 100,
+    message: "YouTube upload complete.",
+    details: { videoId: uploadResult.videoId, youtubeUrl: uploadResult.youtubeUrl, thumbnailBound: uploadResult.thumbnailBound },
+  });
+  return { ...uploadResult, uploadState: state };
 }
 
 async function persistRecoveredJob({ job, jobDir, finalVideo, status = "completed" }) {
@@ -441,21 +600,17 @@ ipcMain.handle("youtube:retryThumbnail", async (_event, jobId) => {
   return thumbnailResult;
 });
 
-ipcMain.handle("youtube:approveUpload", async () => {
-  if (!latestCompletedJob?.finalVideo?.finalPath) {
-    return { ok: false, status: "no-completed-video", message: "No completed video is available for upload approval." };
+ipcMain.handle("youtube:getUploadDraft", async (_event, jobId) => getUploadDraftForJob(jobId));
+
+ipcMain.handle("youtube:saveUploadDraft", async (_event, jobId, draft) => saveUploadDraftForJob(jobId, draft));
+
+ipcMain.handle("youtube:uploadJob", async (_event, jobId, draft) => uploadSelectedJobToYouTube(jobId, draft));
+
+ipcMain.handle("youtube:approveUpload", async (_event, jobId) => {
+  if (!jobId) {
+    return { ok: false, status: "job-id-required", message: "Select a completed job before uploading." };
   }
-  return uploadVideoToYouTube({
-    videoPath: latestCompletedJob.finalVideo.finalPath,
-    thumbnailPath: latestCompletedJob.thumbnail?.path,
-    tokenPath: paths.youtubeTokenPath,
-    metadata: {
-      title: latestCompletedJob.assets?.draft?.title || latestCompletedJob.job.sourceValue,
-      description: latestCompletedJob.assets?.draft?.script || "",
-      privacyStatus: latestCompletedJob.job.upload?.privacyStatus || "private",
-      containsSyntheticMedia: true,
-    },
-  });
+  return uploadSelectedJobToYouTube(jobId, {});
 });
 
 app.whenReady().then(() => {

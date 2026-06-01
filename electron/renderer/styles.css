@@ -596,6 +596,41 @@ output {
   gap: 12px;
 }
 
+.upload-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.upload-panel[hidden] {
+  display: none;
+}
+
+.upload-media-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.path-button {
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.field-hint {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.upload-option-row {
+  align-items: center;
+}
+
+.upload-actions {
+  justify-content: flex-start;
+}
+
 .progress-message {
   min-height: 24px;
   color: var(--ink);

@@ -9,6 +9,7 @@ import { SCRIPT_LENGTH_PRESETS, SUBTITLE_STYLE_PRESETS } from "./youtube-job-sch
 import { assertDraftQuality, validateDraftQuality } from "./scripts/youtube-draft-quality.mjs";
 import { assertDraftDurationContract } from "./scripts/youtube-draft-duration.mjs";
 import { buildLongformMediaPlan, isLongformJob, planLongformScenesFromDraft } from "./electron/services/longform-planner.mjs";
+import { resolveTitleOverlayText } from "./electron/services/title-overlay-text-resolver.mjs";
 
 const MIN_SCENES = 3;
 const ROOT = process.env.HERMES_ROOT || "C:/Users/amd/hermes";
@@ -100,6 +101,7 @@ export function buildYouTubeDraftPrompt({ mode, input, article } = {}) {
     "Create an original, copyright-safe Korean video draft.",
     "Do not copy source sentences. Transform the idea into new wording.",
     "Return only JSON. No markdown.",
+    "The title is used as a top video overlay, so it must be short enough for two clean Shorts title lines: 18 Korean characters or fewer excluding spaces, no long subtitle-style sentence.",
     "Schema:",
     "{\"title\":\"string\",\"structure\":\"HPSL\",\"hpsl\":{\"hook\":{\"goal\":\"Hook\",\"narration\":\"Korean narration\",\"target_seconds\":7},\"point\":{\"goal\":\"Point\",\"narration\":\"Korean narration\",\"target_seconds\":13},\"story\":{\"goal\":\"Story\",\"narration\":\"Korean narration\",\"target_seconds\":30},\"lesson\":{\"goal\":\"Lesson\",\"narration\":\"Korean narration\",\"target_seconds\":10}},\"character_profile\":\"English stable recurring character description\",\"duration_seconds\":60,\"script\":\"hook + point + story + lesson\",\"scenes\":[{\"order\":1,\"narration\":\"string\",\"image_prompt\":\"English 9:16 cinematic prompt\",\"duration_seconds\":8}]}",
     "Rules:",
@@ -155,6 +157,7 @@ export function buildRenderOptions(job) {
     titleOverlay: {
       enabled: Boolean(job.options.titleOverlayEnabled),
       text: job.options.titleOverlayText || "",
+      keywords: [],
       styleId: job.options.titleOverlayStyleId || "bold-black-accent",
       maxLines: job.options.titleOverlayMaxLines || 2,
       safeTop: job.options.titleOverlaySafeTop ?? 84,
@@ -346,6 +349,21 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
     });
   }
 
+  const resolvedTitleOverlay = resolveTitleOverlayText({
+    job,
+    draft,
+    sourceValue: job.sourceValue,
+  });
+  renderOptions.titleOverlay.text = resolvedTitleOverlay.text;
+  renderOptions.titleOverlay.source = resolvedTitleOverlay.source;
+  renderOptions.titleOverlay.keywords = buildTitleOverlayKeywords({
+    job,
+    draft,
+    title: resolvedTitleOverlay.text,
+  });
+  job.options.titleOverlayResolvedText = resolvedTitleOverlay.text;
+  job.options.titleOverlayTextSource = resolvedTitleOverlay.source;
+
   const requestPath = join(jobDir, "job-request.json");
   const draftPath = join(jobDir, "draft.json");
   const renderOptionsPath = join(jobDir, "render-options.json");
@@ -435,6 +453,7 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
     sourceValue: job.sourceValue,
     draft,
     renderOptions,
+    titleOverlayTextSource: job.options.titleOverlayTextSource || "",
     sceneMedia,
     sceneMediaManifestPath,
     longformMediaPlan,
@@ -506,6 +525,38 @@ async function writeSceneMediaManifest(manifestPath, manifest) {
     updatedAt: new Date().toISOString(),
     scenes: manifest.scenes,
   }, null, 2), "utf8");
+}
+
+function buildTitleOverlayKeywords({ job = {}, draft = {}, title = "" } = {}) {
+  const sourceText = job.sourceType === "url" ? "" : job.sourceValue;
+  const candidates = [
+    sourceText,
+    title,
+    draft.title,
+    draft.hpsl?.hook?.narration,
+    draft.hpsl?.point?.narration,
+  ];
+  const stopWords = new Set(["오늘", "핵심", "이야기", "숨은", "이유", "반전", "다시", "테스트"]);
+  const keywords = [];
+  for (const candidate of candidates) {
+    const tokens = String(candidate || "")
+      .replace(/https?:\/\/\S+/gi, " ")
+      .replace(/[^\p{L}\p{N}\s]/gu, " ")
+      .split(/\s+/u)
+      .map(normalizeTitleKeyword)
+      .filter((token) => token.length >= 2 && !stopWords.has(token));
+    for (const token of tokens) {
+      if (!keywords.includes(token)) keywords.push(token);
+      if (keywords.length >= 3) return keywords;
+    }
+  }
+  return keywords;
+}
+
+function normalizeTitleKeyword(value = "") {
+  return String(value)
+    .replace(/(의|은|는|이|가|을|를|에|에서|으로|로|와|과|도|만|처럼)$/u, "")
+    .trim();
 }
 
 export async function renderFinalYouTubeVideo(job, assets = {}, context = {}) {

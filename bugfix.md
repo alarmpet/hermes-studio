@@ -1,5 +1,100 @@
 # HermeStudio Bugfix & Troubleshooting Checklist
 
+## 2026-06-01 - Hybrid intro video scene narration must fit one Flow clip
+
+### 증상
+
+- 최종 렌더가 `SCENE_DURATION_MISMATCH scene=1 ratio=3.648571`로 실패.
+- 실패 산출물 `youtube-1780246662039` 기준:
+  - 1번 장면 대사: 173자.
+  - 1번 TTS: 약 25.5초.
+  - 1번 Google Flow 비디오: 8초.
+- 8초짜리 Flow 영상 한 개에 25초 음성을 얹게 되어 freeze/repeat 위험이 너무 높아 렌더 QA가 중단함.
+
+### 원인
+
+- HPSL 장면 플래너가 Hook 섹션 목표 시간이 7초라는 값만 보고 긴 Hook 문단을 1개 video scene으로 유지했음.
+- 실제 대사 글자 수/TTS 예상 길이를 기준으로 초반 video scene을 나누는 가드가 없었음.
+- 이전 `loop-extension` 완화는 `ratio <= 2.5`까지의 중간 mismatch만 처리하기 위한 응급 완화였고, `ratio=3.65` 같은 극단 케이스에는 맞지 않음.
+
+### 수정
+
+- `electron/services/script-planner.mjs`
+  - Hybrid intro video 장면은 공백 제외 35자 이하로 자동 분할.
+  - 초반 video clip 수를 넘는 나머지 Hook 내용은 image scene으로 이어받게 구성.
+  - image scene도 너무 긴 문단은 공백 제외 70자 단위로 쪼개 장면과 자막이 과도하게 길어지지 않게 함.
+- `scripts/check-hybrid-intro-video-narration-split.mjs`
+  - 실제 실패 Hook과 유사한 173자 대사를 넣어 첫 video scene이 35자 이하로 분할되는지 회귀 테스트 추가.
+  - 전체 scene duration 합계가 목표 길이를 유지하는지도 검증.
+- `package.json`
+  - 위 회귀 테스트를 `npm.cmd run check`에 포함.
+
+### 운영 규칙
+
+1. Hybrid mode에서 `flowOutputMode=hybrid`, `hybridIntroVideoSceneCount=1`이면 1번 video scene은 약 8초 분량만 담당해야 함.
+2. 긴 Hook은 `video 1개 + image 여러 개`로 자동 분할되어야 하며, 25초 Hook 전체가 video 1개에 들어가면 버그로 본다.
+3. 렌더에서 `SCENE_DURATION_MISMATCH ratio > 2.5`가 다시 나오면 먼저 `draft.json`의 해당 scene narration 길이가 35자를 넘는지 확인한다.
+
+## 2026-06-01 - Top title must be generated within two clean lines
+
+### 증상
+
+- 기사 제목을 그대로 상단 타이틀로 쓰면 2줄 안에 보기 좋게 들어가지 않거나 일부가 잘려 보임.
+- 예: `가벼워지는 통신비, 내 스마트폰 요금도 줄어들까?`가 상단에서 앞부분만 출력됨.
+
+### 원인
+
+- 자동 상단 제목 보정 기준이 `34자`라서 쇼츠 상단 2줄 타이틀 기준으로는 너무 길었음.
+- 생성 프롬프트에도 상단 오버레이용 제목 길이 제한이 명시되지 않아 Draft 제목이 문장형으로 길게 생성될 수 있었음.
+
+### 수정
+
+- 자동 상단 제목은 공백 제외 18자 이하로 보정.
+- 질문형 긴 제목은 핵심 키워드와 질문 꼬리만 남겨 2줄 안에 들어가게 축약.
+- Gemini/Gems/OpenRouter Draft 생성 프롬프트에 `18 Korean characters or fewer excluding spaces` 제목 규칙 추가.
+- 회귀 테스트에서 최신 문제 제목이 2줄 이내로 래핑되는지 검증.
+
+## 2026-06-01 - Final render failed: SCENE_DURATION_MISMATCH scene=1 ratio=2.11
+
+### 증상
+
+- Hermes Studio packaged app에서 최종 렌더가 `YouTube final render failed with exit code 1`로 중단됨.
+- `render-youtube-with-tts.mjs`가 `RENDER_QA_FAILURE: SCENE_DURATION_MISMATCH scene=1 ratio=2.11`을 throw.
+- 실패 JSON 핵심값: `failedSceneOrder=1`, `ratio=2.11`, `extraHoldSeconds=7.77`, `freezeRisk=high`, `requiresRegeneration=true`.
+
+### 원인
+
+- 장면 1의 TTS 음성이 Google Flow 원본 비디오 클립보다 약 2.11배 길었음.
+- 기존 `scripts/render-duration-policy.mjs`는 일반 video-mode 장면에서 `ratio > 1.7` 또는 추가 hold가 4초를 넘으면 무조건 재생성 필요로 분류했음.
+- 렌더러의 차단 자체는 freeze 방지 목적상 맞았지만, 실제 운영 UX에서는 최종 영상 전체가 실패해버리는 문제가 있었음.
+- Hybrid 모드 초반 Flow video 장면은 짧은 8초 클립 위에 긴 hook narration이 붙기 쉬워 이 케이스가 반복될 수 있음.
+
+### 수정
+
+- `scripts/render-duration-policy.mjs`
+  - video-mode 장면도 `ratio <= 2.5` 그리고 `extraHoldSeconds <= 12` 범위에서는 실패시키지 않고 `loop-extension` 전략으로 분류.
+  - moderate mismatch(`ratio <= 1.7`, `extraHoldSeconds <= 8`)는 기존처럼 `slowdown-loop`로 처리.
+  - 극단적인 mismatch는 계속 `SCENE_DURATION_MISMATCH`로 차단.
+- `scripts/render-youtube-with-tts.mjs`
+  - `loop-extension` 전략일 때 `ffmpeg -stream_loop -1`로 원본 Flow 클립을 오디오 길이에 맞게 반복 확장.
+  - 정지 프레임으로 늘리는 방식이 아니라 클립 반복으로 처리해 freeze risk를 낮춤.
+- `scripts/check-render-soft-ratio-policy.mjs`
+  - 실제 장애 케이스인 `videoDuration=8`, `audioDuration=16.88`, `ratio=2.11`이 실패하지 않고 `loop-extension`이 되는지 회귀 테스트 추가.
+
+### 검증
+
+```powershell
+node scripts\check-render-soft-ratio-policy.mjs
+node --check scripts\render-youtube-with-tts.mjs
+node --check scripts\render-duration-policy.mjs
+```
+
+### 운영 체크리스트
+
+1. 동일 오류가 다시 나오면 `render-report-v2.json`의 `strategy`가 `loop-extension`인지 확인.
+2. `ratio > 2.5` 또는 `extraHoldSeconds > 12`면 아직 의도적으로 차단하는 극단 케이스이므로 대본 분할 또는 추가 Flow B-roll 생성이 필요.
+3. packaged app에서 발생한 오류이므로 수정 후 반드시 `npm.cmd run electron:pack`으로 `dist-electron` 실행본을 갱신.
+
 본 문서는 HermeStudio 업데이트, 빌드 패키징, 또는 운영 중에 자주 발생하는 에러, 병목 현상 및 오동작 사례를 분류하고 이에 대한 조치 요령과 자가진단 체크리스트를 제공합니다. 프로그램 수정이나 배포(Release) 패키징 작업을 수행하기 전에 항상 이 체크리스트를 확인하십시오.
 
 ---

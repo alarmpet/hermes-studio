@@ -58,6 +58,23 @@ const characterSheetText = document.querySelector("#characterSheetText");
 const characterSheetImages = document.querySelector("#characterSheetImages");
 const characterSheetSummary = document.querySelector("#characterSheetSummary");
 const artifactPanel = document.querySelector("#artifactPanel");
+const youtubeUploadPanel = document.querySelector("#youtubeUploadPanel");
+const uploadVideoPath = document.querySelector("#uploadVideoPath");
+const uploadThumbnailPreview = document.querySelector("#uploadThumbnailPreview");
+const uploadTitleInput = document.querySelector("#uploadTitleInput");
+const uploadTitleCount = document.querySelector("#uploadTitleCount");
+const uploadDescriptionInput = document.querySelector("#uploadDescriptionInput");
+const uploadTagsInput = document.querySelector("#uploadTagsInput");
+const uploadPrivacySelect = document.querySelector("#uploadPrivacySelect");
+const uploadCategorySelect = document.querySelector("#uploadCategorySelect");
+const uploadCustomThumbnailInput = document.querySelector("#uploadCustomThumbnailInput");
+const uploadMadeForKidsCheckbox = document.querySelector("#uploadMadeForKidsCheckbox");
+const uploadSyntheticMediaCheckbox = document.querySelector("#uploadSyntheticMediaCheckbox");
+const uploadNotifySubscribersCheckbox = document.querySelector("#uploadNotifySubscribersCheckbox");
+const uploadSaveMetadataBtn = document.querySelector("#uploadSaveMetadataBtn");
+const uploadToYouTubeBtn = document.querySelector("#uploadToYouTubeBtn");
+const uploadStatusMessage = document.querySelector("#uploadStatusMessage");
+const uploadResultLink = document.querySelector("#uploadResultLink");
 const retryFailedScenesBtn = document.querySelector("#retryFailedScenesBtn");
 const renderExistingAssetsBtn = document.querySelector("#renderExistingAssetsBtn");
 const retryThumbnailBtn = document.querySelector("#retryThumbnailBtn");
@@ -94,6 +111,8 @@ let latestOutputPath = "";
 let outputDir = "";
 let appIsPackaged = false;
 let selectedJobId = "";
+let selectedUploadMetadata = null;
+let selectedUploadState = null;
 
 function appendLog(message, detail) {
   const row = document.createElement("div");
@@ -255,6 +274,7 @@ function readJobInput() {
       maxLines: subtitlePresetDefaults[subtitleStyleId.value]?.maxLines || 2,
     },
     titleOverlayEnabled: Boolean(titleOverlayEnabled?.checked),
+    titleOverlayMode: titleOverlayText?.value.trim() ? "manual" : "auto",
     titleOverlayText: titleOverlayText?.value.trim() || "",
     titleOverlayStyleId: titleOverlayStyleId?.value || "bold-black-accent",
     titleOverlayMaxLines: 2,
@@ -473,7 +493,7 @@ function updateSubtitlePreview() {
 
 function updateTitleOverlayPreview() {
   if (!titleOverlayPreviewText) return;
-  const fallback = sourceValue.value.trim().slice(0, 24) || "Video title preview";
+  const fallback = sourceValue.value.trim().slice(0, 24) || "Auto: generated title";
   titleOverlayPreviewText.textContent = titleOverlayText?.value.trim() || fallback;
   titleOverlayPreviewText.parentElement.dataset.style = titleOverlayStyleId?.value || "bold-black-accent";
   titleOverlayPreviewText.parentElement.dataset.enabled = titleOverlayEnabled?.checked ? "true" : "false";
@@ -518,8 +538,9 @@ latestOutput.addEventListener("click", async () => {
 });
 
 approveUploadBtn.addEventListener("click", async () => {
-  const result = await window.hermes.youtubeApproveUpload();
+  const result = await window.hermes.youtubeApproveUpload(selectedJobId);
   appendLog("Upload approval", result);
+  if (result?.ok || result?.status === "job-id-required") await loadUploadPanel(selectedJobId);
 });
 
 refreshJobsBtn.addEventListener("click", renderJobs);
@@ -558,6 +579,18 @@ copyJobSummaryBtn?.addEventListener("click", copyJobSummary);
 retryFailedScenesBtn?.addEventListener("click", retryFailedScenes);
 renderExistingAssetsBtn?.addEventListener("click", renderExistingAssets);
 retryThumbnailBtn?.addEventListener("click", retryThumbnail);
+uploadTitleInput?.addEventListener("input", updateUploadTitleCount);
+uploadVideoPath?.addEventListener("click", () => {
+  if (selectedUploadMetadata?.videoPath) window.hermes.openPath(selectedUploadMetadata.videoPath);
+});
+uploadThumbnailPreview?.addEventListener("click", () => {
+  if (selectedUploadMetadata?.thumbnailPath) window.hermes.openPath(selectedUploadMetadata.thumbnailPath);
+});
+uploadSaveMetadataBtn?.addEventListener("click", saveUploadMetadata);
+uploadToYouTubeBtn?.addEventListener("click", uploadSelectedJob);
+uploadResultLink?.addEventListener("click", () => {
+  if (selectedUploadState?.youtubeUrl) window.open(selectedUploadState.youtubeUrl, "_blank", "noopener");
+});
 
 for (const button of document.querySelectorAll("#consoleFilters [data-filter]")) {
   button.addEventListener("click", () => {
@@ -654,6 +687,104 @@ function updateArtifactPanel(details = {}) {
   }));
 }
 
+async function loadUploadPanel(jobId) {
+  if (!youtubeUploadPanel) return;
+  if (!jobId) {
+    youtubeUploadPanel.hidden = true;
+    selectedUploadMetadata = null;
+    selectedUploadState = null;
+    return;
+  }
+  const result = await window.hermes.youtubeGetUploadDraft(jobId);
+  if (!result?.ok) {
+    youtubeUploadPanel.hidden = true;
+    appendLog("Upload draft unavailable", result);
+    return;
+  }
+  selectedUploadMetadata = result.metadata;
+  selectedUploadState = result.uploadState || null;
+  renderUploadPanel();
+}
+
+function renderUploadPanel() {
+  if (!youtubeUploadPanel || !selectedUploadMetadata) return;
+  const metadata = selectedUploadMetadata;
+  youtubeUploadPanel.hidden = false;
+  uploadTitleInput.value = metadata.title || "";
+  uploadDescriptionInput.value = metadata.description || "";
+  uploadTagsInput.value = (metadata.tags || []).join(", ");
+  uploadPrivacySelect.value = metadata.privacyStatus || "private";
+  uploadCategorySelect.value = metadata.categoryId || "25";
+  uploadMadeForKidsCheckbox.checked = Boolean(metadata.madeForKids);
+  uploadSyntheticMediaCheckbox.checked = metadata.containsSyntheticMedia !== false;
+  uploadNotifySubscribersCheckbox.checked = Boolean(metadata.notifySubscribers);
+  updateUploadTitleCount();
+  uploadVideoPath.textContent = metadata.videoPath ? `Video: ${metadata.videoPath}` : "Final video not selected";
+  uploadVideoPath.disabled = !metadata.videoPath;
+  uploadThumbnailPreview.textContent = metadata.thumbnailPath ? `Thumbnail: ${metadata.thumbnailPath}` : "Thumbnail not selected";
+  uploadThumbnailPreview.disabled = !metadata.thumbnailPath;
+  const uploaded = selectedUploadState?.status === "uploaded" && selectedUploadState?.youtubeUrl;
+  uploadStatusMessage.textContent = uploaded ? "Uploaded" : selectedUploadState?.status || "Draft";
+  uploadToYouTubeBtn.disabled = Boolean(uploaded);
+  uploadToYouTubeBtn.textContent = uploaded ? "Already Uploaded" : "Upload to YouTube";
+  uploadResultLink.hidden = !uploaded;
+}
+
+function readUploadDraftFromPanel() {
+  const customThumbnailPath = uploadCustomThumbnailInput?.files?.[0]?.path || "";
+  return {
+    ...(selectedUploadMetadata || {}),
+    title: uploadTitleInput.value.trim(),
+    description: uploadDescriptionInput.value.trim(),
+    tags: uploadTagsInput.value.split(",").map((tag) => tag.trim()).filter(Boolean),
+    privacyStatus: uploadPrivacySelect.value,
+    categoryId: uploadCategorySelect.value,
+    thumbnailPath: customThumbnailPath || selectedUploadMetadata?.thumbnailPath || "",
+    madeForKids: uploadMadeForKidsCheckbox.checked,
+    containsSyntheticMedia: uploadSyntheticMediaCheckbox.checked,
+    notifySubscribers: uploadNotifySubscribersCheckbox.checked,
+  };
+}
+
+function updateUploadTitleCount() {
+  if (!uploadTitleCount || !uploadTitleInput) return;
+  uploadTitleCount.textContent = `${uploadTitleInput.value.length}/100`;
+}
+
+async function saveUploadMetadata() {
+  if (!selectedJobId) return;
+  const result = await window.hermes.youtubeSaveUploadDraft(selectedJobId, readUploadDraftFromPanel());
+  if (!result?.ok) {
+    uploadStatusMessage.textContent = "Validation failed";
+    appendLog("Upload metadata validation failed", result);
+    return;
+  }
+  selectedUploadMetadata = result.metadata;
+  selectedUploadState = result.uploadState || selectedUploadState;
+  renderUploadPanel();
+  appendLog("Upload metadata saved", result.metadata);
+}
+
+async function uploadSelectedJob() {
+  if (!selectedJobId || !uploadToYouTubeBtn) return;
+  uploadToYouTubeBtn.disabled = true;
+  uploadStatusMessage.textContent = "Uploading";
+  appendLog("Starting YouTube upload", { jobId: selectedJobId });
+  const result = await window.hermes.youtubeUploadJob(selectedJobId, readUploadDraftFromPanel());
+  if (!result?.ok) {
+    uploadStatusMessage.textContent = result?.status || "Upload failed";
+    uploadToYouTubeBtn.disabled = false;
+    appendLog("YouTube upload failed", result);
+    return;
+  }
+  selectedUploadState = result.uploadState;
+  uploadStatusMessage.textContent = "Uploaded";
+  uploadResultLink.hidden = false;
+  uploadToYouTubeBtn.textContent = "Already Uploaded";
+  appendLog("YouTube upload completed", result);
+  await renderJobs();
+}
+
 function updateRecoveryActions() {
   const disabled = !selectedJobId;
   if (retryFailedScenesBtn) retryFailedScenesBtn.disabled = disabled;
@@ -745,6 +876,7 @@ async function retryThumbnail() {
       primaryProviderFailure: result.thumbnail?.primaryProviderFailure,
     });
     await renderJobs();
+    await loadUploadPanel(selectedJobId);
   } catch (error) {
     jobState.textContent = "Thumbnail Retry Failed";
     appendLog("Thumbnail retry failed", error?.message || String(error));
@@ -772,6 +904,7 @@ async function renderJobs() {
       jobState.textContent = job.status || "Selected";
       updateArtifactPanel({ finalPath: job.finalVideo, jobDir: job.jobDir, thumbnailPath: job.thumbnailPath });
       updateRecoveryActions();
+      await loadUploadPanel(job.id);
       await restoreConsoleHistory(job.id);
     });
     return item;
@@ -943,6 +1076,7 @@ form.addEventListener("submit", async (event) => {
     appendLog("Job finished", result.finalVideo || result);
     updateRecoveryActions();
     await renderJobs();
+    await loadUploadPanel(selectedJobId);
   } catch (error) {
     jobState.textContent = "Failed";
     appendLog("Job failed", error?.message || String(error));
@@ -954,6 +1088,9 @@ form.addEventListener("submit", async (event) => {
 
 window.hermes.onYouTubeEvent((event) => {
   if (event?.type === "job-progress") updateProgressUi(event);
+  if (event?.type === "youtube-upload-completed" || event?.type === "youtube-upload-failed") {
+    loadUploadPanel(event.jobId || selectedJobId).catch((error) => appendLog("Upload panel refresh failed", error?.message || String(error)));
+  }
   if (event?.type === "desktop-job-failed") {
     jobState.textContent = "Failed";
     if (progressActionRequired.hidden) {

@@ -1,5 +1,20 @@
 # Hermes Studio Timeline
 
+## 2026-06-01
+
+- Hybrid intro video 장면이 8초 Flow 클립에 맞도록 공백 제외 35자 이하로 자동 분할되게 했다.
+- 긴 Hook 문단은 첫 video 장면 이후 image 장면으로 이어지게 해 `SCENE_DURATION_MISMATCH ratio > 2.5` 반복을 막았다.
+- 자동 상단 제목 생성 규칙을 2줄 이내 표시 기준으로 강화했다.
+- 상단 제목은 공백 제외 18자 이하로 보정하고, 긴 질문형 기사 제목은 핵심 키워드와 질문 꼬리만 남기도록 했다.
+- Draft 생성 프롬프트에도 상단 오버레이용 짧은 제목 규칙을 추가했다.
+
+## 2026-05-31 - Feature - Auto Top Title Text
+
+- Added deterministic automatic top-title text resolution for empty `Title text` fields.
+- Preserved manual title text as highest priority.
+- Persisted generated title text and source in render artifacts so final videos can be audited.
+- Added schema, UI, workflow, and render contract checks for automatic title overlay behavior.
+
 이 문서는 Hermes Studio의 기능 추가, 수정, 삭제, 큰 코드나 아키텍처 변경을 시간순으로 남기는 작업 기록입니다.
 
 ## 기록 규칙
@@ -147,3 +162,9 @@
 - Updated the final renderer to generate a transparent `title-overlay.png` with Sharp and compose it with subtitles in a single FFmpeg `filter_complex` pass.
 - Added Studio UI controls for title enablement, manual title text, style selection, and preview.
 - Added `scripts/check-title-overlay-render-contract.mjs` and wired it into final-output QA.
+## 2026-06-01 - Post-render YouTube upload panel
+
+- Added a job-scoped YouTube upload review panel after final render completion.
+- Added editable upload metadata for title, description, tags, privacy, thumbnail, made-for-kids, and synthetic media.
+- Replaced guarded upload stub with job-scoped YouTube Data API upload and thumbnail binding.
+- Added per-job upload state, duplicate upload protection, upload failure codes, and SQLite workflow-event mirroring.

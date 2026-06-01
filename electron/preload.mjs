@@ -19,7 +19,10 @@ contextBridge.exposeInMainWorld("hermes", {
   youtubeRetryFailedScenes: (jobId) => ipcRenderer.invoke("youtube:retryFailedScenes", jobId),
   youtubeRenderExistingAssets: (jobId) => ipcRenderer.invoke("youtube:renderExistingAssets", jobId),
   youtubeRetryThumbnail: (jobId) => ipcRenderer.invoke("youtube:retryThumbnail", jobId),
-  youtubeApproveUpload: () => ipcRenderer.invoke("youtube:approveUpload"),
+  youtubeGetUploadDraft: (jobId) => ipcRenderer.invoke("youtube:getUploadDraft", jobId),
+  youtubeSaveUploadDraft: (jobId, draft) => ipcRenderer.invoke("youtube:saveUploadDraft", jobId, draft),
+  youtubeUploadJob: (jobId, draft) => ipcRenderer.invoke("youtube:uploadJob", jobId, draft),
+  youtubeApproveUpload: (jobId) => ipcRenderer.invoke("youtube:approveUpload", jobId),
   onYouTubeEvent: (callback) => {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on("youtube:event", listener);
