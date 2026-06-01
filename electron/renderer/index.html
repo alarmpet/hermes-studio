@@ -315,10 +315,10 @@
             <div id="progressActionRequired" class="progress-action" hidden></div>
           </section>
 
-          <section id="youtubeUploadPanel" class="panel upload-panel" hidden>
+          <section id="youtubeUploadPanel" class="panel upload-panel">
             <div class="panel-header">
               <h3>YouTube Upload</h3>
-              <span id="uploadStatusMessage">Draft</span>
+              <span id="uploadStatusMessage">Waiting for final video</span>
             </div>
             <div class="upload-media-row">
               <button id="uploadVideoPath" class="secondary-button compact-button path-button" type="button">Final video not selected</button>
@@ -327,12 +327,12 @@
             <div class="form-grid">
               <div class="field-group">
                 <label for="uploadTitleInput">Title</label>
-                <input id="uploadTitleInput" type="text" maxlength="100">
+                <input id="uploadTitleInput" type="text" maxlength="100" disabled>
                 <small id="uploadTitleCount" class="field-hint">0/100</small>
               </div>
               <div class="field-group">
                 <label for="uploadPrivacySelect">Privacy</label>
-                <select id="uploadPrivacySelect">
+                <select id="uploadPrivacySelect" disabled>
                   <option value="private">Private</option>
                   <option value="unlisted">Unlisted</option>
                   <option value="public">Public</option>
@@ -340,15 +340,15 @@
               </div>
               <div class="field-group">
                 <label for="uploadDescriptionInput">Description</label>
-                <textarea id="uploadDescriptionInput" rows="5"></textarea>
+                <textarea id="uploadDescriptionInput" rows="5" disabled></textarea>
               </div>
               <div class="field-group">
                 <label for="uploadTagsInput">Tags</label>
-                <textarea id="uploadTagsInput" rows="5" placeholder="comma separated tags"></textarea>
+                <textarea id="uploadTagsInput" rows="5" placeholder="comma separated tags" disabled></textarea>
               </div>
               <div class="field-group">
                 <label for="uploadCategorySelect">Category</label>
-                <select id="uploadCategorySelect">
+                <select id="uploadCategorySelect" disabled>
                   <option value="25" selected>News & Politics</option>
                   <option value="22">People & Blogs</option>
                   <option value="27">Education</option>
@@ -358,29 +358,29 @@
               </div>
               <div class="field-group">
                 <label for="uploadCustomThumbnailInput">Custom thumbnail</label>
-                <input id="uploadCustomThumbnailInput" type="file" accept="image/png,image/jpeg">
+                <input id="uploadCustomThumbnailInput" type="file" accept="image/png,image/jpeg" disabled>
               </div>
             </div>
             <div class="option-row upload-option-row">
               <label class="switch">
-                <input id="uploadMadeForKidsCheckbox" type="checkbox">
+                <input id="uploadMadeForKidsCheckbox" type="checkbox" disabled>
                 <span></span>
                 Made for kids
               </label>
               <label class="switch">
-                <input id="uploadSyntheticMediaCheckbox" type="checkbox" checked>
+                <input id="uploadSyntheticMediaCheckbox" type="checkbox" checked disabled>
                 <span></span>
                 AI/synthetic media
               </label>
               <label class="switch">
-                <input id="uploadNotifySubscribersCheckbox" type="checkbox">
+                <input id="uploadNotifySubscribersCheckbox" type="checkbox" disabled>
                 <span></span>
                 Notify subscribers
               </label>
             </div>
             <div class="actions upload-actions">
-              <button id="uploadSaveMetadataBtn" class="secondary-button" type="button">Save Metadata</button>
-              <button id="uploadToYouTubeBtn" class="primary-button" type="button">Upload to YouTube</button>
+              <button id="uploadSaveMetadataBtn" class="secondary-button" type="button" disabled>Save Metadata</button>
+              <button id="uploadToYouTubeBtn" class="primary-button" type="button" disabled>Upload to YouTube</button>
               <button id="uploadResultLink" class="secondary-button" type="button" hidden>Open Uploaded Video</button>
             </div>
           </section>

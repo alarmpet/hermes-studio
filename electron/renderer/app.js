@@ -313,6 +313,7 @@ async function loadConfig() {
   appendLog("App ready", config);
   await renderAuthStatus();
   await renderJobs();
+  renderEmptyUploadPanel();
 }
 
 function effectiveTargetSeconds() {
@@ -690,14 +691,14 @@ function updateArtifactPanel(details = {}) {
 async function loadUploadPanel(jobId) {
   if (!youtubeUploadPanel) return;
   if (!jobId) {
-    youtubeUploadPanel.hidden = true;
+    renderEmptyUploadPanel();
     selectedUploadMetadata = null;
     selectedUploadState = null;
     return;
   }
   const result = await window.hermes.youtubeGetUploadDraft(jobId);
   if (!result?.ok) {
-    youtubeUploadPanel.hidden = true;
+    renderEmptyUploadPanel(result.message || "완료된 영상을 선택하면 업로드 정보를 편집할 수 있습니다.");
     appendLog("Upload draft unavailable", result);
     return;
   }
@@ -706,10 +707,35 @@ async function loadUploadPanel(jobId) {
   renderUploadPanel();
 }
 
+function renderEmptyUploadPanel(message = "최종 영상 생성이 완료되면 제목, 설명, 태그, 썸네일을 확인하고 YouTube에 업로드할 수 있습니다.") {
+  if (!youtubeUploadPanel) return;
+  youtubeUploadPanel.hidden = false;
+  selectedUploadMetadata = null;
+  selectedUploadState = null;
+  uploadStatusMessage.textContent = "Waiting for final video";
+  uploadTitleInput.value = "";
+  uploadDescriptionInput.value = "";
+  uploadTagsInput.value = "";
+  uploadPrivacySelect.value = "private";
+  uploadCategorySelect.value = "25";
+  uploadMadeForKidsCheckbox.checked = false;
+  uploadSyntheticMediaCheckbox.checked = true;
+  uploadNotifySubscribersCheckbox.checked = false;
+  uploadVideoPath.textContent = message;
+  uploadVideoPath.disabled = true;
+  uploadThumbnailPreview.textContent = "Thumbnail will appear after render";
+  uploadThumbnailPreview.disabled = true;
+  setUploadPanelEnabled(false);
+  uploadToYouTubeBtn.textContent = "Upload to YouTube";
+  uploadResultLink.hidden = true;
+  updateUploadTitleCount();
+}
+
 function renderUploadPanel() {
   if (!youtubeUploadPanel || !selectedUploadMetadata) return;
   const metadata = selectedUploadMetadata;
   youtubeUploadPanel.hidden = false;
+  setUploadPanelEnabled(true);
   uploadTitleInput.value = metadata.title || "";
   uploadDescriptionInput.value = metadata.description || "";
   uploadTagsInput.value = (metadata.tags || []).join(", ");
@@ -728,6 +754,24 @@ function renderUploadPanel() {
   uploadToYouTubeBtn.disabled = Boolean(uploaded);
   uploadToYouTubeBtn.textContent = uploaded ? "Already Uploaded" : "Upload to YouTube";
   uploadResultLink.hidden = !uploaded;
+}
+
+function setUploadPanelEnabled(enabled) {
+  for (const input of [
+    uploadTitleInput,
+    uploadDescriptionInput,
+    uploadTagsInput,
+    uploadPrivacySelect,
+    uploadCategorySelect,
+    uploadCustomThumbnailInput,
+    uploadMadeForKidsCheckbox,
+    uploadSyntheticMediaCheckbox,
+    uploadNotifySubscribersCheckbox,
+    uploadSaveMetadataBtn,
+  ]) {
+    if (input) input.disabled = !enabled;
+  }
+  if (uploadToYouTubeBtn) uploadToYouTubeBtn.disabled = !enabled;
 }
 
 function readUploadDraftFromPanel() {

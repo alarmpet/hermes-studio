@@ -28,6 +28,7 @@ for (const id of [
   assert.match(html, new RegExp(`id="${id}"`), `upload panel should include #${id}`);
 }
 
+assert.doesNotMatch(html, /id="youtubeUploadPanel"[^>]*hidden/, "upload panel should be visible in idle state with disabled controls");
 assert.match(preload, /youtubeGetUploadDraft/, "preload should expose youtubeGetUploadDraft");
 assert.match(preload, /youtubeSaveUploadDraft/, "preload should expose youtubeSaveUploadDraft");
 assert.match(preload, /youtubeUploadJob/, "preload should expose youtubeUploadJob");
@@ -35,6 +36,7 @@ assert.match(renderer, /youtubeGetUploadDraft/, "renderer should load upload dra
 assert.match(renderer, /youtubeSaveUploadDraft/, "renderer should save upload draft");
 assert.match(renderer, /youtubeUploadJob/, "renderer should upload selected job");
 assert.match(renderer, /selectedJobId/, "renderer should bind upload to selectedJobId");
+assert.match(renderer, /renderEmptyUploadPanel/, "renderer should show an idle upload panel before a job is selected");
 assert.match(renderer, /uploadToYouTubeBtn\.disabled\s*=\s*true/, "upload button should be disabled while uploading");
 
 console.log(JSON.stringify({ ok: true, checked: "youtube-upload-panel-contract" }));
