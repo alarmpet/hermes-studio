@@ -21,5 +21,7 @@ assert.match(jobService, /thumbnailOverlay:\s*job\?\.options\?\.thumbnailOverlay
 assert.match(thumbnail, /flow-thumbnail-result\.json/, "thumbnail pipeline should persist the Flow thumbnail failure result");
 assert.match(thumbnail, /writeFile\(join\(jobDir,\s*"flow-thumbnail-result\.json"\)/, "Flow thumbnail failure must be written to the job folder");
 assert.match(main, /writeDesktopResult\(result\.finalVideo\.jobDir,\s*result\)/, "desktop result should include thumbnail and provider failure details, not only finalVideo");
+assert.doesNotMatch(main, /ChatGPT still needs user verification/, "thumbnail retry completion message must not mention ChatGPT recovery");
+assert.match(main, /Google Flow still needs account, session, or policy recovery/, "thumbnail retry completion message should explain Flow recovery");
 
 console.log(JSON.stringify({ ok: true, checked: "flow-thumbnail-diagnostics" }));

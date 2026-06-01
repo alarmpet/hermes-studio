@@ -589,7 +589,7 @@ ipcMain.handle("youtube:retryThumbnail", async (_event, jobId) => {
     phase: "completed",
     status: thumbnailResult.thumbnail?.primaryProviderFailure?.actionRequired ? "action-required" : "completed",
     message: thumbnailResult.thumbnail?.primaryProviderFailure
-      ? "Thumbnail retry finished with local fallback; ChatGPT still needs user verification."
+      ? "Thumbnail retry finished with local fallback; Google Flow still needs account, session, or policy recovery."
       : "Thumbnail retry completed.",
     details: {
       jobDir,

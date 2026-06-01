@@ -31,6 +31,28 @@ However, Google Flow must not be trusted to render Korean text. The thumbnail pr
 
 The review's broad direction is accepted. Its examples are treated as implementation guidance, not exact code to paste, because the final code must stay consistent with the existing stage runner, event payloads, and contract tests.
 
+## Review Re-Validation: 2026-06-02
+
+The review file is partially mojibake-encoded, but its technical claims were checked against the current implementation. The following items are confirmed and should remain part of the implementation contract:
+
+- `positionYPercent` and `bandHeightPercent` are valid requirements. Current implementation must compute `topPad` and `bandHeight` from `overlayPlan.style`, not hard-coded constants.
+- `backgroundColor` and `backgroundOpacity` are valid requirements. Current implementation must apply them to the SVG band gradient and must place the band at `topPad`.
+- `textColor`, `highlightColor`, `outlineColor`, `outlineWidth`, `fontFamily`, `fontWeight`, and `shadowOpacity` are valid requirements. Current implementation must bind these values in the generated SVG text and shadow filter.
+- `thumbnailTextEnabled=false` is valid. Current implementation must skip SVG composition entirely and output only the resized Flow background.
+- Flow failure fallback must reuse the same `overlayPlan`; otherwise the user's edited text, position, colors, and disabled-overlay state are lost.
+- `retryThumbnailForJob` must preserve `thumbnailOverlay`, pass `flowTimeoutMs`, and pass the normal `paths` object so `paths.flowProfileDir` reaches `generateGoogleFlowVideoFromPrompt`.
+- Flow thumbnail failures must be persisted as `flow-thumbnail-result.json`, mirrored by `workflow-db-events.mjs`, and classified by Telegram `/diagnose`.
+
+The following review implication is rejected or adjusted for this codebase:
+
+- Passing a separate `flowProfileDir` argument into `createThumbnailForJob` is not required because the current function accepts `paths` and reads `paths.flowProfileDir`. The plan should preserve that existing interface.
+
+Additional finding from live verification:
+
+- The generic Korean subheadline fallback must not be injected when the user leaves subheadline blank. It looked like user-entered text and caused confusion. Blank user input should remain blank unless a future explicit "auto subheadline" toggle is added.
+
+This section supersedes older code snippets below if they show hard-coded overlay SVG values, local fallback without `overlayPlan`, or automatic generic subheadline text.
+
 ## Target User Flow
 
 1. User generates a video in Hermes Studio.
@@ -162,15 +184,15 @@ export function buildFlowThumbnailPrompt({ title, script, hpsl, aspectRatio = "9
   ].join("\n");
 }
 
-export function buildThumbnailOverlayPlan({ title, script, hpsl }) {
+export function buildThumbnailOverlayPlan({ title, script, hpsl, userOverlay = {} }) {
   const source = compactText([
     title,
     hpsl?.hook?.narration,
     hpsl?.point?.narration,
     script,
   ].filter(Boolean).join(" "), 520);
-  const hookHeadline = makeHookHeadline(title || source);
-  const subheadline = makeSubheadline(source, hookHeadline);
+  const hookHeadline = compactText(userOverlay.headlineText || makeHookHeadline(title || source), 32);
+  const subheadline = compactText(userOverlay.subheadlineText || "", 36);
   const highlightKeywords = chooseHighlightKeywords(hookHeadline, source);
 
   return {
@@ -192,7 +214,7 @@ function makeHookHeadline(value) {
 function makeSubheadline(source, headline) {
   const withoutHeadline = compactText(source.replace(headline, ""), 120);
   if (/왜|충격|반전|비밀|주의|위험|변화/.test(withoutHeadline)) return balanceHeadline(withoutHeadline, 20);
-  return "지금 확인해야 할 핵심";
+  return "";
 }
 
 function chooseHighlightKeywords(headline, source) {
@@ -275,11 +297,13 @@ export async function createThumbnailForJob({
   aspectRatio = "9:16",
   emit,
   flowTimeoutMs,
+  thumbnailOverlay = {},
 }) {
   const overlayPlan = buildThumbnailOverlayPlan({
     title: draft?.title,
     script: draft?.script,
     hpsl: draft?.hpsl,
+    userOverlay: thumbnailOverlay,
   });
   const prompt = buildFlowThumbnailPrompt({
     title: draft?.title,
@@ -287,6 +311,7 @@ export async function createThumbnailForJob({
     hpsl: draft?.hpsl,
     aspectRatio,
     visualContext: summarizeSceneVisuals(draft?.scenes),
+    userOverlay: thumbnailOverlay,
   });
 
   emit?.({
@@ -339,8 +364,7 @@ export async function createThumbnailForJob({
   }
 
   const fallback = await createLocalCompositedThumbnail({
-    title: draft?.title,
-    script: draft?.script,
+    overlayPlan,
     jobDir,
     aspectRatio,
     reason: flow.error || flow.message || "Google Flow thumbnail background generation failed",
@@ -358,6 +382,24 @@ export async function createThumbnailForJob({
     },
   };
 }
+```
+
+Before returning fallback, persist the Flow failure so the console, job folder, DB mirror, and Telegram diagnostics can explain why the generated thumbnail is local fallback instead of Flow background:
+
+```js
+const failureResultPath = join(jobDir, "flow-thumbnail-result.json");
+const flowFailure = {
+  ok: false,
+  provider: "google-flow-image",
+  code: flow?.code || "FLOW_THUMBNAIL_GENERATION_FAILED",
+  message: flow?.error || flow?.message || "Google Flow thumbnail background generation failed",
+  actionRequired: Boolean(flow?.details?.actionRequired),
+  details: flow?.details || {},
+  prompt,
+  overlayPlan,
+  updatedAt: new Date().toISOString(),
+};
+await writeFile(join(jobDir, "flow-thumbnail-result.json"), JSON.stringify(flowFailure, null, 2), "utf8");
 ```
 
 - [ ] **Step 3: Add local Flow thumbnail compositor**
@@ -907,8 +949,8 @@ In `C:\Users\amd\hermes\pipeline\youtube-thumbnail-prompt.mjs`, update `buildThu
 export function buildThumbnailOverlayPlan({ title, script, hpsl, userOverlay = {} }) {
   const source = compactText([title, hpsl?.hook?.narration, hpsl?.point?.narration, script].filter(Boolean).join(" "), 520);
   const autoHeadline = makeHookHeadline(title || source);
-  const hookHeadline = userOverlay.headlineText || autoHeadline;
-  const subheadline = userOverlay.subheadlineText || makeSubheadline(source, hookHeadline);
+  const hookHeadline = compactText(userOverlay.headlineText || autoHeadline, 32);
+  const subheadline = compactText(userOverlay.subheadlineText || "", 36);
   return {
     enabled: userOverlay.enabled !== false,
     hookHeadline,
