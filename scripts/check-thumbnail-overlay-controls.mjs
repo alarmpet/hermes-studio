@@ -34,12 +34,15 @@ for (const id of [
 assert.match(renderer, /readThumbnailOverlayInput/, "renderer should read thumbnail overlay controls into job input");
 assert.match(renderer, /updateThumbnailPreview/, "renderer should update thumbnail preview live");
 assert.match(renderer, /thumbnailOverlay:/, "renderer should send thumbnailOverlay in job payload");
+assert.doesNotMatch(renderer, /지금 확인해야 할 핵심/, "renderer must not inject a generic thumbnail subheadline the user did not enter");
+assert.doesNotMatch(html, /지금 확인해야 할 핵심/, "static thumbnail preview must not show a generic subheadline as if it were user input");
 assert.match(styles, /\.thumbnail-preview/, "thumbnail preview should have dedicated styles");
 assert.match(schema, /thumbnailOverlay/, "job schema should normalize thumbnailOverlay");
 assert.match(schema, /titleFontSize/, "thumbnailOverlay should include title font size");
 assert.match(schema, /highlightColor/, "thumbnailOverlay should include keyword highlight color");
 assert.match(service, /thumbnailOverlay:\s*input\.thumbnailOverlay/, "job service should forward thumbnailOverlay");
 assert.match(prompt, /normalizeThumbnailOverlayStyle/, "prompt module should normalize thumbnail overlay style");
+assert.doesNotMatch(prompt, /지금 확인해야 할 핵심/, "thumbnail overlay plan must not add a generic subheadline when user input is blank");
 assert.match(thumbnail, /overlayPlan\.style/, "thumbnail compositor should apply overlayPlan style");
 assert.match(thumbnail, /backgroundOpacity/, "thumbnail compositor should apply background opacity");
 assert.match(thumbnail, /positionYPercent/, "thumbnail compositor should apply vertical position");

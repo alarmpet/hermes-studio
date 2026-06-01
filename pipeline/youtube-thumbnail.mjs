@@ -78,22 +78,36 @@ export async function createThumbnailForJob({
     });
   }
 
+  const failureResultPath = join(jobDir, "flow-thumbnail-result.json");
+  const flowFailure = {
+    ok: false,
+    provider: "google-flow-image",
+    code: flow?.code || "FLOW_THUMBNAIL_GENERATION_FAILED",
+    message: flow?.error || flow?.message || "Google Flow thumbnail background generation failed",
+    actionRequired: Boolean(flow?.details?.actionRequired),
+    details: flow?.details || {},
+    prompt,
+    overlayPlan,
+    updatedAt: new Date().toISOString(),
+  };
+  await writeFile(join(jobDir, "flow-thumbnail-result.json"), JSON.stringify(flowFailure, null, 2), "utf8");
+
   const fallback = await createLocalCompositedThumbnail({
     overlayPlan,
     jobDir,
     aspectRatio,
-    reason: flow.error || flow.message || "Google Flow thumbnail background generation failed",
+    reason: flowFailure.message,
   });
   return {
     ...fallback,
     primaryProvider: "google-flow-image",
     primaryProviderFailure: {
       ok: false,
-      code: flow.code || "FLOW_THUMBNAIL_GENERATION_FAILED",
-      message: flow.error || flow.message || "",
-      actionRequired: Boolean(flow.details?.actionRequired),
-      resultPath: join(jobDir, "flow-thumbnail-result.json"),
-      details: flow.details || {},
+      code: flowFailure.code,
+      message: flowFailure.message,
+      actionRequired: flowFailure.actionRequired,
+      resultPath: failureResultPath,
+      details: flowFailure.details,
     },
   };
 }

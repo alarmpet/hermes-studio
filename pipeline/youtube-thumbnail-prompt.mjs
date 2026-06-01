@@ -32,7 +32,7 @@ export function buildThumbnailOverlayPlan({ title, script, hpsl, userOverlay = {
   ].filter(Boolean).join(" "), 520);
   const autoHeadline = makeHookHeadline(title || source);
   const hookHeadline = compactText(userOverlay.headlineText || autoHeadline, 32);
-  const subheadline = compactText(userOverlay.subheadlineText || makeSubheadline(source, hookHeadline), 36);
+  const subheadline = compactText(userOverlay.subheadlineText || "", 36);
   const highlightKeywords = chooseHighlightKeywords(hookHeadline, source);
 
   return {
@@ -75,7 +75,7 @@ function makeHookHeadline(value) {
 function makeSubheadline(source, headline) {
   const withoutHeadline = compactText(source.replace(headline, ""), 120);
   if (/왜|충격|반전|비밀|주의|위험|변화/.test(withoutHeadline)) return balanceHeadline(withoutHeadline, 20);
-  return "지금 확인해야 할 핵심";
+  return "";
 }
 
 function chooseHighlightKeywords(headline, source) {

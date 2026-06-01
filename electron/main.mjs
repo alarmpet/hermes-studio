@@ -435,7 +435,7 @@ ipcMain.handle("youtube:createJob", async (_event, input) => {
       chromePath: config.chromePath,
       config,
     });
-    if (result.finalVideo?.jobDir) await writeDesktopResult(result.finalVideo.jobDir, result.finalVideo);
+    if (result.finalVideo?.jobDir) await writeDesktopResult(result.finalVideo.jobDir, result);
     latestCompletedJob = result;
     await upsertJob(paths.jobsDir, {
       id: result.job.id,

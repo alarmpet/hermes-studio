@@ -540,7 +540,7 @@ function updateThumbnailPreview() {
   if (!thumbnailPreview || !thumbnailPreviewText) return;
   const style = readThumbnailOverlayInput();
   const headline = style.headlineText || titleOverlayText?.value.trim() || sourceValue?.value.trim().slice(0, 18) || "후킹 썸네일 제목";
-  const subline = style.subheadlineText || "지금 확인해야 할 핵심";
+  const subline = style.subheadlineText || "";
   thumbnailPreview.dataset.enabled = style.enabled ? "true" : "false";
   thumbnailPreview.style.setProperty("--thumb-bg", style.backgroundColor);
   thumbnailPreview.style.setProperty("--thumb-bg-opacity", String(style.backgroundOpacity));
@@ -551,7 +551,7 @@ function updateThumbnailPreview() {
   thumbnailPreview.style.setProperty("--thumb-sub-size", `${Math.round(style.subFontSize / 3)}px`);
   thumbnailPreview.style.setProperty("--thumb-text", style.textColor);
   thumbnailPreview.style.setProperty("--thumb-highlight", style.highlightColor);
-  thumbnailPreviewText.innerHTML = `<strong>${escapeHtml(headline)}</strong><span>${escapeHtml(subline)}</span>`;
+  thumbnailPreviewText.innerHTML = `<strong>${escapeHtml(headline)}</strong>${subline ? `<span>${escapeHtml(subline)}</span>` : ""}`;
 }
 
 function escapeHtml(value) {
