@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the brittle ChatGPT thumbnail path with Google Flow image generation plus local Korean text composition so thumbnails are stable, readable, and strongly hook-driven.
+**Goal:** Replace the brittle ChatGPT thumbnail path with Google Flow image generation plus user-editable local Korean text composition so thumbnails are stable, readable, and strongly hook-driven.
 
-**Architecture:** Google Flow becomes the primary thumbnail background provider. Hermes generates hook headline metadata from the title, script, HPSL sections, and scene prompts, asks Flow for a clean no-text thumbnail background, then renders Korean headline/subheadline locally with `sharp` using safe-zone and two-line layout rules. ChatGPT thumbnail automation remains only as legacy code, not the default production path.
+**Architecture:** Google Flow becomes the primary thumbnail background provider. Hermes generates hook headline metadata from the title, script, HPSL sections, and scene prompts, asks Flow for a clean no-text thumbnail background, then renders Korean headline/subheadline locally with `sharp` using safe-zone and two-line layout rules. Hermes Studio exposes text size, position, color, highlight color, font, weight, background color, background opacity, outline, and shadow controls so the user can adjust the thumbnail before upload.
 
 **Tech Stack:** Electron, Node.js ESM, Playwright Google Flow automation, existing `generateGoogleFlowVideoFromPrompt` image mode, `sharp`, existing YouTube job runner/stages, contract checks under `scripts/`.
 
@@ -27,8 +27,9 @@ However, Google Flow must not be trusted to render Korean text. The thumbnail pr
    - a Flow background prompt reflecting the title/script context.
 4. Google Flow image mode creates a clean cinematic thumbnail background.
 5. Hermes composes Korean text locally over that background.
-6. Upload panel shows video, title, description, tags, and the generated thumbnail for review.
-7. User can upload to YouTube.
+6. Hermes Studio lets the user adjust thumbnail text size, location, colors, font, weight, background band, outline, and shadow with a live preview.
+7. Upload panel shows video, title, description, tags, and the generated thumbnail for review.
+8. User can upload to YouTube.
 
 ## File Structure
 
@@ -39,14 +40,26 @@ However, Google Flow must not be trusted to render Korean text. The thumbnail pr
   - Keep local fallback, but rename behavior so fallback means "no Flow background available".
 - Modify: `C:\Users\amd\hermes\youtube-workflow-stages.mjs`
   - Pass `flowProfileDir`, `chromePath`, and `flowTimeoutMs` into the thumbnail generator.
+- Modify: `C:\Users\amd\hermes\youtube-job-schema.mjs`
+  - Add normalized `thumbnailOverlay` options with bounded text/style controls.
+- Modify: `C:\Users\amd\hermes\electron\services\youtube-job-service.mjs`
+  - Pass `thumbnailOverlay` from Studio input into job options.
+- Modify: `C:\Users\amd\hermes\electron\renderer\index.html`
+  - Add a Thumbnail Text panel with editable controls and live preview.
+- Modify: `C:\Users\amd\hermes\electron\renderer\app.js`
+  - Read thumbnail controls into job input and update the preview.
+- Modify: `C:\Users\amd\hermes\electron\renderer\styles.css`
+  - Style the thumbnail preview and compact control grid.
 - Modify: `C:\Users\amd\hermes\scripts\check-chatgpt-thumbnail-pipeline.mjs`
   - Replace ChatGPT-primary assertions with Flow-primary thumbnail assertions.
 - Modify: `C:\Users\amd\hermes\scripts\check-local-studio-product.mjs`
   - Update product contract to say Flow is thumbnail background provider and Korean text is local.
 - Create: `C:\Users\amd\hermes\scripts\check-flow-thumbnail-pipeline.mjs`
   - Dedicated contract test for Flow thumbnail generation.
+- Create: `C:\Users\amd\hermes\scripts\check-thumbnail-overlay-controls.mjs`
+  - Dedicated contract test for Studio thumbnail text controls and schema normalization.
 - Modify: `C:\Users\amd\hermes\package.json`
-  - Add `check:flow-thumbnail` and wire it into `npm run check`.
+  - Add `check:flow-thumbnail` and `check:thumbnail-overlay` and wire them into `npm run check`.
 - Leave unchanged in this plan: `C:\Users\amd\hermes\automation\chatgpt-thumbnail-source.mjs`
   - Keep file for diagnostics/legacy reference during this change. Removal is explicitly out of scope for this Flow thumbnail implementation.
 
@@ -668,7 +681,280 @@ git commit -m "feat: persist Flow thumbnail metadata"
 
 ---
 
-### Task 6: Validate With Mock and Full Checks
+### Task 6: Add User-Editable Thumbnail Text Controls in Hermes Studio
+
+**Files:**
+- Modify: `C:\Users\amd\hermes\youtube-job-schema.mjs`
+- Modify: `C:\Users\amd\hermes\electron\services\youtube-job-service.mjs`
+- Modify: `C:\Users\amd\hermes\electron\renderer\index.html`
+- Modify: `C:\Users\amd\hermes\electron\renderer\app.js`
+- Modify: `C:\Users\amd\hermes\electron\renderer\styles.css`
+- Modify: `C:\Users\amd\hermes\pipeline\youtube-thumbnail.mjs`
+- Modify: `C:\Users\amd\hermes\pipeline\youtube-thumbnail-prompt.mjs`
+- Create: `C:\Users\amd\hermes\scripts\check-thumbnail-overlay-controls.mjs`
+
+- [ ] **Step 1: Write the failing thumbnail overlay controls contract**
+
+Create `C:\Users\amd\hermes\scripts\check-thumbnail-overlay-controls.mjs`:
+
+```js
+#!/usr/bin/env node
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const root = resolve(import.meta.dirname, "..");
+const html = readFileSync(resolve(root, "electron/renderer/index.html"), "utf8");
+const renderer = readFileSync(resolve(root, "electron/renderer/app.js"), "utf8");
+const styles = readFileSync(resolve(root, "electron/renderer/styles.css"), "utf8");
+const schema = readFileSync(resolve(root, "youtube-job-schema.mjs"), "utf8");
+const service = readFileSync(resolve(root, "electron/services/youtube-job-service.mjs"), "utf8");
+const prompt = readFileSync(resolve(root, "pipeline/youtube-thumbnail-prompt.mjs"), "utf8");
+const thumbnail = readFileSync(resolve(root, "pipeline/youtube-thumbnail.mjs"), "utf8");
+
+for (const id of [
+  "thumbnailTextEnabled",
+  "thumbnailHeadlineText",
+  "thumbnailSubheadlineText",
+  "thumbnailFontFamily",
+  "thumbnailFontWeight",
+  "thumbnailTitleFontSize",
+  "thumbnailSubFontSize",
+  "thumbnailTextColor",
+  "thumbnailHighlightColor",
+  "thumbnailBackgroundColor",
+  "thumbnailBackgroundOpacity",
+  "thumbnailPositionY",
+  "thumbnailBandHeight",
+  "thumbnailPreviewText",
+]) {
+  assert.match(html, new RegExp(`id="${id}"`), `${id} control should exist`);
+}
+
+assert.match(renderer, /readThumbnailOverlayInput/, "renderer should read thumbnail overlay controls into job input");
+assert.match(renderer, /updateThumbnailPreview/, "renderer should update thumbnail preview live");
+assert.match(renderer, /thumbnailOverlay:/, "renderer should send thumbnailOverlay in job payload");
+assert.match(styles, /\.thumbnail-preview/, "thumbnail preview should have dedicated styles");
+assert.match(schema, /thumbnailOverlay/, "job schema should normalize thumbnailOverlay");
+assert.match(schema, /titleFontSize/, "thumbnailOverlay should include title font size");
+assert.match(schema, /highlightColor/, "thumbnailOverlay should include keyword highlight color");
+assert.match(service, /thumbnailOverlay:\s*input\.thumbnailOverlay/, "job service should forward thumbnailOverlay");
+assert.match(prompt, /normalizeThumbnailOverlayStyle/, "prompt module should normalize thumbnail overlay style");
+assert.match(thumbnail, /overlayPlan\.style/, "thumbnail compositor should apply overlayPlan style");
+assert.match(thumbnail, /backgroundOpacity/, "thumbnail compositor should apply background opacity");
+assert.match(thumbnail, /positionYPercent/, "thumbnail compositor should apply vertical position");
+
+console.log(JSON.stringify({ ok: true, checked: "thumbnail-overlay-controls" }));
+```
+
+- [ ] **Step 2: Run the failing contract**
+
+Run:
+
+```powershell
+node scripts/check-thumbnail-overlay-controls.mjs
+```
+
+Expected: FAIL because thumbnail overlay UI and schema fields do not exist yet.
+
+- [ ] **Step 3: Add schema defaults and normalization**
+
+In `C:\Users\amd\hermes\youtube-job-schema.mjs`, add a `DEFAULT_THUMBNAIL_OVERLAY` object near the existing thumbnail defaults:
+
+```js
+const DEFAULT_THUMBNAIL_OVERLAY = {
+  enabled: true,
+  headlineText: "",
+  subheadlineText: "",
+  fontFamily: "Malgun Gothic",
+  fontWeight: 900,
+  titleFontSize: 96,
+  subFontSize: 52,
+  textColor: "#ffffff",
+  highlightColor: "#fde047",
+  backgroundColor: "#050505",
+  backgroundOpacity: 0.72,
+  outlineColor: "#000000",
+  outlineWidth: 8,
+  shadowOpacity: 0.45,
+  positionYPercent: 5.5,
+  bandHeightPercent: 22,
+  maxLines: 2,
+};
+```
+
+Then normalize it in `normalizeYouTubeJobRequest`:
+
+```js
+  options.thumbnailOverlay = normalizeThumbnailOverlay({
+    ...DEFAULT_THUMBNAIL_OVERLAY,
+    ...(explicitOptions.thumbnailOverlay || {}),
+  });
+```
+
+Add the helper:
+
+```js
+function normalizeThumbnailOverlay(input = {}) {
+  return {
+    enabled: input.enabled !== false,
+    headlineText: String(input.headlineText || "").replace(/\s+/g, " ").trim().slice(0, 32),
+    subheadlineText: String(input.subheadlineText || "").replace(/\s+/g, " ").trim().slice(0, 36),
+    fontFamily: ["Malgun Gothic", "Pretendard", "Arial"].includes(input.fontFamily) ? input.fontFamily : "Malgun Gothic",
+    fontWeight: clampInt(input.fontWeight, 500, 1000, 900),
+    titleFontSize: clampInt(input.titleFontSize, 42, 140, 96),
+    subFontSize: clampInt(input.subFontSize, 24, 80, 52),
+    textColor: normalizeHex(input.textColor, "#ffffff"),
+    highlightColor: normalizeHex(input.highlightColor, "#fde047"),
+    backgroundColor: normalizeHex(input.backgroundColor, "#050505"),
+    backgroundOpacity: clampNumber(input.backgroundOpacity, 0, 0.92, 0.72),
+    outlineColor: normalizeHex(input.outlineColor, "#000000"),
+    outlineWidth: clampInt(input.outlineWidth, 0, 16, 8),
+    shadowOpacity: clampNumber(input.shadowOpacity, 0, 0.9, 0.45),
+    positionYPercent: clampNumber(input.positionYPercent, 0, 55, 5.5),
+    bandHeightPercent: clampNumber(input.bandHeightPercent, 12, 38, 22),
+    maxLines: clampInt(input.maxLines, 1, 2, 2),
+  };
+}
+```
+
+- [ ] **Step 4: Add Studio controls and live preview**
+
+Add a `Thumbnail Text` sub-panel in `C:\Users\amd\hermes\electron\renderer\index.html` below the existing title overlay panel. It must include controls for:
+
+```text
+thumbnailTextEnabled
+thumbnailHeadlineText
+thumbnailSubheadlineText
+thumbnailFontFamily
+thumbnailFontWeight
+thumbnailTitleFontSize
+thumbnailSubFontSize
+thumbnailTextColor
+thumbnailHighlightColor
+thumbnailBackgroundColor
+thumbnailBackgroundOpacity
+thumbnailPositionY
+thumbnailBandHeight
+thumbnailPreviewText
+```
+
+The preview should show the selected headline/subheadline, not explanatory help text.
+
+- [ ] **Step 5: Read controls into job input**
+
+In `C:\Users\amd\hermes\electron\renderer\app.js`, add selectors for every thumbnail control and implement:
+
+```js
+function readThumbnailOverlayInput() {
+  return {
+    enabled: thumbnailTextEnabled?.checked !== false,
+    headlineText: thumbnailHeadlineText?.value.trim() || "",
+    subheadlineText: thumbnailSubheadlineText?.value.trim() || "",
+    fontFamily: thumbnailFontFamily?.value || "Malgun Gothic",
+    fontWeight: Number(thumbnailFontWeight?.value || 900),
+    titleFontSize: Number(thumbnailTitleFontSize?.value || 96),
+    subFontSize: Number(thumbnailSubFontSize?.value || 52),
+    textColor: thumbnailTextColor?.value || "#ffffff",
+    highlightColor: thumbnailHighlightColor?.value || "#fde047",
+    backgroundColor: thumbnailBackgroundColor?.value || "#050505",
+    backgroundOpacity: Number(thumbnailBackgroundOpacity?.value ?? 0.72),
+    positionYPercent: Number(thumbnailPositionY?.value ?? 5.5),
+    bandHeightPercent: Number(thumbnailBandHeight?.value ?? 22),
+    maxLines: 2,
+  };
+}
+```
+
+Add this field in `readJobInput()`:
+
+```js
+    thumbnailOverlay: readThumbnailOverlayInput(),
+```
+
+Implement `updateThumbnailPreview()` and attach `input`/`change` listeners to every thumbnail control, `sourceValue`, and `titleOverlayText`.
+
+- [ ] **Step 6: Add preview CSS**
+
+In `C:\Users\amd\hermes\electron\renderer\styles.css`, add a `.thumbnail-preview` block with CSS variables for `--thumb-bg`, `--thumb-bg-opacity`, `--thumb-y`, `--thumb-band-h`, `--thumb-font`, `--thumb-title-size`, `--thumb-sub-size`, `--thumb-text`, and `--thumb-highlight`. Use `aspect-ratio: 9 / 16`, `max-height: 360px`, `border-radius: 8px`, and a dark top band so the preview resembles the rendered thumbnail.
+
+- [ ] **Step 7: Apply user style in thumbnail composition**
+
+In `C:\Users\amd\hermes\pipeline\youtube-thumbnail-prompt.mjs`, update `buildThumbnailOverlayPlan` to accept `userOverlay`:
+
+```js
+export function buildThumbnailOverlayPlan({ title, script, hpsl, userOverlay = {} }) {
+  const source = compactText([title, hpsl?.hook?.narration, hpsl?.point?.narration, script].filter(Boolean).join(" "), 520);
+  const autoHeadline = makeHookHeadline(title || source);
+  const hookHeadline = userOverlay.headlineText || autoHeadline;
+  const subheadline = userOverlay.subheadlineText || makeSubheadline(source, hookHeadline);
+  return {
+    enabled: userOverlay.enabled !== false,
+    hookHeadline,
+    subheadline,
+    highlightKeywords: chooseHighlightKeywords(hookHeadline, source),
+    style: normalizeThumbnailOverlayStyle(userOverlay),
+    hookMood: inferHookMood(source),
+  };
+}
+```
+
+Add `normalizeThumbnailOverlayStyle` in the same module so the compositor and schema share the same bounds.
+
+In `C:\Users\amd\hermes\pipeline\youtube-thumbnail.mjs`, add `thumbnailOverlay = {}` to `createThumbnailForJob`, pass it into `buildThumbnailOverlayPlan`, and use `overlayPlan.style` inside `composeFlowThumbnail` for font family, weight, title size, sub size, text color, highlight color, background color, background opacity, outline, shadow, vertical position, and band height.
+
+- [ ] **Step 8: Forward thumbnail overlay through service and stages**
+
+In `C:\Users\amd\hermes\electron\services\youtube-job-service.mjs`, add:
+
+```js
+      thumbnailOverlay: input.thumbnailOverlay || {},
+```
+
+In `C:\Users\amd\hermes\youtube-workflow-stages.mjs`, pass:
+
+```js
+    thumbnailOverlay: result.job?.options?.thumbnailOverlay || context.job?.options?.thumbnailOverlay || {},
+```
+
+- [ ] **Step 9: Wire package checks**
+
+In `C:\Users\amd\hermes\package.json`, add:
+
+```json
+"check:thumbnail-overlay": "node scripts/check-thumbnail-overlay-controls.mjs"
+```
+
+Then in the long `check` command, run it after `npm run check:flow-thumbnail`:
+
+```text
+npm run check:chatgpt-thumbnail && npm run check:flow-thumbnail && npm run check:thumbnail-overlay
+```
+
+- [ ] **Step 10: Run focused checks**
+
+Run:
+
+```powershell
+node scripts/check-thumbnail-overlay-controls.mjs
+npm.cmd run check:flow-thumbnail
+node scripts/check-local-studio-product.mjs
+```
+
+Expected: all PASS.
+
+- [ ] **Step 11: Commit thumbnail overlay controls**
+
+Run:
+
+```powershell
+git add youtube-job-schema.mjs electron/services/youtube-job-service.mjs electron/renderer/index.html electron/renderer/app.js electron/renderer/styles.css pipeline/youtube-thumbnail.mjs pipeline/youtube-thumbnail-prompt.mjs scripts/check-thumbnail-overlay-controls.mjs package.json
+git commit -m "feat: add editable thumbnail text controls"
+```
+
+---
+
+### Task 7: Validate With Mock and Full Checks
 
 **Files:**
 - No source files should be modified in this task unless checks reveal a concrete issue.
@@ -681,6 +967,7 @@ Run:
 node --check pipeline/youtube-thumbnail.mjs
 node --check pipeline/youtube-thumbnail-prompt.mjs
 npm.cmd run check:flow-thumbnail
+npm.cmd run check:thumbnail-overlay
 npm.cmd run check:chatgpt-thumbnail
 node scripts/check-local-studio-product.mjs
 ```
@@ -736,7 +1023,7 @@ Do not roll back to ChatGPT as the default provider unless the user explicitly r
 
 ## Self-Review
 
-- Spec coverage: The plan covers Flow thumbnail generation, Korean text reliability, hook-driven title/subtitle generation, context-aware background prompts, upload-review artifacts, tests, full check, and packaging.
+- Spec coverage: The plan covers Flow thumbnail generation, Korean text reliability, hook-driven title/subtitle generation, user-editable thumbnail text controls, live preview, schema normalization, context-aware background prompts, upload-review artifacts, tests, full check, and packaging.
 - Placeholder scan: No placeholder or deferred implementation items remain.
-- Type consistency: The plan consistently uses `buildFlowThumbnailPrompt`, `buildThumbnailOverlayPlan`, `composeFlowThumbnail`, `generateGoogleFlowVideoFromPrompt`, and `primaryProvider: "google-flow-image"`.
+- Type consistency: The plan consistently uses `buildFlowThumbnailPrompt`, `buildThumbnailOverlayPlan`, `normalizeThumbnailOverlayStyle`, `thumbnailOverlay`, `composeFlowThumbnail`, `generateGoogleFlowVideoFromPrompt`, and `primaryProvider: "google-flow-image"`.
 - Risk note: Google Flow may still fail due to account/session/policy limits. The plan handles this with local fallback and metadata, but live Flow reliability still depends on the authenticated Flow account.
