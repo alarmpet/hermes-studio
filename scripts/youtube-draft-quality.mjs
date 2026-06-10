@@ -105,6 +105,52 @@ function includesMostOfScript(sceneText = "", script = "") {
   return jaccardSimilarity(sceneText, script) >= 0.8;
 }
 
+function detectRepeatedSceneSequence(scenes = []) {
+  const normalized = scenes.map((scene) => compactHangul(scene?.narration));
+  if (normalized.length < 4 || normalized.some((item) => !item)) return null;
+
+  for (let blockSize = Math.floor(normalized.length / 2); blockSize >= 2; blockSize -= 1) {
+    const firstBlock = normalized.slice(0, blockSize);
+    const secondBlock = normalized.slice(blockSize, blockSize * 2);
+    if (secondBlock.length !== blockSize) continue;
+    if (!firstBlock.every((item, index) => item === secondBlock[index])) continue;
+
+    return {
+      repeatedSceneOrders: scenes.slice(blockSize, blockSize * 2).map((scene, index) => Number(scene?.order || blockSize + index + 1)),
+      sequenceLength: blockSize,
+      repeatedFromOrder: Number(scenes[0]?.order || 1),
+      repeatedAtOrder: Number(scenes[blockSize]?.order || blockSize + 1),
+    };
+  }
+
+  const half = Math.floor(normalized.length / 2);
+  if (half >= 3) {
+    const firstHalfText = scenes.slice(0, half).map((scene) => normalizeText(scene?.narration)).join(" ");
+    const secondHalfText = scenes.slice(half, half * 2).map((scene) => normalizeText(scene?.narration)).join(" ");
+    const compactFirst = compactHangul(firstHalfText);
+    const compactSecond = compactHangul(secondHalfText);
+    const similarHalves = compactFirst.length >= 80
+      && compactSecond.length >= 80
+      && (
+        compactFirst === compactSecond
+        || compactFirst.includes(compactSecond)
+        || compactSecond.includes(compactFirst)
+        || jaccardSimilarity(firstHalfText, secondHalfText) >= 0.92
+      );
+    if (similarHalves) {
+      return {
+        repeatedSceneOrders: scenes.slice(half, half * 2).map((scene, index) => Number(scene?.order || half + index + 1)),
+        sequenceLength: half,
+        repeatedFromOrder: Number(scenes[0]?.order || 1),
+        repeatedAtOrder: Number(scenes[half]?.order || half + 1),
+        duplicateSimilarity: Number(jaccardSimilarity(firstHalfText, secondHalfText).toFixed(3)),
+      };
+    }
+  }
+
+  return null;
+}
+
 export function validateDraftQuality({ draft = {}, job = {}, stage = "", jobDir = "" } = {}) {
   const scenes = Array.isArray(draft.scenes) ? draft.scenes : [];
   const combined = [
@@ -181,6 +227,18 @@ export function validateDraftQuality({ draft = {}, job = {}, stage = "", jobDir 
 
   const hpslResult = validateHpslStructure(draft, stage, jobDir, job);
   if (!hpslResult.ok) return hpslResult;
+
+  const repeatedSequence = detectRepeatedSceneSequence(scenes);
+  if (repeatedSequence) {
+    return {
+      ok: false,
+      failureCode: "DUPLICATE_SCENE_SEQUENCE",
+      reason: `Scenes ${repeatedSequence.repeatedAtOrder}-${repeatedSequence.repeatedAtOrder + repeatedSequence.sequenceLength - 1} repeat the earlier scene sequence.`,
+      stage,
+      jobDir,
+      ...repeatedSequence,
+    };
+  }
 
   const qualityWarnings = [];
   for (const scene of scenes) {

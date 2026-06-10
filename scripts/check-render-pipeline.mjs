@@ -35,8 +35,8 @@ assert.ok(!scriptText.includes("\"-shortest\""), "renderer must not depend on ff
 assert.ok(scriptText.includes("scene_audio_manifest.json"), "renderer should use scene-level TTS manifest");
 assert.match(scriptText, /splitSubtitleChunks/, "renderer should split long narration into shorter subtitle cues");
 assert.match(scriptText, /subtitleCueBlocks/, "renderer should create multiple timed subtitle blocks per scene");
-assert.match(scriptText, /Math\.min\(12,\s*Number\(ass\.fontSize/, "renderer should cap subtitle font size for readable lower-third captions");
-assert.match(scriptText, /MarginV:\s*Math\.max\(60,\s*Math\.min\(150/, "renderer should keep subtitles in a lower-middle safe zone");
+assert.match(scriptText, /Math\.min\(28,\s*Number\(ass\.fontSize/, "renderer should allow larger lower-third captions");
+assert.match(scriptText, /MarginV:\s*Math\.max\(20,\s*Math\.min\(110/, "renderer should keep subtitles in a lower safe zone");
 assert.match(scriptText, /createTitleOverlayImage/, "renderer should create a separate top-title overlay image");
 assert.match(scriptText, /title-overlay\.png/, "renderer should persist the generated title overlay image");
 assert.match(scriptText, /titleOverlay/, "render report should expose title overlay metadata");
@@ -44,6 +44,7 @@ assert.doesNotMatch(scriptText, /drawtext=.*title/i, "renderer should avoid brit
 
 const schemaText = readFileSync(resolve(ROOT, "youtube-job-schema.mjs"), "utf8");
 assert.match(schemaText, /maxLineChars:\s*10/, "bold shorts preset should keep each subtitle line short");
-assert.match(schemaText, /marginV:\s*90/, "bold shorts preset should place captions in the lower-middle safe zone");
+assert.match(schemaText, /fontSize:\s*22/, "bold shorts preset should default to larger captions");
+assert.match(schemaText, /marginV:\s*34/, "bold shorts preset should place captions lower on screen");
 
 console.log(JSON.stringify({ ok: true, checked: "render-pipeline" }));

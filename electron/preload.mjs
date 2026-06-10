@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("hermes", {
   getConfig: () => ipcRenderer.invoke("app:getConfig"),
   configGet: () => ipcRenderer.invoke("config:get"),
   configSave: (config) => ipcRenderer.invoke("config:save", config),
+  ollamaHealth: (options) => ipcRenderer.invoke("ollama:health", options),
   voicePresets: () => ipcRenderer.invoke("presets:voices"),
   stylePresets: () => ipcRenderer.invoke("presets:styles"),
   authStatus: () => ipcRenderer.invoke("auth:status"),

@@ -30,7 +30,7 @@ const scenes = planScenesFromScript({
 assert.ok(scenes.length >= 10, "longform script should produce enough scenes for a 10 minute workflow");
 assert.ok(scenes.every((scene) => String(scene.narration || "").trim()), "longform scene planner must not create empty narration scenes");
 assert.ok(scenes.every((scene) => !String(scene.narration || "").includes(longScript)), "no scene should fall back to the full script");
-assert.deepEqual(scenes.slice(0, 10).map((scene) => scene.outputMode), Array(10).fill("video"), "first 10 hybrid scenes should be video");
+assert.deepEqual(scenes.slice(0, 10).map((scene) => scene.outputMode), Array(10).fill("video"), "direct script hybrid planner should still honor explicit opening video count");
 assert.ok(scenes.slice(10).every((scene) => scene.outputMode === "image"), "scenes after the first 10 should be images");
 
 const draft = {
@@ -52,12 +52,16 @@ const job = normalizeYouTubeJobRequest({
   },
 });
 assert.equal(job.options.customDurationSeconds, 720, "custom duration should allow over 10 minutes");
-assert.equal(job.options.hybridIntroVideoSceneCount, 10, "schema should preserve 10 opening video scenes");
+assert.equal(job.options.hybridIntroVideoSceneCount, 10, "schema should preserve the requested opening auto candidate count");
 
 assert.match(html, /id="customDurationSeconds"[^>]+max="1200"/, "UI should allow longform durations up to 1200 seconds");
 assert.match(html, /id="hybridIntroVideoSceneCount"[^>]+max="10"/, "UI should allow 10 opening video scenes");
+assert.match(html, /id="longformChapteredRenderEnabled"/, "UI should expose longform chaptered render toggle");
+assert.match(html, /id="chapterTargetSeconds"[^>]+min="60"[^>]+max="120"/, "UI should expose 60-120 second chapter target control");
 assert.match(renderer, /Math\.min\(1200/, "renderer should clamp custom duration at 1200 seconds");
 assert.match(renderer, /Math\.min\(10/, "renderer should clamp hybrid opening video count at 10");
+assert.match(renderer, /longformChapteredRenderEnabled:\s*getVideoFormat\(\)\s*===\s*"longform"/, "job payload should only enable chaptered render for longform jobs");
+assert.match(renderer, /chapterTargetSeconds:\s*getChapterTargetSeconds\(\)/, "job payload should include chapter target seconds");
 assert.match(directScript, /Math\.min\(10/, "direct script hook warning should use the same 10-scene hybrid cap");
 
 const qaDir = await mkdtemp(resolve(tmpdir(), "hermes-longform-qa-"));

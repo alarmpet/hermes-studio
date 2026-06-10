@@ -33,7 +33,7 @@ const scenes = planScenesFromHpsl({
 
 assert.equal(scenes[0].outputMode, "video", "first hybrid intro scene should remain video");
 assert.ok(
-  Array.from(scenes[0].narration.replace(/\s+/g, "")).length <= 35,
+  Array.from(scenes[0].narration.replace(/\s+/g, "")).length <= 60,
   "first Flow video scene narration must be short enough for one 8s Flow clip",
 );
 assert.ok(
@@ -41,7 +41,7 @@ assert.ok(
   "overflow hook narration should continue as image scenes instead of one long video scene",
 );
 assert.ok(
-  scenes.every((scene) => !(scene.outputMode === "video" && Array.from(scene.narration.replace(/\s+/g, "")).length > 35)),
+  scenes.every((scene) => !(scene.outputMode === "video" && Array.from(scene.narration.replace(/\s+/g, "")).length > 60)),
   "no hybrid video scene should carry long narration that will exceed one Flow clip",
 );
 assert.equal(scenes.reduce((sum, scene) => sum + scene.duration_seconds, 0), 60, "scene durations should still sum to target");

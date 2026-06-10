@@ -29,7 +29,10 @@ export function createFailureProgressEvent({ jobId = "", message = "", details =
   const finalOutputQaFailure = /Final output QA failed/i.test(String(message || ""));
   const flowAbnormalActivityFailure = /FLOW_ABNORMAL_ACTIVITY|flow-abnormal-activity|비정상적인\s*활동|abnormal activity|unusual activity|automated traffic|too many requests|rate limit|鍮꾩젙|媛먯|怨좉컼|쇳꽣/i
     .test(String(message || ""));
+  const flowRateLimitFailure = /FLOW_RATE_LIMITED|flow-rate-limited|too fast|너무\s*빨리|잠시\s*후|다시\s*시도/i
+    .test(String(message || ""));
   const flowMediaFailure = flowAbnormalActivityFailure
+    || flowRateLimitFailure
     || /Flow did not expose|Google Flow|flow-generation-failed|FLOW_GENERATION_FAILED/i.test(String(message || ""));
   const qaReason = String(message || "").replace(/Final output QA failed:\s*/i, "").trim();
   const qaFailureCodes = finalOutputQaFailure && qaReason
@@ -40,7 +43,12 @@ export function createFailureProgressEvent({ jobId = "", message = "", details =
     : flowMediaFailure
     ? "flow-media"
     : "submitted";
-  const actionRequired = flowAbnormalActivityFailure
+  const actionRequired = flowRateLimitFailure
+    ? {
+        title: "Google Flow cooldown required",
+        message: "Google Flow is rate limiting generation requests. Wait for cooldown, then retry the failed scene.",
+      }
+    : flowAbnormalActivityFailure
     ? {
         title: "Google Flow account/session action required",
         message: "Google Flow reported abnormal activity. Change or re-authenticate the Flow account, wait for cooldown if needed, then retry the failed scene.",
@@ -51,11 +59,13 @@ export function createFailureProgressEvent({ jobId = "", message = "", details =
   return createJobProgressEvent({
     jobId,
     phase,
-    status: renderRunnerFailure || flowAbnormalActivityFailure ? "action-required" : "failed",
+    status: renderRunnerFailure || flowAbnormalActivityFailure || flowRateLimitFailure ? "action-required" : "failed",
     message: finalOutputQaFailure
       ? `Final video was created, but final QA blocked it. ${qaReason ? `(${qaReason})` : ""}`.trim()
       : renderRunnerFailure
       ? "렌더 실행기가 Electron/Chromium 모드로 실행되어 최종 렌더가 중단되었습니다."
+      : flowRateLimitFailure
+      ? `Google Flow cooldown is required. ${message || ""}`.trim()
       : flowAbnormalActivityFailure
       ? `Google Flow account/session action is required. ${message || ""}`.trim()
       : message || "작업이 실패했습니다.",
@@ -65,8 +75,8 @@ export function createFailureProgressEvent({ jobId = "", message = "", details =
       finalVideoExists: finalOutputQaFailure ? true : details.finalVideoExists,
       qaFailure: finalOutputQaFailure ? true : details.qaFailure,
       flowFailure: flowMediaFailure ? true : details.flowFailure,
-      actionRequired: flowAbnormalActivityFailure ? true : details.actionRequired,
-      failureCodes: flowAbnormalActivityFailure ? ["FLOW_ABNORMAL_ACTIVITY"] : qaFailureCodes,
+      actionRequired: flowAbnormalActivityFailure || flowRateLimitFailure ? true : details.actionRequired,
+      failureCodes: flowRateLimitFailure ? ["FLOW_RATE_LIMITED"] : flowAbnormalActivityFailure ? ["FLOW_ABNORMAL_ACTIVITY"] : qaFailureCodes,
     },
     actionRequired,
   });

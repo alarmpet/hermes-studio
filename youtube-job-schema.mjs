@@ -1,5 +1,6 @@
 import { VOICE_PRESETS } from "./electron/services/voice-presets.mjs";
-import { TITLE_OVERLAY_STYLE_IDS } from "./electron/services/title-overlay-presets.mjs";
+import { TITLE_OVERLAY_STYLE_IDS, getTitleOverlayPreset } from "./electron/services/title-overlay-presets.mjs";
+import { estimateDirectScriptSeconds } from "./electron/services/direct-script-duration.mjs";
 
 export { VOICE_PRESETS };
 
@@ -16,17 +17,17 @@ export const SUBTITLE_STYLE_PRESETS = [
   {
     id: "clean-news",
     label: "클린 뉴스",
-    ass: { fontName: "Malgun Gothic", fontSize: 10, outline: 2, shadow: 1, marginV: 80, primaryColour: "&H00FFFFFF", maxLineChars: 12, maxLines: 2 },
+    ass: { fontName: "Malgun Gothic", fontSize: 20, outline: 4, shadow: 2, marginV: 36, primaryColour: "&H00FFFFFF", maxLineChars: 12, maxLines: 2 },
   },
   {
     id: "bold-shorts",
     label: "볼드 쇼츠",
-    ass: { fontName: "Malgun Gothic", fontSize: 11, outline: 2, shadow: 1, marginV: 90, primaryColour: "&H00FFFFFF", maxLineChars: 10, maxLines: 2 },
+    ass: { fontName: "Malgun Gothic", fontSize: 22, outline: 4, shadow: 2, marginV: 34, primaryColour: "&H00FFFFFF", maxLineChars: 10, maxLines: 2 },
   },
   {
     id: "minimal",
     label: "미니멀",
-    ass: { fontName: "Malgun Gothic", fontSize: 9, outline: 1, shadow: 0, marginV: 80, primaryColour: "&H00FFFFFF", maxLineChars: 13, maxLines: 2 },
+    ass: { fontName: "Malgun Gothic", fontSize: 18, outline: 2, shadow: 0, marginV: 36, primaryColour: "&H00FFFFFF", maxLineChars: 13, maxLines: 2 },
   },
 ];
 
@@ -34,6 +35,8 @@ export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
   scriptLengthMode: "preset",
   videoFormat: "shorts",
   longformTargetSeconds: 720,
+  longformChapteredRenderEnabled: false,
+  chapterTargetSeconds: 90,
   introVideoSeconds: 60,
   introVideoClipCount: 10,
   bodyVisualMode: "image",
@@ -41,6 +44,8 @@ export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
   enableLiveMcp: false,
   scriptLengthPreset: "standard",
   customDurationSeconds: 60,
+  estimatedScriptSeconds: 0,
+  durationSource: "user-selected",
   scriptStructure: "hpsl",
   sceneStrategy: "sentence-proportional",
   voiceId: "female_30_announcer",
@@ -69,7 +74,7 @@ export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
   transitionSeconds: 0.3,
   motionIntensity: "strong",
   smoothFrameInterpolation: false,
-  stylePresetId: "cinematic-tech-news",
+  stylePresetId: "stickmanplus",
   stylePreset: {},
   researchProvider: "gemini-gems-browser",
   archiveProvider: "local-files",
@@ -80,6 +85,19 @@ export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
   },
   openaiProviderMode: "disabled",
   openaiApiKeyConfigured: false,
+  ollamaAssistEnabled: false,
+  ollamaBaseUrl: "http://127.0.0.1:11434",
+  ollamaModel: "gemma4:12b",
+  ollamaTimeoutMs: 20000,
+  ollamaUseCases: {
+    storyboard: true,
+    promptQa: true,
+    failureReport: true,
+    uploadMetadata: false,
+    thumbnailIdeas: false,
+    scriptPolish: false,
+    researchDigest: false,
+  },
 };
 
 export const DEFAULT_UPLOAD_OPTIONS = {
@@ -112,6 +130,22 @@ export const DEFAULT_THUMBNAIL_OVERLAY = {
   maxLines: 2,
 };
 
+export const DEFAULT_TITLE_OVERLAY_STYLE = {
+  fontFamily: "Malgun Gothic",
+  fontWeight: 900,
+  fontSize: 78,
+  textColor: "#ffffff",
+  highlightColor: "#fde047",
+  backgroundColor: "#050505",
+  backgroundOpacity: 0.82,
+  outlineColor: "#000000",
+  outlineWidth: 7,
+  positionYPercent: 4.5,
+  bandHeightPercent: 14,
+  horizontalPaddingPercent: 8,
+  maxLines: 2,
+};
+
 const RENDER_EFFECT_PRESETS = ["clean", "cinematic", "dynamic-shorts"];
 const TRANSITION_PRESETS = ["none", "scene-fade", "smooth-crossfade", "directional-wipe", "hook-whip"];
 const MOTION_INTENSITIES = ["none", "light", "strong"];
@@ -137,7 +171,7 @@ export function normalizeYouTubeJobRequest(input = {}) {
   const explicitOptions = input.options || {};
   const hasExplicitResearchProvider = Object.prototype.hasOwnProperty.call(explicitOptions, "researchProvider");
   const hasExplicitEnableLiveMcp = Object.prototype.hasOwnProperty.call(explicitOptions, "enableLiveMcp");
-  const hasExplicitTitleOverlayEnabled = Object.prototype.hasOwnProperty.call(explicitOptions, "titleOverlayEnabled");
+  const hasExplicitFlowOutputMode = Object.prototype.hasOwnProperty.call(explicitOptions, "flowOutputMode");
   const options = { ...DEFAULT_YOUTUBE_JOB_OPTIONS, ...explicitOptions };
   options.videoFormat = String(options.videoFormat || "shorts").toLowerCase();
   if (!VIDEO_FORMATS.includes(options.videoFormat)) {
@@ -146,20 +180,47 @@ export function normalizeYouTubeJobRequest(input = {}) {
   if (!SCRIPT_LENGTH_PRESETS[options.scriptLengthPreset]) {
     throw new Error(`Unknown scriptLengthPreset: ${options.scriptLengthPreset}`);
   }
+  options.scriptLengthMode = String(options.scriptLengthMode || "preset").toLowerCase();
+  if (!["preset", "custom", "auto"].includes(options.scriptLengthMode)) {
+    throw new Error(`Unknown scriptLengthMode: ${options.scriptLengthMode}`);
+  }
   options.customDurationSeconds = Math.max(15, Math.min(1200, Number(options.customDurationSeconds || 60)));
-  if (options.videoFormat === "longform") {
-    options.customDurationSeconds = Math.max(600, options.customDurationSeconds);
+  options.estimatedScriptSeconds = Math.max(0, Math.min(1200, Math.round(Number(options.estimatedScriptSeconds || 0))));
+  if (sourceType === "script" && options.scriptLengthMode === "auto") {
+    const autoSeconds = options.estimatedScriptSeconds || estimateDirectScriptSeconds({
+      script: sourceValue,
+      speechSpeed: options.speechSpeed,
+    });
+    options.customDurationSeconds = Math.max(15, Math.min(1200, autoSeconds));
+    options.estimatedScriptSeconds = options.customDurationSeconds;
+    options.durationSource = "script-auto";
+  } else {
+    options.durationSource = "user-selected";
+    if (options.scriptLengthMode === "auto") options.scriptLengthMode = "preset";
+    if (options.videoFormat === "longform") {
+      options.customDurationSeconds = Math.max(600, options.customDurationSeconds);
+    }
   }
   options.longformTargetSeconds = options.videoFormat === "longform"
-    ? Math.max(600, Math.min(1200, Number(options.longformTargetSeconds || options.customDurationSeconds || 720)))
+    ? (sourceType === "script" && options.scriptLengthMode === "auto"
+        ? Math.max(15, Math.min(1200, Number(options.customDurationSeconds || options.estimatedScriptSeconds || 720)))
+        : Math.max(600, Math.min(1200, Number(options.longformTargetSeconds || options.customDurationSeconds || 720))))
     : options.customDurationSeconds;
   if (options.videoFormat === "longform") {
-    options.customDurationSeconds = options.longformTargetSeconds;
-    options.scriptLengthMode = "custom";
-    options.flowOutputMode = "hybrid";
+    if (sourceType === "script" && options.scriptLengthMode === "auto") {
+      options.longformTargetSeconds = Math.max(15, Math.min(1200, options.customDurationSeconds));
+    } else {
+      options.customDurationSeconds = options.longformTargetSeconds;
+      options.scriptLengthMode = "custom";
+    }
+    if (!hasExplicitFlowOutputMode) options.flowOutputMode = "auto";
     if (!hasExplicitResearchProvider) options.researchProvider = "notebooklm-mcp";
     if (!hasExplicitEnableLiveMcp) options.enableLiveMcp = true;
   }
+  options.longformChapteredRenderEnabled = options.videoFormat === "longform"
+    ? Boolean(options.longformChapteredRenderEnabled)
+    : false;
+  options.chapterTargetSeconds = Math.max(60, Math.min(120, Math.round(Number(options.chapterTargetSeconds || 90))));
   options.scriptStructure = sourceType === "script"
     ? "direct-script"
     : String(options.scriptStructure || "hpsl").toLowerCase();
@@ -179,7 +240,7 @@ export function normalizeYouTubeJobRequest(input = {}) {
   if (!hasPreset(SUBTITLE_STYLE_PRESETS, options.subtitleStyleId)) {
     throw new Error(`Unknown subtitleStyleId: ${options.subtitleStyleId}`);
   }
-  options.stylePresetId = String(options.stylePresetId || "cinematic-tech-news");
+  options.stylePresetId = String(options.stylePresetId || "stickmanplus");
   options.stylePreset = options.stylePreset && typeof options.stylePreset === "object" ? options.stylePreset : {};
   options.researchProvider = String(options.researchProvider || "gemini-gems-browser");
   if (!RESEARCH_PROVIDERS.includes(options.researchProvider)) {
@@ -199,7 +260,7 @@ export function normalizeYouTubeJobRequest(input = {}) {
   }
   options.bodyImageSeconds = Math.max(10, Math.min(30, Number(options.bodyImageSeconds || 18)));
   options.flowOutputMode = String(options.flowOutputMode || "video").toLowerCase();
-  if (!["video", "image", "hybrid"].includes(options.flowOutputMode)) {
+  if (!["video", "image", "hybrid", "auto"].includes(options.flowOutputMode)) {
     throw new Error(`Unknown flowOutputMode: ${options.flowOutputMode}`);
   }
   options.autoLandscapeLongform = Boolean(options.autoLandscapeLongform);
@@ -209,8 +270,11 @@ export function normalizeYouTubeJobRequest(input = {}) {
   } else {
     options.aspectRatio = String(options.aspectRatio || "9:16") === "16:9" ? "16:9" : "9:16";
   }
-  options.titleOverlayEnabled = options.videoFormat === "longform"
-    ? (hasExplicitTitleOverlayEnabled ? Boolean(explicitOptions.titleOverlayEnabled) : false)
+  const suppressTitleOverlay = options.videoFormat === "longform"
+    || options.aspectRatio === "16:9"
+    || Number(options.customDurationSeconds || options.longformTargetSeconds || 0) >= 180;
+  options.titleOverlayEnabled = suppressTitleOverlay
+    ? false
     : options.titleOverlayEnabled !== false;
   options.titleOverlayMode = String(options.titleOverlayMode || (options.titleOverlayText ? "manual" : "auto")).toLowerCase();
   if (!["auto", "manual"].includes(options.titleOverlayMode)) {
@@ -219,16 +283,42 @@ export function normalizeYouTubeJobRequest(input = {}) {
   if (options.titleOverlayText && options.titleOverlayMode === "auto") {
     options.titleOverlayMode = "manual";
   }
-  options.titleOverlayText = String(options.titleOverlayText || "").replace(/\s+/g, " ").trim().slice(0, 80);
+  options.titleOverlayText = String(options.titleOverlayText || "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/[ \t]+/g, " ").trim())
+    .filter((line, i, arr) => line || i < arr.length - 1)
+    .join("\n")
+    .slice(0, 160);
   options.titleOverlayStyleId = String(options.titleOverlayStyleId || "bold-black-accent");
   if (!TITLE_OVERLAY_STYLE_IDS.includes(options.titleOverlayStyleId)) {
     throw new Error(`Unknown titleOverlayStyleId: ${options.titleOverlayStyleId}`);
   }
-  options.titleOverlayMaxLines = Math.max(1, Math.min(2, Math.round(Number(options.titleOverlayMaxLines || 2))));
+  options.titleOverlayMaxLines = Math.max(1, Math.min(4, Math.round(Number(options.titleOverlayMaxLines || 4))));
   options.titleOverlaySafeTop = Math.max(
     0,
     Math.min(options.aspectRatio === "16:9" ? 90 : 160, Number(options.titleOverlaySafeTop ?? 84)),
   );
+  const preset = getTitleOverlayPreset(options.titleOverlayStyleId);
+  const presetStyle = {
+    fontFamily: "Malgun Gothic",
+    fontWeight: 900,
+    fontSize: 78,
+    textColor: preset.primary,
+    highlightColor: preset.accent,
+    backgroundColor: preset.background,
+    backgroundOpacity: preset.backgroundOpacity ?? 0.82,
+    outlineColor: preset.outline,
+    outlineWidth: 7,
+    positionYPercent: 4.5,
+    bandHeightPercent: 14,
+    horizontalPaddingPercent: 8,
+    maxLines: 4,
+  };
+  options.titleOverlayStyle = normalizeTitleOverlayStyle({
+    ...presetStyle,
+    ...(explicitOptions.titleOverlayStyle || {}),
+  });
+  options.titleOverlayMaxLines = options.titleOverlayStyle.maxLines;
   options.hybridIntroVideoSceneCount = Math.max(0, Math.min(10, Math.round(Number(options.hybridIntroVideoSceneCount ?? 2))));
   if (options.videoFormat === "longform") {
     options.hybridIntroVideoSceneCount = options.introVideoClipCount;
@@ -251,6 +341,19 @@ export function normalizeYouTubeJobRequest(input = {}) {
     throw new Error(`Unknown openaiProviderMode: ${options.openaiProviderMode}`);
   }
   options.openaiApiKeyConfigured = Boolean(options.openaiApiKeyConfigured);
+  options.ollamaAssistEnabled = Boolean(options.ollamaAssistEnabled);
+  options.ollamaBaseUrl = String(options.ollamaBaseUrl || DEFAULT_YOUTUBE_JOB_OPTIONS.ollamaBaseUrl)
+    .trim()
+    .replace(/\/+$/u, "");
+  options.ollamaModel = String(options.ollamaModel || DEFAULT_YOUTUBE_JOB_OPTIONS.ollamaModel).trim();
+  options.ollamaTimeoutMs = Math.max(3000, Math.min(60000, Number(options.ollamaTimeoutMs || DEFAULT_YOUTUBE_JOB_OPTIONS.ollamaTimeoutMs)));
+  options.ollamaUseCases = {
+    ...DEFAULT_YOUTUBE_JOB_OPTIONS.ollamaUseCases,
+    ...(options.ollamaUseCases && typeof options.ollamaUseCases === "object" ? options.ollamaUseCases : {}),
+  };
+  for (const key of Object.keys(options.ollamaUseCases)) {
+    options.ollamaUseCases[key] = Boolean(options.ollamaUseCases[key]);
+  }
   options.thumbnailOverlay = normalizeThumbnailOverlay({
     ...DEFAULT_THUMBNAIL_OVERLAY,
     ...(explicitOptions.thumbnailOverlay || {}),
@@ -307,6 +410,24 @@ function normalizeThumbnailOverlay(input = {}) {
     positionYPercent: clampNumber(input.positionYPercent, 0, 55, 5.5),
     bandHeightPercent: clampNumber(input.bandHeightPercent, 12, 38, 22),
     maxLines: clampInt(input.maxLines, 1, 2, 2),
+  };
+}
+
+function normalizeTitleOverlayStyle(input = {}) {
+  return {
+    fontFamily: ["Malgun Gothic", "Pretendard", "Arial"].includes(input.fontFamily) ? input.fontFamily : "Malgun Gothic",
+    fontWeight: clampInt(input.fontWeight, 500, 1000, 900),
+    fontSize: clampInt(input.fontSize, 42, 120, 78),
+    textColor: normalizeHex(input.textColor, "#ffffff"),
+    highlightColor: normalizeHex(input.highlightColor, "#fde047"),
+    backgroundColor: normalizeHex(input.backgroundColor, "#050505"),
+    backgroundOpacity: clampNumber(input.backgroundOpacity, 0, 0.92, 0.82),
+    outlineColor: normalizeHex(input.outlineColor, "#000000"),
+    outlineWidth: clampInt(input.outlineWidth, 0, 10, 7),
+    positionYPercent: clampNumber(input.positionYPercent, 0, 18, 4.5),
+    bandHeightPercent: clampNumber(input.bandHeightPercent, 10, 24, 14),
+    horizontalPaddingPercent: clampNumber(input.horizontalPaddingPercent, 4, 18, 8),
+    maxLines: clampInt(input.maxLines, 1, 4, 4),
   };
 }
 

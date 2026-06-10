@@ -1,6 +1,5 @@
 import { SCRIPT_LENGTH_PRESETS } from "../youtube-job-schema.mjs";
-
-const DEFAULT_KOREAN_CHARS_PER_SECOND = 5.3;
+import { estimateDirectScriptSeconds } from "../electron/services/direct-script-duration.mjs";
 
 function normalizeText(text = "") {
   return String(text || "").replace(/\s+/g, " ").trim();
@@ -12,6 +11,15 @@ function countKoreanLength(text = "") {
 
 export function resolveDraftTargetSeconds(job = {}, draft = {}) {
   const preset = SCRIPT_LENGTH_PRESETS[job?.options?.scriptLengthPreset] || SCRIPT_LENGTH_PRESETS.standard;
+  if (job?.sourceType === "script" && job?.options?.scriptLengthMode === "auto") {
+    return Math.max(15, Math.min(1200, Number(
+      job.options.customDurationSeconds
+      || job.options.estimatedScriptSeconds
+      || draft.estimated_duration_seconds
+      || draft.duration_seconds
+      || 60,
+    )));
+  }
   if (job?.options?.scriptLengthMode === "custom") {
     return Math.max(15, Math.min(1200, Number(job.options.customDurationSeconds || preset.targetSeconds)));
   }
@@ -20,12 +28,14 @@ export function resolveDraftTargetSeconds(job = {}, draft = {}) {
 
 export function estimateKoreanNarrationSeconds({ text = "", speechSpeed = 1.06 } = {}) {
   const clean = normalizeText(text);
-  const charCount = countKoreanLength(clean);
-  if (!charCount) return 0;
-  const speed = Math.max(0.5, Math.min(2, Number(speechSpeed || 1.06)));
-  const baselineSpeed = 1.08;
-  const charsPerSecond = DEFAULT_KOREAN_CHARS_PER_SECOND * (speed / baselineSpeed);
-  return Number((charCount / charsPerSecond).toFixed(2));
+  if (!countKoreanLength(clean)) return 0;
+  return estimateDirectScriptSeconds({
+    script: clean,
+    speechSpeed,
+    minSeconds: 0,
+    maxSeconds: 1200,
+    round: false,
+  });
 }
 
 export function estimateDraftNarrationSeconds({ draft = {}, job = {} } = {}) {
@@ -41,17 +51,22 @@ export function estimateDraftNarrationSeconds({ draft = {}, job = {} } = {}) {
 export function validateDraftDurationContract({ draft = {}, job = {}, stage = "", jobDir = "" } = {}) {
   const targetSeconds = resolveDraftTargetSeconds(job, draft);
   const estimatedSeconds = estimateDraftNarrationSeconds({ draft, job });
+  const isScriptAutoDuration = job?.sourceType === "script" && job?.options?.scriptLengthMode === "auto";
   const isLongform = targetSeconds >= 600;
   const strictMinSeconds = Number((targetSeconds * 0.9).toFixed(2));
   const strictMaxSeconds = Number((targetSeconds * (isLongform ? 1.20 : 1.15)).toFixed(2));
   const useProviderSoftTolerance = /gemini|openrouter|normalized-draft/i.test(String(stage || ""));
   const isTest = /test|fixture/i.test(String(jobDir || "")) || /unit/i.test(String(stage || ""));
-  const minSeconds = isTest
+  const minSeconds = isScriptAutoDuration
+    ? 0.0
+    : isTest
     ? (useProviderSoftTolerance
       ? Number((targetSeconds * (isLongform ? 0.96 : 0.91)).toFixed(2))
       : strictMinSeconds)
     : 1.0;
-  const maxSeconds = isTest
+  const maxSeconds = isScriptAutoDuration
+    ? 10000.0
+    : isTest
     ? (useProviderSoftTolerance
       ? Number((targetSeconds * (isLongform ? 1.19 : 1.14)).toFixed(2))
       : strictMaxSeconds)

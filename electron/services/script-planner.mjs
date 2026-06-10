@@ -1,11 +1,19 @@
 import { sanitizeFlowPrompt } from "./flow-prompt-safety.mjs";
-import { outputModeForScene } from "./scene-output-mode-policy.mjs";
+import { assignSceneOutputModes, outputModeForScene } from "./scene-output-mode-policy.mjs";
 
 const MIN_SCENES = 3;
-const MAX_SCENES = 18;
+const MAX_SCENES = 80;
 const MAX_LONGFORM_SECONDS = 1200;
-const MAX_VIDEO_NARRATION_CHARS = 35;
+const TARGET_SCENE_SECONDS = 6;
+const MAX_SCENE_SECONDS = 8;
+const MAX_VIDEO_NARRATION_CHARS = 60;
 const MAX_IMAGE_NARRATION_CHARS = 70;
+// 이 길이 이하의 완결 문장(마침표/물음표/느낌표로 끝남)은 절대 분할하지 않음
+const MAX_SENTENCE_PRESERVE_CHARS = 80;
+// 이 길이 이하의 파편은 인접 청크에 흡수
+const MIN_FRAGMENT_CHARS = 10;
+// 한국어 TTS 실측 기반: 글자당 평균 발화 속도 (공백 제외)
+const KO_CHARS_PER_SECOND = 5.0;
 
 export function splitKoreanSentences(script = "") {
   const normalized = String(script).replace(/\s+/g, " ").trim();
@@ -27,35 +35,42 @@ export function splitKoreanSentences(script = "") {
 
 export function targetSceneCount({ sentenceCount, targetSeconds }) {
   const seconds = Number(targetSeconds || 60);
-  const byTime = Math.max(MIN_SCENES, Math.ceil(seconds / 12));
+  // 10초당 1씬 기준 → 씬이 더 잘게 나뉘어 시각적 템포 개선
+  const byTime = Math.max(MIN_SCENES, Math.ceil(seconds / TARGET_SCENE_SECONDS));
   const bySentence = Math.max(MIN_SCENES, Math.ceil(Number(sentenceCount || 1) / 2));
   return Math.min(MAX_SCENES, Math.max(byTime, bySentence));
 }
 
-export function planScenesFromScript({ script, title, targetSeconds, customDurationSeconds, characterProfile, stylePreset, characterSheet, flowOutputMode = "video", hybridIntroVideoSceneCount = 2, aspectRatio = "9:16" }) {
+export function planScenesFromScript({ script, title, targetSeconds, customDurationSeconds, speechSpeed = 1.0, characterProfile, stylePreset, characterSheet, flowOutputMode = "video", hybridIntroVideoSceneCount = 2, aspectRatio = "9:16" }) {
   const totalDuration = Math.max(15, Math.min(MAX_LONGFORM_SECONDS, Number(customDurationSeconds || targetSeconds || 60)));
   const sentences = splitKoreanSentences(script);
   const sourceSentences = sentences.length ? sentences : [String(script || title || "Scene").trim()].filter(Boolean);
-  const count = Math.min(sourceSentences.length || 1, targetSceneCount({
+  const plannedCount = targetSceneCount({
     sentenceCount: sourceSentences.length,
     targetSeconds: totalDuration,
-  }));
+  });
+  const narrationUnits = expandNarrationUnits(sourceSentences, plannedCount);
+  const count = Math.min(narrationUnits.length || 1, plannedCount);
   const tempScenes = [];
-  let totalSyllables = 0;
+  let totalEstimatedSeconds = 0;
 
   for (let index = 0; index < count; index += 1) {
-    const start = Math.floor((index * sourceSentences.length) / count);
-    const end = Math.floor(((index + 1) * sourceSentences.length) / count);
-    const narration = sourceSentences.slice(start, Math.max(start + 1, end)).join(" ") || sourceSentences[index] || title;
-    const syllables = narration.replace(/\s+/g, "").length;
-    totalSyllables += syllables;
-    tempScenes.push({ order: index + 1, narration, syllables });
+    const start = Math.floor((index * narrationUnits.length) / count);
+    const end = Math.floor(((index + 1) * narrationUnits.length) / count);
+    const narration = narrationUnits.slice(start, Math.max(start + 1, end)).join(" ") || narrationUnits[index] || title;
+    const chars = narration.replace(/\s+/g, "").length;
+    // speechSpeed 보정: 빠를수록 짧게, 느릴수록 길게
+    const estimatedSeconds = chars / (KO_CHARS_PER_SECOND * Math.max(0.8, Number(speechSpeed || 1.0)));
+    totalEstimatedSeconds += estimatedSeconds;
+    tempScenes.push({ order: index + 1, narration, chars, estimatedSeconds });
   }
 
+  // totalSyllables/totalEstimatedSeconds base duration allocation
   let allocatedSeconds = 0;
-  const scenes = tempScenes.map((scene) => {
-    let duration = Math.round((scene.syllables / Math.max(1, totalSyllables)) * totalDuration);
-    duration = Math.max(4, duration);
+  const preSplitScenes = tempScenes.map((scene) => {
+    // TTS 예상 시간 기준으로 duration 배분 (글자수 비례보다 정확)
+    let duration = Math.round((scene.estimatedSeconds / Math.max(1, totalEstimatedSeconds)) * totalDuration);
+    duration = Math.max(4, Math.min(MAX_SCENE_SECONDS, duration));
     allocatedSeconds += duration;
     const visualCategory = visualCategoryForOrder(scene.order);
     const outputMode = outputModeForScene({
@@ -86,13 +101,61 @@ export function planScenesFromScript({ script, title, targetSeconds, customDurat
     };
   });
 
-  const diff = totalDuration - allocatedSeconds;
-  if (diff !== 0 && scenes.length > 0) {
-    const last = scenes[scenes.length - 1];
-    last.duration_seconds = Math.max(4, last.duration_seconds + diff);
+  const balancedDurations = allocateChunkDurations(
+    preSplitScenes.map((scene) => scene.narration),
+    totalDuration,
+  );
+  allocatedSeconds = 0;
+  for (let index = 0; index < preSplitScenes.length; index += 1) {
+    preSplitScenes[index].duration_seconds = balancedDurations[index] || preSplitScenes[index].duration_seconds;
+    allocatedSeconds += preSplitScenes[index].duration_seconds;
   }
 
-  return scenes;
+  rebalanceSceneDurations(preSplitScenes, totalDuration, 4, MAX_SCENE_SECONDS);
+
+  // sentence-proportional 경로에서도 image 씬 길이 제한 적용
+  // (HPSL 경로의 splitLongNarrationScenes와 동일한 역할)
+  const splitScenes = splitLongNarrationScenes(preSplitScenes, {
+    flowOutputMode,
+    hybridIntroVideoSceneCount,
+  });
+
+  // 분할 후 order 재정렬, outputMode 재계산, 프롬프트 재생성 및 모션 프리셋 다양성 보장
+  let prevMotionPreset = "";
+  const resolvedScenes = assignSceneOutputModes({
+    scenes: splitScenes.map((scene, index) => ({ ...scene, order: index + 1 })),
+    flowOutputMode,
+    hybridIntroVideoSceneCount,
+    targetSeconds: totalDuration,
+    videoFormat: totalDuration >= 600 ? "longform" : "shorts",
+  });
+
+  return resolvedScenes.map((scene, index) => {
+    const order = index + 1;
+    const outputMode = scene.outputMode || "image";
+    const prompt = buildVisualStoryPrompt({
+      title,
+      narration: scene.narration,
+      order,
+      visualCategory: scene.visual_category,
+      characterProfile,
+      stylePreset,
+      characterSheet,
+      flowOutputMode: outputMode,
+      aspectRatio,
+    });
+    const safe = finalizeFlowPrompt({ prompt, title, order, visualCategory: scene.visual_category });
+    const motionPreset = pickMotionPreset(order, prevMotionPreset);
+    prevMotionPreset = motionPreset;
+    return {
+      ...scene,
+      order,
+      outputMode,
+      flowOutputMode: outputMode,
+      motionPreset,
+      ...safe
+    };
+  });
 }
 
 export function planScenesFromHpsl({ title, hpsl = {}, targetSeconds = 60, characterProfile, stylePreset, characterSheet, flowOutputMode = "video", hybridIntroVideoSceneCount = 2, aspectRatio = "9:16" }) {
@@ -122,20 +185,20 @@ export function planScenesFromHpsl({ title, hpsl = {}, targetSeconds = 60, chara
     hybridIntroVideoSceneCount,
   });
 
-  const diff = totalDuration - splitScenes.reduce((sum, scene) => sum + scene.duration_seconds, 0);
-  if (diff && splitScenes.length) {
-    const last = splitScenes[splitScenes.length - 1];
-    last.duration_seconds = Math.max(1, Math.min(10, last.duration_seconds + diff));
-  }
+  rebalanceSceneDurations(splitScenes, totalDuration, 1, MAX_SCENE_SECONDS);
 
-  return splitScenes.map((scene, index) => {
+  const resolvedScenes = assignSceneOutputModes({
+    scenes: splitScenes.map((scene, index) => ({ ...scene, order: index + 1 })),
+    flowOutputMode,
+    hybridIntroVideoSceneCount,
+    targetSeconds: totalDuration,
+    videoFormat: totalDuration >= 600 ? "longform" : "shorts",
+  });
+
+  return resolvedScenes.map((scene, index) => {
     const order = index + 1;
     const visualCategory = visualCategoryForSection(scene.section, order);
-    const outputMode = outputModeForScene({
-      sceneOrder: order,
-      flowOutputMode,
-      hybridIntroVideoSceneCount,
-    });
+    const outputMode = scene.outputMode || "image";
     const prompt = buildVisualStoryPrompt({
       title,
       narration: `${scene.sectionGoal}. ${scene.narration}`,
@@ -155,6 +218,7 @@ export function planScenesFromHpsl({ title, hpsl = {}, targetSeconds = 60, chara
       visual_category: visualCategory,
       outputMode,
       flowOutputMode: outputMode,
+      autoReason: scene.autoReason,
       narration: scene.narration,
       duration_seconds: scene.duration_seconds,
       ...safe,
@@ -203,8 +267,81 @@ function cleanPlannerText(value = "") {
   return String(value || "").replace(/\s+/g, " ").trim();
 }
 
+function expandNarrationUnits(sentences = [], targetCount = MIN_SCENES) {
+  const cleaned = sentences.map(cleanPlannerText).filter(Boolean);
+  if (!cleaned.length) return [];
+  if (cleaned.length === 1 && isPreservedCompleteSentence(cleaned[0])) {
+    return cleaned;
+  }
+  const totalChars = cleaned.reduce((sum, sentence) => sum + Math.max(1, compactLength(sentence)), 0);
+  const desired = Math.max(cleaned.length, Number(targetCount || cleaned.length));
+  const units = [];
+
+  for (const sentence of cleaned) {
+    const chars = Math.max(1, compactLength(sentence));
+    if (isPreservedCompleteSentence(sentence)) {
+      units.push(sentence);
+      continue;
+    }
+    const share = chars / Math.max(1, totalChars);
+    const pieceCount = Math.max(1, Math.round(share * desired));
+    const maxChars = Math.max(12, Math.ceil(chars / pieceCount));
+    units.push(...splitLongUnit(sentence, maxChars).map(cleanPlannerText).filter(Boolean));
+  }
+
+  while (units.length < desired) {
+    const splittableIndexes = units
+      .map((item, index) => ({ item, index }))
+      .filter(({ item }) => !isPreservedCompleteSentence(item));
+    if (!splittableIndexes.length) break;
+    const longestIndex = splittableIndexes.reduce((best, current) => (
+      compactLength(current.item) > compactLength(best.item) ? current : best
+    )).index;
+    const longest = units[longestIndex];
+    const parts = splitLongUnit(longest, Math.max(12, Math.ceil(compactLength(longest) / 2)));
+    if (parts.length < 2) break;
+    units.splice(longestIndex, 1, ...parts);
+  }
+
+  return absorbTinyFragments(units);
+}
+
+function isPreservedCompleteSentence(value = "") {
+  const cleaned = cleanPlannerText(value);
+  return /[.!?]\s*$/.test(cleaned) && compactLength(cleaned) <= MAX_SENTENCE_PRESERVE_CHARS;
+}
+
+function rebalanceSceneDurations(scenes = [], targetSeconds, minSeconds = 1, maxSeconds = MAX_SCENE_SECONDS) {
+  if (!scenes.length) return scenes;
+  for (const scene of scenes) {
+    scene.duration_seconds = Math.max(minSeconds, Math.min(maxSeconds, Math.round(Number(scene.duration_seconds || minSeconds))));
+  }
+
+  let diff = Math.round(Number(targetSeconds || 0)) - scenes.reduce((sum, scene) => sum + Number(scene.duration_seconds || 0), 0);
+  while (diff !== 0) {
+    let changed = false;
+    const indexes = diff > 0
+      ? scenes.map((_, index) => index).reverse()
+      : scenes.map((_, index) => index);
+    for (const index of indexes) {
+      if (diff > 0 && scenes[index].duration_seconds < maxSeconds) {
+        scenes[index].duration_seconds += 1;
+        diff -= 1;
+        changed = true;
+      } else if (diff < 0 && scenes[index].duration_seconds > minSeconds) {
+        scenes[index].duration_seconds -= 1;
+        diff += 1;
+        changed = true;
+      }
+      if (diff === 0) break;
+    }
+    if (!changed) break;
+  }
+  return scenes;
+}
+
 function chunkSectionNarration(narration, duration, preferSentences) {
-  const needed = Math.max(1, Math.ceil(Number(duration || 1) / 10));
+  const needed = Math.max(1, Math.ceil(Number(duration || 1) / TARGET_SCENE_SECONDS));
   const sentenceChunks = preferSentences ? splitKoreanSentences(narration) : [];
   const baseChunks = sentenceChunks.length >= needed ? sentenceChunks : splitIntoChunks(narration, needed);
   let chunks = baseChunks.map(cleanPlannerText).filter(Boolean);
@@ -216,6 +353,14 @@ function chunkSectionNarration(narration, duration, preferSentences) {
     if (split.length < 2) break;
     chunks.splice(longestIndex, 1, ...split);
   }
+  while (chunks.length * MAX_SCENE_SECONDS < Number(duration || 1)) {
+    const longestIndex = chunks.reduce((best, item, index) => (
+      compactLength(item) > compactLength(chunks[best]) ? index : best
+    ), 0);
+    const split = splitLongUnit(chunks[longestIndex], Math.max(8, Math.ceil(compactLength(chunks[longestIndex]) / 2)));
+    if (split.length < 2) break;
+    chunks.splice(longestIndex, 1, ...split);
+  }
   return chunks.length ? chunks : [narration];
 }
 
@@ -223,11 +368,13 @@ function splitLongNarrationScenes(scenes = [], { flowOutputMode = "video", hybri
   const result = [];
   for (const scene of scenes) {
     const nextOrder = result.length + 1;
-    const plannedOutputMode = outputModeForScene({
-      sceneOrder: nextOrder,
-      flowOutputMode,
-      hybridIntroVideoSceneCount,
-    });
+    const plannedOutputMode = String(flowOutputMode || "").toLowerCase() === "auto"
+      ? "video"
+      : outputModeForScene({
+          sceneOrder: nextOrder,
+          flowOutputMode,
+          hybridIntroVideoSceneCount,
+        });
     const maxChars = plannedOutputMode === "video" ? MAX_VIDEO_NARRATION_CHARS : MAX_IMAGE_NARRATION_CHARS;
     const chunks = splitNarrationByCompactLength(scene.narration, maxChars);
     if (chunks.length <= 1) {
@@ -253,11 +400,19 @@ function splitNarrationByCompactLength(text = "", maxCompactChars = MAX_IMAGE_NA
   if (!cleaned) return [];
   if (compactLength(cleaned) <= maxCompactChars) return [cleaned];
 
+  // 완결 문장(마침표/물음표/느낌표)이고 MAX_SENTENCE_PRESERVE_CHARS 이하면 분할 금지
+  if (/[.!?]\s*$/.test(cleaned) && compactLength(cleaned) <= MAX_SENTENCE_PRESERVE_CHARS) {
+    return [cleaned];
+  }
+
   const sentences = splitKoreanSentences(cleaned);
-  const units = (sentences.length ? sentences : cleaned.split(/(?<=[,，])\s*/u))
-    .flatMap((unit) => splitLongUnit(unit, maxCompactChars))
-    .map(cleanPlannerText)
-    .filter(Boolean);
+  // 문장 경계가 있으면 문장 단위로만 분할 — 개별 문장은 보존
+  const units = sentences.length > 1
+    ? sentences.map(cleanPlannerText).filter(Boolean)
+    : (cleaned.split(/(?<=[,，])\s*/u))
+        .flatMap((unit) => splitLongUnit(unit, maxCompactChars))
+        .map(cleanPlannerText)
+        .filter(Boolean);
 
   const chunks = [];
   let current = "";
@@ -271,7 +426,34 @@ function splitNarrationByCompactLength(text = "", maxCompactChars = MAX_IMAGE_NA
     }
   }
   if (current) chunks.push(current);
-  return chunks.flatMap((chunk) => splitLongUnit(chunk, maxCompactChars)).filter(Boolean);
+
+  // 단일 문장이 maxCompactChars를 초과하지만 MAX_SENTENCE_PRESERVE_CHARS 이하인 경우 보존
+  const safeChunks = chunks.flatMap((chunk) => {
+    if (compactLength(chunk) <= maxCompactChars) return [chunk];
+    if (/[.!?]\s*$/.test(chunk) && compactLength(chunk) <= MAX_SENTENCE_PRESERVE_CHARS) return [chunk];
+    return splitLongUnit(chunk, maxCompactChars);
+  }).filter(Boolean);
+
+  return absorbTinyFragments(safeChunks);
+}
+
+/** 공백 제외 MIN_FRAGMENT_CHARS 이하의 아주 짧은 파편을 인접 청크에 병합 */
+function absorbTinyFragments(chunks) {
+  if (chunks.length <= 1) return chunks;
+  const result = [];
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    if (compactLength(chunk) <= MIN_FRAGMENT_CHARS && result.length > 0) {
+      // 앞쪽 청크에 병합
+      result[result.length - 1] = `${result[result.length - 1]} ${chunk}`;
+    } else if (compactLength(chunk) <= MIN_FRAGMENT_CHARS && i + 1 < chunks.length) {
+      // 첫 번째 청크가 파편이면 다음 청크에 병합
+      chunks[i + 1] = `${chunk} ${chunks[i + 1]}`;
+    } else {
+      result.push(chunk);
+    }
+  }
+  return result;
 }
 
 function splitLongUnit(text = "", maxCompactChars = MAX_IMAGE_NARRATION_CHARS) {
@@ -305,6 +487,20 @@ function compactLength(text = "") {
   return Array.from(String(text).replace(/\s+/g, "")).length;
 }
 
+const MOTION_PRESETS = [
+  "diagonal-drift",
+  "diagonal-drift-up-left",
+  "diagonal-drift-down-right",
+  "zoom-in-center",
+  "zoom-out-slow"
+];
+
+function pickMotionPreset(order, prevPreset) {
+  const available = MOTION_PRESETS.filter((p) => p !== prevPreset);
+  return available[(order - 1) % available.length];
+}
+
+
 function splitIntoChunks(text, count) {
   const words = cleanPlannerText(text).split(/\s+/).filter(Boolean);
   if (!words.length) return [];
@@ -318,16 +514,16 @@ function splitIntoChunks(text, count) {
   return chunks.filter(Boolean);
 }
 
-function allocateChunkDurations(chunks, totalSeconds) {
+function allocateChunkDurations(chunks, totalSeconds, maxSeconds = MAX_SCENE_SECONDS) {
   const count = Math.max(1, chunks.length);
   const weights = chunks.map((chunk) => Math.max(1, cleanPlannerText(chunk).replace(/\s+/g, "").length));
   const weightSum = weights.reduce((sum, weight) => sum + weight, 0) || 1;
-  const durations = weights.map((weight) => Math.max(1, Math.min(10, Math.round((weight / weightSum) * totalSeconds))));
+  const durations = weights.map((weight) => Math.max(1, Math.min(maxSeconds, Math.round((weight / weightSum) * totalSeconds))));
   let diff = totalSeconds - durations.reduce((sum, duration) => sum + duration, 0);
   while (diff !== 0) {
     let changed = false;
     for (let index = durations.length - 1; index >= 0 && diff !== 0; index -= 1) {
-      if (diff > 0 && durations[index] < 10) {
+      if (diff > 0 && durations[index] < maxSeconds) {
         durations[index] += 1;
         diff -= 1;
         changed = true;
@@ -340,12 +536,12 @@ function allocateChunkDurations(chunks, totalSeconds) {
     if (!changed) break;
   }
   while (diff > 0) {
-    durations.push(Math.min(10, diff));
-    diff -= Math.min(10, diff);
+    durations.push(Math.min(maxSeconds, diff));
+    diff -= Math.min(maxSeconds, diff);
   }
   if (durations.length > count) {
     const extra = durations.splice(count);
-    durations[count - 1] = Math.min(10, durations[count - 1] + extra.reduce((sum, item) => sum + item, 0));
+    durations[count - 1] = Math.min(maxSeconds, durations[count - 1] + extra.reduce((sum, item) => sum + item, 0));
   }
   return durations;
 }
@@ -465,11 +661,32 @@ function buildVisualStoryPrompt({ title, narration, order, visualCategory, chara
     `Variation: ${variation.emphasis}.`,
     `Context keywords: ${title}; ${visual.motifs}.`,
     stylePreset?.promptSuffix || "Camera: dynamic close-up to medium shot, smooth handheld or dolly motion, clear subject focus, polished realistic lighting.",
+    stickmanHistoryInstruction(stylePreset),
     buildStyleLock(stylePreset, flowOutputMode),
-    characterPrompt(characterProfile, characterSheet),
+    characterPrompt(characterProfile, characterSheet, stylePreset),
     "No talking head, avoid a person simply speaking to camera, no presenter reading the script.",
     "No subtitles, no readable text, no logos, no watermarks.",
   ].filter(Boolean).join(" ");
+}
+
+function isStickmanStylePreset(stylePreset = {}) {
+  const haystack = [
+    stylePreset.id,
+    stylePreset.label,
+    stylePreset.aesthetic,
+    stylePreset.promptSuffix,
+  ].filter(Boolean).join(" ").toLowerCase();
+  return /stickmanplus|stickman|whiteboard-comic|whiteboard/.test(haystack);
+}
+
+function stickmanHistoryInstruction(stylePreset = {}) {
+  if (!isStickmanStylePreset(stylePreset)) return "";
+  return [
+    "Stickman style override: use symbolic stickman explainer visuals, not realistic presenters.",
+    "For history topics, represent people as generic stickman roles: ruler, advisor, soldier, merchant, spy, citizen, historian, messenger.",
+    "Use visual metaphors over literal portraits: maps, scrolls, crowns, castles, ships, coins, scales, arrows, timelines, spotlights, magnifying glasses, broken walls, treaty tables.",
+    "All signs, placards, books, maps, and boards must be blank or use abstract icon marks only; Hermes subtitles and top-title will provide readable Korean text.",
+  ].join(" ");
 }
 
 function buildStyleLock(stylePreset = {}, outputMode = "video") {
@@ -485,7 +702,15 @@ function buildStyleLock(stylePreset = {}, outputMode = "video") {
   ].join(" ");
 }
 
-function characterPrompt(characterProfile, characterSheet = {}) {
+function characterPrompt(characterProfile, characterSheet = {}, stylePreset = {}) {
+  if (isStickmanStylePreset(stylePreset)) {
+    const sheet = cleanPlannerText(characterSheet?.profileText || "");
+    return [
+      "Character consistency: ignore realistic human presenter profiles; use the same simplified stickman cast with round white heads, dot eyes, expressive eyebrows, thick black outlines, and consistent proportions.",
+      "Use period costumes only as simple symbolic accessories.",
+      sheet ? `User character sheet must be interpreted as stickman line-art only: ${sheet}.` : "",
+    ].filter(Boolean).join(" ");
+  }
   const profile = cleanPlannerText(characterSheet?.profileText || characterProfile);
   if (!profile) {
     return "Use objects, environments, demonstrations, and visual metaphors over a talking presenter.";

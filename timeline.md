@@ -1,5 +1,27 @@
 # Hermes Studio Timeline
 
+## 2026-06-04 - Fix - Flow Image Mode Timeout
+
+- Fixed Google Flow control check timeout in image-mode scenes by adding 한글 "생성" (`\uc0dd\uc131`) button pattern mapping to `waitForFlowGeneratorReady` in `automation/google-flow-media.mjs`.
+- Verification: `npm run check` and `node scripts/validate-wiki.mjs`.
+
+## 2026-06-03 - Fix & Compliance - Obsidian Wiki, Audio Timeline Gaps, and Default Settings
+
+- Fixed narration sentence splitting in scene planner (`script-planner.mjs`) to prevent mid-sentence breaks and pauses.
+- Implemented lossless WAV concatenation before single-pass AAC encoding to eliminate audio priming gaps at scene boundaries.
+- Updated default user options: input type (URL), voice preset (30s male high), subtitle size (14), video preset (stickman explainer), thumbnail subtitle size (70), and ChatGPT thumbnail creation disabled by default.
+- Implemented Obsidian AI Wiki structure and security compliance guidelines under `AI-Sessions/` and root configurations, guarded by a custom validator `validate-wiki.mjs`.
+- Verification: `node scripts/validate-wiki.mjs` and `npm run check`.
+
+
+## 2026-06-02 - Feature - Script auto duration
+
+
+- Added direct-script `scriptLengthMode="auto"` so Hermes Studio can calculate video duration from the pasted script instead of stretching it to a stale preset/manual target.
+- Unified script duration estimation across UI preview, job schema normalization, direct-script draft generation, render options, and draft duration QA.
+- Preserved auto duration for direct-script longform jobs so longform normalization does not overwrite it with `custom`.
+- Verification: `node scripts/check-script-auto-duration-contract.mjs`, `npm run check:studio-inputs`, `npm run check`, `npm run electron:pack`.
+
 ## 2026-06-01
 
 - Hybrid intro video 장면이 8초 Flow 클립에 맞도록 공백 제외 35자 이하로 자동 분할되게 했다.
@@ -168,3 +190,227 @@
 - Added editable upload metadata for title, description, tags, privacy, thumbnail, made-for-kids, and synthetic media.
 - Replaced guarded upload stub with job-scoped YouTube Data API upload and thumbnail binding.
 - Added per-job upload state, duplicate upload protection, upload failure codes, and SQLite workflow-event mirroring.
+
+## 2026-06-02 - Feature - Editable Top Title overlay and final output QA guard
+
+- Added thumbnail-like Top Title style controls for font, weight, size, text color, keyword color, background color, opacity, position, band height, side padding, and outline.
+- Routed `titleOverlayStyle` through Studio input, job schema normalization, desktop job service, workflow render options, and the Sharp SVG title compositor.
+- Improved automatic Top Title text selection so short safe titles are preserved, while long narration fragments fall back to HPSL hook/point style hooks.
+- Added final-output QA for title overlay line overflow, text overflow, unsafe title band geometry, and excessive Flow video loop extension.
+- Preserved structured final QA failure details and report paths in desktop failure events.
+- 2026-06-03 22:10 KST - 수정 - TTS 문장 중간 분할로 인한 음성 끊김 및 어색한 장면 전환을 수정하기 위해 씬 플래너 분할 조건 완화와 무손실 WAV 선합성 후 single AAC 인코딩 파이프라인을 도입했습니다. 영향 범위: `electron/services/script-planner.mjs`, `scripts/render-youtube-with-tts.mjs`. 검증: `node scripts/check-narration-sentence-integrity.mjs`, `npm run check`.
+- 2026-06-03 22:15 KST - 설정 변경 - 바탕화면 바로가기 실행 본 변경사항 적용 및 프로그램 기본 설정값(입력방식: URL, 음성: 30대 남성 고음, 자막크기: 14, 썸네일텍스트: Sub size 70, ChatGPT 썸네일 비활성화 등)을 변경했습니다. 영향 범위: Electron UI, config-store.
+- 2026-06-03 22:30 KST - 아키텍처 변경 - Obsidian AI Wiki 구조 및 보안 컴플라이언스를 적용하고 자동 유효성 검사 도구를 구현했습니다. 영향 범위: `AI-Sessions/`, `START_HERE.md`, `AGENTS.md`, `CLAUDE.md`, `index.md`, `log.md`, `scripts/validate-wiki.mjs`. 검증: `node scripts/validate-wiki.mjs`.
+- 2026-06-04 00:45 KST - 수정 - Google Flow 이미지 생성(Image Mode) 시 우하단 실행 버튼("생성", `\uc0dd\uc131`) 한글 감지 정규식 누락으로 발생하던 generator controls ready 타임아웃 오류를 해결했습니다. 영향 범위: `automation/google-flow-media.mjs`. 검증: `npm run check`.
+
+
+## 2026-06-04 - Feature - StickmanPlus history explainer style preset
+
+- Added `stickmanplus` as the history-channel visual preset for flat vector whiteboard-comic scenes.
+- Locked round-head stickman character continuity, parchment/whiteboard world continuity, and historical metaphor props such as maps, scrolls, crowns, coins, scales, castles, and timelines.
+- Prevented realistic presenter profiles and readable generated text from overriding the style in shortform and longform Flow prompts.
+- Added Flow prompt rewrites for risky history/logo/text cases such as real historical likenesses, brand names, and generated Korean sign text.
+- Added shortform, longform, style preset, UI, and Flow safety contract coverage.
+
+## 2026-06-04 - Feature - Google Flow Auto output mode
+
+- Added `auto` as a Google Flow output mode while keeping explicit `video`, `image`, and `hybrid` choices intact.
+- Longform jobs now default to `auto` only when the user has not explicitly selected another Flow output mode.
+- Added scene-level Auto policy that uses Flow video for hooks, reversals, chapter starts, and climax beats, while assigning quieter explanation scenes to image mode.
+- Reordered split script scenes before applying output-mode policy so long narration splits do not accidentally keep old scene numbers and become repeated video scenes.
+- Updated Gemini/Gems prompt contracts to describe Auto as a Hermes-side scene analysis step instead of asking the model to hard-code every media mode.
+- Added `scripts/check-auto-flow-output-mode-policy.mjs` and wired it into `check:flow-output-mode`.
+
+## 2026-06-04 - Fix - Disable top title for longform landscape output
+
+- Suppressed Top Title overlays for `longform`, 16:9 landscape, and 180s+ longform-style jobs even when the UI checkbox was previously enabled.
+- Updated Studio UI so the Top Title toggle is disabled and unchecked for longform-style output before job submission.
+- Updated title overlay and schema contracts so explicit opt-in no longer re-enables top titles on longform landscape videos.
+- Verification: `node scripts/check-youtube-job-schema.mjs`, `node scripts/check-title-overlay-render-contract.mjs`, `node scripts/check-studio-v2-ux.mjs`, `npm run check:final-output-qa`, `npm run check:studio-inputs`.
+
+## 2026-06-04 - Setting - Studio script and StickmanPlus defaults
+
+- Changed Hermes Studio Create screen default input mode from URL to Script.
+- Changed visual style defaults across renderer payload, job schema, desktop job service fallback, and config defaults to `stickmanplus`.
+- Fixed the renderer style preset select so it actively chooses `stickmanplus` after options load instead of keeping the browser's automatic first option.
+- Verification: `node scripts/check-studio-v2-ux.mjs`, `node scripts/check-youtube-job-schema.mjs`, `npm run check:studio-inputs`, `npm run check:visual-storytelling`.
+
+## 2026-06-05 - Fix - Longform aspect-aware normalization & Black fallback frame QA
+
+- Modified `electron/services/scene-video-normalizer.mjs` and `youtube-workflow-stages.mjs` to scale/crop Flow videos based on job aspectRatio (1920x1080 for 16:9 landscape, 1080x1920 for 9:16 portrait) instead of forcing a portrait intermediate.
+- Prevented black fallback scenes by implementing `extractRepresentativeFrame` in `scripts/render-youtube-with-tts.mjs` which samples multiple timestamps, checks RGB mean/stdev via Sharp, and chooses the highest entropy non-black frame.
+- Added Korean character speech speed limits in `electron/services/longform-planner.mjs` and `electron/services/scene-output-mode-policy.mjs` so video scenes targeting narration above 8s are auto-downgraded to image mode or split to avoid loop pressure.
+- Strengthened `scripts/analyze-youtube-output.mjs` to run duration drift checks in production, inspect fallback frame RGB stats, and assert job/scene aspect ratio compatibility.
+- Added contract tests `check-longform-aspect-aware-video-normalization.mjs`, `check-video-fallback-frame-selection.mjs`, `check-final-output-black-frame-qa.mjs`, `check-final-output-duration-drift-qa.mjs`, and `check-longform-video-scene-duration-guard.mjs`.
+- Added final MP4 black-span sampling to catch sustained blank visuals even when fallback still files have been overwritten by later retries.
+- Split duration QA into TTS-target drift and final-video-vs-audio drift, so repeated narration or doubled audio fails separately from render padding.
+- Added aspect-aware scene media reuse guards so stale portrait-normalized clips are not reused in landscape longform rerenders.
+- Verification: `node scripts\check-final-output-duration-drift-qa.mjs`, `npm.cmd run check:final-output-qa`, and targeted `node --check` syntax checks for the changed renderer, analyzer, planner, policy, normalizer, and workflow modules.
+
+## 2026-06-05 - Fix - Longform opening video auto policy
+
+- Changed longform `hybrid` planning so the opening clip count is an Auto candidate cap instead of a forced "first 10 scenes are video" rule.
+- Updated longform Auto output mode to reject opening video candidates when narration is estimated above the safe one-clip limit, preserving `autoRejectedReason` for observability.
+- Kept explicit shortform/direct-script hybrid behavior intact where it is not routed through longform planning.
+- Fixed longform render target selection so longform jobs use `longformTargetSeconds` instead of collapsing to a short script auto estimate.
+- Verification: `node scripts\check-auto-flow-output-mode-policy.mjs`, `node scripts\check-longform-production-contract.mjs`, `node scripts\check-longform-ui-workflow-guards.mjs`, `npm.cmd run check:flow-output-mode`, `npm.cmd run check:final-output-qa`.
+
+## 2026-06-05 - QA - Rerender last longform job from existing Flow assets
+
+- Cloned `youtube-1780583022437` to `youtube-1780583022437-rerender-auto-policy` to preserve the original broken output.
+- Reused existing Google Flow media assets and converted unsafe opening video candidates 2, 4, 5, 7, 8, 9, and 10 to image-sequence scenes based on audio duration and previous loop/fallback warnings.
+- Rendered final output `final-youtube-ai-news-tts-subtitled-v2-rerender-auto-policy.mp4` at 1920x1080, 30fps, 8:50.73 duration.
+- Final analyzer passed with no failure codes; black-span QA passed and final-vs-audio duration drift was 1.715s.
+- Remaining issue: the full renderer exceeded the command timeout on this 40-scene job, so the final video was completed through a concat finalizer from existing synced scene assets. A resumable longform render/finalize command should be productized.
+- Remaining issue: the reused job's draft/subtitle text appears mojibake-corrupted, so this asset-level rerender validates rendering mechanics but not script/subtitle language quality.
+
+## 2026-06-05 - Plan - Render effects and image zoom QA fix
+
+- Reviewed the rerendered longform final video and confirmed technical QA passed, but visual QA still shows over-centered StickmanPlus image scenes and degraded render effects.
+- Identified root causes: `scene-fade` was completed through `concat-finalizer`, converted image scenes can lose explicit `motionPreset`, strong Ken Burns plus Sharp `attention` crop over-emphasizes center subjects, and finalizer metadata is not yet productized.
+- Updated `docs/superpowers/plans/2026-06-05-render-effects-zoom-qa-plan.md` with implementation tasks for effect-application QA, mandatory image motion presets, explainer-safe camera mode, real scene-fade handling, resumable finalization, visual framing QA, and safe-camera rerender verification.
+
+## 2026-06-05 - Fix - Render effect QA and explainer-safe image camera
+
+- Added final-output QA for `RENDER_EFFECT_FALLBACK` and `EMPTY_IMAGE_MOTION_PRESET`, so visually degraded renders no longer pass only because black-span/duration checks passed.
+- Added explicit motion preset fallback in the final renderer for image scenes that were converted or rerendered without `motionPreset`.
+- Added `cameraSafetyMode: "explainer"` to the stable image sequence renderer, clamping strong zoom to 1.12 and recording `maxZoom`, crop bounds, and visible-source ratio in the motion manifest.
+- Routed longform/stickman/history image scenes to explainer-safe camera handling and made `scene-fade` apply real local fade-in/fade-out filters instead of plain concat.
+- Verification: `node scripts\check-render-effect-application-qa.mjs`, `node scripts\check-scene-fade-transition-contract.mjs`, `node scripts\check-explainer-safe-camera-path.mjs`, `npm.cmd run check:stable-image-sequence-renderer`, `npm.cmd run check:final-output-qa`, `npm.cmd run check:flow-output-mode`.
+
+## 2026-06-05 - QA - Safe camera live final render from generated assets
+
+- Cloned `youtube-1780583022437-rerender-auto-policy` to `youtube-1780583022437-safe-camera-live` and reran final handling from existing Flow/TTS assets.
+- The full 40-scene renderer timed out after 30 minutes with 37 synced scenes, so missing image scenes 37, 39, and 40 were rendered from Flow stills and the final timeline was rebuilt.
+- Produced `final-youtube-ai-news-tts-subtitled-v2-safe-camera-live.mp4` at 8:50.73 duration with `scene-fade-local`, 40 synced scenes, 40 faded scenes, no analyzer failure codes, no black span, and no empty image motion presets.
+- Remaining QA issues: some source Flow images are still centered character portraits despite safe camera constraints; some StickmanPlus panels include readable English text; resumable longform finalization should be productized.
+- QA report: `docs/superpowers/plans/2026-06-05-safe-camera-live-render-qa.md`.
+
+## 2026-06-05 - Fix - Duplicate scene sequence and larger lower subtitles
+
+- Confirmed the suspected repeated script was caused by duplicated draft scenes, not final concat: scenes 1-20 were repeated exactly as scenes 21-40, and the TTS manifest rendered all 40 scenes for 529.015s audio.
+- Created a corrected output at `C:\Users\amd\AppData\Roaming\hermes\outputs\desktop\youtube-1780583022437-dedup-bigsubs\final-youtube-ai-news-tts-subtitled-v2-dedup-bigsubs.mp4` by retaining scenes 1-20 and removing duplicated scene orders 21-40.
+- Added `DUPLICATE_SCENE_SEQUENCE` draft QA so a complete repeated scene block fails before TTS and final render.
+- Increased subtitle preset sizes and renderer ASS font caps, and lowered caption margin defaults so subtitles render larger and lower on screen.
+- Verification: `node scripts\check-youtube-draft-quality.mjs`, `node scripts\check-render-pipeline.mjs`, `node scripts\analyze-youtube-output.mjs C:\Users\amd\AppData\Roaming\hermes\outputs\desktop\youtube-1780583022437-dedup-bigsubs`.
+
+## 2026-06-05 - Fix - Medium duration scene density
+
+- Changed short/medium scene planning from roughly one scene per 10 seconds with an 18-scene cap to roughly one scene per 6 seconds with an 80-scene cap.
+- A 240-second script now plans about 40 visual scenes instead of 18-24 long scenes, keeping individual scene durations at or below 8 seconds.
+- Added narration-unit expansion so direct scripts split long sentences into smaller visual beats instead of duplicating sentences when the target scene count is higher than the sentence count.
+- Updated HPSL section chunking, OpenRouter draft target-scene prompts, and Studio duration preview to use the same six-second scene-density policy.
+- Verification: `node scripts\check-medium-duration-scene-density.mjs`, `node scripts\check-hpsl-scene-planner.mjs`, `node scripts\check-script-auto-duration-contract.mjs`, `node scripts\check-youtube-draft-quality.mjs`.
+
+## 2026-06-06 - Fix - TTS Korean guard and direct-script auto longform duration
+
+- Investigated failed job `youtube-1780710993737`; Google Flow media completed, but final render failed before TTS because the renderer misclassified normal Korean question sentences as corrupted and substituted a mojibake fallback script.
+- Removed the corrupted curated fallback script from the final renderer and added a shared Korean text guard that allows normal Korean question marks while rejecting real mojibake before TTS with `DRAFT_NARRATION_CORRUPTED`.
+- Fixed direct-script `scriptLengthMode=auto` with longform format so render target duration follows the input script estimate instead of being forced to 600 seconds.
+- Added a longform scene-fade safety path: renders with more than 24 scenes or 240s+ skip slow per-scene fade re-encoding and use safe concat instead of timing out.
+- Re-rendered `youtube-1780710993737` successfully to `final-youtube-ai-news-tts-subtitled-v2-fixed-korean-guard.mp4`; final duration is 399.8s and analyzer passed with no failure codes after metadata correction.
+- Verification: `node scripts\check-tts-korean-text-guard.mjs`, `node scripts\check-scene-fade-transition-contract.mjs`, `node scripts\check-longform-production-contract.mjs`, `node scripts\check-script-auto-duration-contract.mjs`, `node scripts\analyze-youtube-output.mjs C:\Users\amd\AppData\Roaming\hermes\outputs\desktop\youtube-1780710993737`.
+
+## 2026-06-06 - Fix - Longform repeated script and clipped opening video scenes
+
+- Confirmed the "3:20 script became about 6:40" symptom was real draft duplication: latest artifact `youtube-1780710993737` had scenes 1-20 repeated as scenes 21-40, and subtitles restarted at block 93.
+- Root cause: longform planning combined `draft.script` and auto-normalized `draft.hpsl.*.narration`; when HPSL was derived from the same script, the narration units doubled before Flow/TTS/render.
+- Fixed `electron/services/longform-planner.mjs` so narration units are deduplicated and `script` remains the primary source when HPSL repeats the same content.
+- Added opening-scene balancing so longform intro video candidates borrow enough narration to avoid 1-2 second clipped Flow video scenes.
+- Updated auto output mode policy to reject opening video candidates below 3.5s or above 8s narration, preserving rejection reasons for debugging.
+- Strengthened draft QA to catch high-similarity repeated scene halves, not only exact repeated blocks.
+- Added `scripts/check-longform-no-repeat-and-intro-duration.mjs` and wired it into `npm run check`.
+- Verification: `node scripts\check-longform-no-repeat-and-intro-duration.mjs`, `node scripts\check-auto-flow-output-mode-policy.mjs`, `node scripts\check-longform-production-contract.mjs`, `node scripts\check-longform-video-scene-duration-guard.mjs`, `node scripts\check-youtube-draft-quality.mjs`, `node scripts\check-script-auto-duration-contract.mjs`.
+
+## 2026-06-06 - Plan - Visual Pacing 4-7s Scene Plan Review
+
+- Created `docs/superpowers/plans/2026-06-06-visual-pacing-4-7s-scene-plan-review.md` to review the visual pacing policy and suggest improvements regarding context-chaining, seamless audio/SRT stitching, and flow API call caps.
+
+## 2026-06-07 - Plan Update - Visual Pacing Review Incorporation
+
+- Reviewed `docs/superpowers/plans/2026-06-06-visual-pacing-4-7s-scene-plan-review.md` against the current Hermes Studio codebase.
+- Updated `docs/superpowers/plans/2026-06-06-visual-pacing-4-7s-scene-plan.md` with verified items only: context chaining for split visual beats, seamless audio/subtitle sync constraints, absolute Google Flow video caps, and aspect-aware render manifest QA.
+- Explicitly kept the review document's Wiki Audit note out of the implementation plan because wiki lint/save changes are a separate AGENTS.md workflow.
+
+## 2026-06-07 - Fix - Excessive Flow Video Loop QA Failure
+
+- Investigated latest failed desktop job `youtube-1780811377804`; final QA failed with `EXCESSIVE_VIDEO_LOOP` because scene 31 loop-extended a 6s Flow video to match 10.31s TTS audio.
+- Fixed `scripts/render-duration-policy.mjs` so excessive video/audio mismatch uses `video-to-image-fallback` instead of repeating short Flow clips.
+- Kept extreme mismatches as `SCENE_DURATION_MISMATCH` so very long narration still requires scene splitting or regeneration.
+- Strengthened regression coverage in `scripts/check-render-soft-ratio-policy.mjs`.
+- Repaired related contract tests for hybrid scene output, sentence integrity, and medium-duration scene density.
+- Documented the root cause and recurrence rules in `bugfix.md`.
+- Verification: `node scripts/check-render-soft-ratio-policy.mjs`, `node scripts/check-final-output-soft-slowdown-qa.mjs`, `node scripts/check-hybrid-scene-output-policy.mjs`, `node scripts/check-narration-sentence-integrity.mjs`, `node scripts/check-medium-duration-scene-density.mjs`, `npm.cmd run check`.
+
+## 2026-06-08 - Feature - Local-first Ollama assist foundation
+
+- Added optional Ollama/Gemma local LLM assist defaults, desktop UI controls, private-LAN URL guard, JSON provider contract, and safe fallback behavior while keeping the rule-based planner as the default path.
+- Added storyboard assist as additive scene hints only; it preserves original narration, duration, and Flow prompts, and writes `ollama-storyboard-diagnostics.json` when enabled during direct-script draft generation.
+- Added script polish acceptance guard so LLM-polished scripts cannot silently expand beyond the source script budget.
+- Verification: `npm.cmd run check:studio-inputs`, `npm.cmd run check:visual-storytelling`.
+
+## 2026-06-09 - Fix - Flow image placeholder scenes blocked
+
+- Investigated recent desktop outputs where only early Flow video scenes rendered real media; image scenes were silently replaced with local placeholder stills after Flow stayed idle at submit.
+- Added Flow image settings-menu close verification, image submit idle retry diagnostics, and specific `FLOW_IMAGE_SUBMIT_DID_NOT_START` failure classification.
+- Blocked live production placeholder fallback unless explicitly allowed by Mock Media Mode, and marked allowed fallback assets as `FLOW_IMAGE_LOCAL_PLACEHOLDER`.
+- Updated output analysis and resume rendering so existing jobs with placeholder image scenes are flagged before final reuse.
+- Verification: `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `node scripts/analyze-youtube-output.mjs C:\Users\amd\AppData\Roaming\hermes\outputs\desktop\youtube-1780942735550`, `node scripts/resume-youtube-job-from-assets.mjs C:\Users\amd\AppData\Roaming\hermes\outputs\desktop\youtube-1780942735550`.
+
+## 2026-06-09 - Plan - Flow UI click and rate limit diagnostics
+
+- Reviewed the attached Flow screenshot and desktop job `youtube-1780979482873`, where early Flow video scenes succeeded but image scenes failed with the settings popover open and Flow's fast-request warning.
+- Identified a combined failure chain: broad `div/span` click targeting, settings popover not being a hard submit gate, prompt focus not being verified, and fast-request warnings being classified as generic generation failures.
+- Created `docs/superpowers/plans/2026-06-09-flow-ui-click-rate-limit-diagnostics-plan.md` with a scoped implementation plan for safe click targeting, menu closure gates, prompt focus verification, request pacing, rate-limit classification, and live smoke diagnostics.
+- Reviewed `docs/superpowers/plans/2026-06-09-flow-ui-click-rate-limit-diagnostics-plan-review.md` and updated the plan with verified items only: cross-job global Flow pacing, hard `FLOW_RATE_LIMITED` abort/action-required handling, and DB/UI failure-code propagation. Rejected role-less `div/span` click fallback because it conflicts with the safe-click root cause fix.
+
+## 2026-06-09 - Fix - Flow safe click and rate-limit guard
+
+- Added strict Flow click-target guarding so settings controls resolve to clickable button/role ancestors and non-clickable labels are logged instead of clicked.
+- Added a hard generator-menu-closed gate before prompt submission, prompt textbox focus verification, prompt insertion verification, and specific diagnostics for create buttons blocked by the settings menu.
+- Split `FLOW_RATE_LIMITED` from abnormal activity/generic generation failure, added global cross-job Flow pacing state under `paths.userData`, and mirrored pacing state into each job folder for postmortems.
+- Propagated Flow cooldown failures as `action-required` through scene generation, Electron progress events, job persistence, and workflow DB failure-code logging.
+- Added Flow automation safety regression checks and wired them into `npm.cmd run check:flow-policy-safety`.
+- Verification: `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `npm.cmd run check:desktop-progress`, targeted `node --check` for changed Flow/Electron/workflow modules.
+
+## 2026-06-09 - Fix - Chromium maximize state false failure
+
+- Investigated desktop job failure where Chrome returned `windowState: "normal"` after a maximize request even though the bounds were already large (`1936x1100`).
+- Added a shared Chromium bounds guard that accepts effectively maximized windows, retries with explicit `1920x1080` normal bounds when needed, and only fails when the resulting window is actually too small.
+- Switched both Google Flow and Gemini automation to the shared guard so the same brittle state-string failure cannot abort future jobs.
+- Repacked the Electron app so the desktop shortcut launcher runs the updated build.
+- Verification: `node scripts/check-chromium-window-bounds-contract.mjs`, `node scripts/check-electron-config.mjs`, `npm.cmd run check:flow-output-mode`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
+
+## 2026-06-10 - Fix - Flow prompt textbox focus retry
+
+- Investigated desktop job `youtube-1781016703044`, where scene 10 failed during generation-failed retry with `FLOW_PROMPT_TEXTBOX_NOT_FOCUSED`.
+- Root cause: retry submit skipped the pre-submit menu-close gate, then the Flow failure/options menu retained focus (`DIV role="menu"`) while the textbox still existed behind it.
+- Added prompt textbox focus retry with menu-close attempts, coordinate click plus DOM `focus()` fallback, selection placement for contenteditable inputs, and `scene_N_flow_prompt_focus_failed.json/png` diagnostics for any remaining hard failure.
+- Routed all Flow prompt submit/retry paths through the focus diagnostics context and added the missing menu-close gate before generation-failed retry submit.
+- Repacked the Electron app so the desktop shortcut launcher runs the updated build.
+- Verification: `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `node --check automation/google-flow-media.mjs`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
+
+## 2026-06-10 - Fix - Flow submit idle self-heal
+
+- Investigated desktop job `youtube-1781022447047`, where scene 1 clicked Flow's create button but no progress, media, or failure card appeared.
+- Identified this as a submit-idle class distinct from textbox focus: the prompt card existed, Flow's create UI was visible, but generation never started.
+- Added shared `retryFlowSubmitAfterIdle` recovery for both video and image scenes, with two additional submit attempts, menu-close gating, reload/project recovery between idle retries, and persisted retry attempts in `scene_N_flow_submit_retry_state.json`.
+- Added `FLOW_PROMPT_CARD_CREATED_BUT_NOT_SUBMITTED` classification so prompt-card idle is distinguishable from generic `FLOW_SUBMIT_DID_NOT_START`.
+- Repacked the Electron app so the desktop shortcut launcher runs the updated build.
+- Verification: `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
+
+## 2026-06-10 - Feature - Longform chaptered render orchestration
+
+- Added scene-based longform chapter planning and optional `longformChapteredRenderEnabled` workflow support for splitting a long script into 60-120 second child render jobs.
+- Added child chapter input generation, scene media reindex/copy, chapter status persistence, resume-safe plan reconciliation, and cached-scene child media resync.
+- Added sequential async chapter rendering and final FFmpeg stitch support with relative concat lists, merged SRT offsets, YouTube chapter markers, and final re-encode.
+- Added UI/schema controls for chaptered longform rendering plus contract tests for planner, render orchestration, resume reuse, and UI payload wiring.
+- Verification: `npm.cmd run check:flow-output-mode`, `node scripts/check-youtube-job-schema.mjs`, `node scripts/check-longform-production-contract.mjs`, `node scripts/check-longform-scene-resume-contract.mjs`, `node scripts/check-longform-ui-workflow-guards.mjs`, targeted `node --check` for chapter renderer/planner/workflow modules, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
+
+## 2026-06-10 - Recovery - Napoleon longform final render
+
+- Investigated desktop job `youtube-1781029420405`; root cause was Google Flow `FLOW_RATE_LIMITED` at scene 32 after scenes 1-31 had already rendered.
+- Found a second resume issue where legacy 16:9 image-scene manifest records without aspect metadata were not reused, causing unnecessary Flow retries; added ffmpeg-based dimension probing so valid legacy 1920x1080 media can be reused while stale 9:16 media is still rejected.
+- Repaired the job manifest for completed scenes 1-31, created local stickmanplus fallback motion clips for missing scenes 32-49 because Flow remained rate-limited, and rendered `final-youtube-napoleon-recovered.mp4`.
+- Final QA passed: 49 scenes, final duration 318.57s, subtitle end 318.32s, subtitle drift 0.25s, black-span QA ok, no failure codes.
+- Verification: `node scripts/check-longform-scene-resume-contract.mjs`, `node scripts/check-longform-aspect-aware-video-normalization.mjs`, `npm.cmd run check:flow-output-mode`, `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781029420405"`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.

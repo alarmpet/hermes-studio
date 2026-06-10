@@ -21,6 +21,23 @@ assert.equal(badResult.ok, false, "full-script scene repetition must fail draft 
 assert.equal(badResult.failureCode, "DUPLICATE_FULL_SCRIPT_SCENE");
 assert.equal(badResult.failedSceneOrder, 3);
 
+const repeatedSequenceDraft = {
+  title: "반복 장면 테스트",
+  script: "첫 번째 장면입니다. 두 번째 장면입니다. 세 번째 장면입니다.",
+  scenes: [
+    { order: 1, narration: "첫 번째 장면입니다.", image_prompt: "first visual" },
+    { order: 2, narration: "두 번째 장면입니다.", image_prompt: "second visual" },
+    { order: 3, narration: "세 번째 장면입니다.", image_prompt: "third visual" },
+    { order: 4, narration: "첫 번째 장면입니다.", image_prompt: "first visual repeat" },
+    { order: 5, narration: "두 번째 장면입니다.", image_prompt: "second visual repeat" },
+    { order: 6, narration: "세 번째 장면입니다.", image_prompt: "third visual repeat" },
+  ],
+};
+const repeatedSequenceResult = validateDraftQuality({ draft: repeatedSequenceDraft, stage: "unit" });
+assert.equal(repeatedSequenceResult.ok, false, "draft QA must reject a complete repeated scene sequence");
+assert.equal(repeatedSequenceResult.failureCode, "DUPLICATE_SCENE_SEQUENCE");
+assert.deepEqual(repeatedSequenceResult.repeatedSceneOrders, [4, 5, 6]);
+
 const placeholderResult = validateDraftQuality({
   draft: {
     title: "string",

@@ -23,6 +23,30 @@ export const STYLE_PRESETS = [
       preferredOutputModes: ["image", "video"],
     },
   ),
+  preset(
+    "stickmanplus",
+    "StickmanPlus History",
+    "flat vector stickmanplus history explainer, whiteboard-comic infographic style for surprising historical stories",
+    "locked-off explainer composition with gentle pan, simple slide-in arrows, spotlight reveals, and cause-effect diagram motion",
+    "flat high-key illustration lighting with soft vignette, no realistic shadows",
+    "warm beige parchment, off-white, black outlines, navy suits, red arrows, gold coins, muted blue castles, green highlights",
+    {
+      characterContinuity: "same round white stickman characters with dot eyes, simple expressive eyebrows, thick black outline, small navy suit or simplified period costume, consistent proportions and line weight across every scene",
+      worldContinuity: "same beige parchment or whiteboard-comic world, thick black outlines, flat vector props, muted palette, simple historical icons such as castles, maps, scrolls, crowns, coins, scales, ships, timelines, arrows, spotlights, magnifying glasses, court rooms, and battlefield symbols",
+      negativePrompt: "no photorealistic humans, no realistic faces, no exact celebrity or historical-person likeness, no readable text, no Korean text, no English text, no logos, no watermarks, no brand marks, no dense realistic backgrounds",
+      preferredOutputModes: ["image", "video"],
+      promptSuffix: [
+        "Style: stickmanplus flat vector history explainer, whiteboard-comic infographic, thick black outlines, warm beige parchment background, simple expressive round-head stickman characters.",
+        "Camera: locked-off explainer board with gentle pan or slow push, clear symbolic staging, simple slide-in arrows and spotlight reveals.",
+        "Lighting: flat high-key illustration lighting, soft vignette only, no realistic shadows.",
+        "Color palette: warm beige, off-white, black outlines, navy suits, red arrows, gold coins and crowns, muted blue castles, green discovery highlights.",
+        "Historical visual toolbox: castles, maps, scrolls, crowns, coins, scales, ships, timelines, arrows, spotlights, magnifying glasses, court rooms, battlefield symbols, broken walls, tax chests, treaty tables.",
+        "Character continuity: same round white stickman characters with dot eyes, simple expressive eyebrows, thick black outline, small navy suit or simplified period costume, consistent proportions and line weight across every scene.",
+        "World continuity: same whiteboard-comic parchment world, flat vector props, minimal shading, no realistic humans.",
+        "Negative constraints: no readable text, no Korean text, no English text, no logos, no watermarks, no brand marks, no exact real-person likeness, no photorealistic faces.",
+      ].join(" "),
+    },
+  ),
 ];
 
 function preset(id, label, aesthetic, camera, lighting, colorPalette, extra = {}) {

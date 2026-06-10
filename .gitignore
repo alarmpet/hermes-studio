@@ -32,3 +32,34 @@ telegram-flow-offset.json
 telegram-flow-state.json
 bot_data.db
 bot_data.db-*
+
+# Obsidian local workspace cache
+.obsidian/
+.obsidian/workspace
+.obsidian/workspace-mobile
+.obsidian/workspace.json
+.obsidian/workspace-mobile.json
+
+# Local browser/provider runtime state
+.aistudio-browser-profile*/
+browser-profiles/
+flow-global-pacing*.json
+flow-profile-*/
+
+# Local scratch and generated review artifacts
+scratch/
+tmp/
+temp/
+*.png.tmp
+*.mp4.tmp
+scene_*_flow_*.png
+scene_*_flow_*.json
+
+# Agent/private workspace mirrors
+obsi/
+AI-Sessions/raw/
+
+# Local secrets
+.supabase-access-token
+.supabase-access-token.txt
+client_secret_*.json

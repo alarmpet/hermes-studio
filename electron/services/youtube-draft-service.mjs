@@ -96,7 +96,7 @@ function resolveScriptTarget(job) {
     : preset.targetSeconds;
   return {
     seconds,
-    sceneCount: Math.max(3, Math.min(10, Math.round(seconds / 12))),
+    sceneCount: Math.max(3, Math.min(80, Math.ceil(seconds / 6))),
     wordsMin: Math.max(70, Math.round(seconds * 2.2)),
     wordsMax: Math.max(95, Math.round(seconds * 2.8)),
     charsMin: Math.max(220, Math.round(seconds * 6.0)),

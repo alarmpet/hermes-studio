@@ -30,13 +30,10 @@ export function classifyDurationSyncPolicy({ order, videoDuration, audioDuration
   const imageMotionSoftMismatch = isImageMode
     ? ratio > 1.2 && ratio <= 3 && extraHoldSeconds <= 30
     : ratio > 1.2 && ratio <= 1.7 && extraHoldSeconds <= 8;
-  const videoLoopExtensionMismatch = !isImageMode
-    && ratio > 1.7
-    && ratio <= 2.5
-    && extraHoldSeconds <= 12;
+  const videoLoopExtensionMismatch = false;
 
-  if ((isImageMode && (ratio > 3 || extraHoldSeconds > 30))
-    || (!isImageMode && !videoLoopExtensionMismatch && !imageMotionSoftMismatch && (ratio > 1.7 || (extraHoldSeconds > 4 && !longformSoftMismatch)))) {
+  // Image mode: hard-fail only when ratio > 3 or extraHoldSeconds > 30
+  if (isImageMode && (ratio > 3 || extraHoldSeconds > 30)) {
     return {
       ...base,
       strategy: "regenerate",
@@ -46,6 +43,41 @@ export function classifyDurationSyncPolicy({ order, videoDuration, audioDuration
         code: "SCENE_DURATION_MISMATCH",
         sceneOrder: Number(order || 0),
         message: `Scene ${order} audio is too long for one Flow clip.`,
+        ratio: Number(ratio.toFixed(3)),
+        extraHoldSeconds: Number(extraHoldSeconds.toFixed(3)),
+      }],
+    };
+  }
+
+  if (!isImageMode && (ratio > 2.5 || extraHoldSeconds > 12)) {
+    return {
+      ...base,
+      strategy: "regenerate",
+      requiresRegeneration: true,
+      failureCode: "SCENE_DURATION_MISMATCH",
+      qualityWarnings: [{
+        code: "SCENE_DURATION_MISMATCH",
+        sceneOrder: Number(order || 0),
+        message: `Scene ${order} audio is too long for one Flow video clip.`,
+        ratio: Number(ratio.toFixed(3)),
+        extraHoldSeconds: Number(extraHoldSeconds.toFixed(3)),
+      }],
+    };
+  }
+
+  // Video mode: instead of looping a short Flow clip until it looks repeated,
+  // fall back to image-sequence Ken Burns when the narration no longer fits.
+  if (!isImageMode && !videoLoopExtensionMismatch && !imageMotionSoftMismatch
+    && (ratio > 1.55 || (extraHoldSeconds > 4 && !longformSoftMismatch))) {
+    return {
+      ...base,
+      strategy: "video-to-image-fallback",
+      requiresRegeneration: false,
+      failureCode: "",
+      qualityWarnings: [{
+        code: "VIDEO_TO_IMAGE_FALLBACK",
+        sceneOrder: Number(order || 0),
+        message: `Scene ${order} audio is too long for one Flow clip; falling back to image-sequence Ken Burns rendering.`,
         ratio: Number(ratio.toFixed(3)),
         extraHoldSeconds: Number(extraHoldSeconds.toFixed(3)),
       }],

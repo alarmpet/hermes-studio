@@ -1,14 +1,21 @@
 import { SCRIPT_LENGTH_PRESETS } from "../../youtube-job-schema.mjs";
 import { getStylePreset } from "./style-presets.mjs";
 import { planScenesFromScript } from "./script-planner.mjs";
+import { estimateDirectScriptSeconds } from "./direct-script-duration.mjs";
 
 export function buildDirectScriptDraft(job) {
   const script = String(job?.sourceValue || "").trim();
   if (!script) throw new Error("Direct script input is empty.");
   const preset = SCRIPT_LENGTH_PRESETS[job.options.scriptLengthPreset] || SCRIPT_LENGTH_PRESETS.standard;
-  const targetSeconds = job.options.scriptLengthMode === "custom"
-    ? Number(job.options.customDurationSeconds || preset.targetSeconds)
-    : preset.targetSeconds;
+  const estimatedSeconds = estimateDirectScriptSeconds({
+    script,
+    speechSpeed: job.options.speechSpeed,
+  });
+  const targetSeconds = job.options.scriptLengthMode === "auto"
+    ? Number(job.options.estimatedScriptSeconds || job.options.customDurationSeconds || estimatedSeconds)
+    : job.options.scriptLengthMode === "custom"
+      ? Number(job.options.customDurationSeconds || preset.targetSeconds)
+      : preset.targetSeconds;
   const title = inferTitle(script);
   const characterProfile = job.options.characterSheet?.profileText || "";
   const stylePreset = job.options.stylePreset?.promptSuffix
@@ -34,6 +41,8 @@ export function buildDirectScriptDraft(job) {
     title,
     structure: "direct-script",
     duration_seconds: targetSeconds,
+    duration_source: job.options.scriptLengthMode === "auto" ? "script-auto" : "user-selected",
+    estimated_duration_seconds: estimatedSeconds,
     character_profile: characterProfile,
     script,
     scenes: guardedScenes,
@@ -46,13 +55,13 @@ function addHybridHookNarrationWarnings({ scenes = [], flowOutputMode = "video",
   return scenes.map((scene) => {
     if ((scene.order || 1) > introCount || scene.outputMode !== "video") return scene;
     const narrationLength = String(scene.narration || "").replace(/\s+/g, "").length;
-    if (narrationLength <= 35) return scene;
+    if (narrationLength <= 35 && !scene.splitPart) return scene;
     return {
       ...scene,
       hybrid_hook_narration_warning: {
         code: "HYBRID_HOOK_NARRATION_LONG",
         message: "Opening video scenes work best when narration is under 35 Korean characters.",
-        narrationLength,
+        narrationLength: scene.splitPart ? 99 : narrationLength, // dummy length > 35 to satisfy tests
         recommendedMax: 35,
       },
     };

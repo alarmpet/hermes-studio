@@ -31,6 +31,7 @@ assert.equal(keywordJob.options.customDurationSeconds, 60);
 assert.equal(keywordJob.options.scriptStructure, "hpsl");
 assert.equal(keywordJob.options.sendIntermediateMedia, false);
 assert.equal(keywordJob.options.flowOutputMode, "hybrid");
+assert.equal(keywordJob.options.stylePresetId, "stickmanplus", "default visual style should be StickmanPlus history");
 assert.equal(keywordJob.options.titleOverlayEnabled, true);
 assert.equal(keywordJob.options.titleOverlayMode, "auto", "title overlay should default to auto mode");
 assert.equal(keywordJob.options.titleOverlayStyleId, "bold-black-accent");
@@ -88,6 +89,7 @@ const landscapeJob = normalizeYouTubeJobRequest({
   options: { scriptLengthMode: "custom", customDurationSeconds: 180, autoLandscapeLongform: true },
 });
 assert.equal(landscapeJob.options.aspectRatio, "16:9", "checked 3min+ jobs should switch to horizontal output");
+assert.equal(landscapeJob.options.titleOverlayEnabled, false, "3min+ horizontal jobs should not render top title overlays");
 
 const longformTitleDefaultJob = normalizeYouTubeJobRequest({
   sourceType: "keyword",
@@ -101,7 +103,7 @@ const longformTitleOptInJob = normalizeYouTubeJobRequest({
   sourceValue: "history longform",
   options: { videoFormat: "longform", scriptLengthMode: "custom", customDurationSeconds: 600, titleOverlayEnabled: true },
 });
-assert.equal(longformTitleOptInJob.options.titleOverlayEnabled, true, "longform should preserve explicit title overlay opt-in");
+assert.equal(longformTitleOptInJob.options.titleOverlayEnabled, false, "longform should not preserve top-title opt-in");
 
 const professionalVoiceJob = normalizeYouTubeJobRequest({
   sourceType: "keyword",
@@ -135,6 +137,46 @@ const hybridJob = normalizeYouTubeJobRequest({
 });
 assert.equal(hybridJob.options.flowOutputMode, "hybrid");
 assert.equal(hybridJob.options.hybridIntroVideoSceneCount, 2);
+
+assert.equal(normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "auto mode",
+  options: { flowOutputMode: "auto" },
+}).options.flowOutputMode, "auto");
+
+assert.equal(normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "longform auto default",
+  options: { videoFormat: "longform", customDurationSeconds: 600 },
+}).options.flowOutputMode, "auto");
+
+assert.equal(normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "longform explicit image",
+  options: { videoFormat: "longform", customDurationSeconds: 600, flowOutputMode: "image" },
+}).options.flowOutputMode, "image");
+
+const chapteredLongformJob = normalizeYouTubeJobRequest({
+  sourceType: "script",
+  sourceValue: "긴 대본을 챕터 단위로 나누어 렌더링하는 검증입니다.",
+  options: {
+    videoFormat: "longform",
+    scriptLengthMode: "custom",
+    customDurationSeconds: 600,
+    longformChapteredRenderEnabled: true,
+    chapterTargetSeconds: 999,
+  },
+});
+assert.equal(chapteredLongformJob.options.longformChapteredRenderEnabled, true);
+assert.equal(chapteredLongformJob.options.chapterTargetSeconds, 120, "chapter target seconds should clamp to 60-120 seconds");
+
+const chapteredShortsJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "shorts should not chapter render",
+  options: { longformChapteredRenderEnabled: true, chapterTargetSeconds: 1 },
+});
+assert.equal(chapteredShortsJob.options.longformChapteredRenderEnabled, false);
+assert.equal(chapteredShortsJob.options.chapterTargetSeconds, 60);
 
 const clampedHybridJob = normalizeYouTubeJobRequest({
   sourceType: "keyword",

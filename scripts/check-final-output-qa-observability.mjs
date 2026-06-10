@@ -16,8 +16,14 @@ assert.match(workflow + stages, /durationDrift/, "workflow should include target
 assert.match(renderScript, /renderEffectPreset/, "render report should include render effect preset");
 assert.match(renderScript, /transitionPreset/, "render report should include transition preset");
 assert.match(renderScript, /motionPreset/, "render report should include per-scene motion preset");
+assert.match(renderScript, /motionAxis/, "render report should include per-scene motion axis");
+assert.match(renderScript, /motionDirection/, "render report should include per-scene motion direction");
+assert.match(renderScript, /motionEnergy/, "render report should include per-scene motion energy");
 assert.match(renderScript, /advancedEffectsFallback/, "render report should expose effect fallback");
 assert.match(renderScript, /titleOverlay/, "render report should expose title overlay metadata");
 assert.match(workflow, /titleOverlay:\s*\{/, "workflow should write title overlay render options");
+assert.match(stages, /motionAxis/, "workflow stages should emit selected motion axis");
+assert.match(stages, /motionDirection/, "workflow stages should emit selected motion direction");
+assert.match(stages, /motionEnergy/, "workflow stages should emit selected motion energy");
 
 console.log(JSON.stringify({ ok: true, checked: "final-output-qa-observability" }));

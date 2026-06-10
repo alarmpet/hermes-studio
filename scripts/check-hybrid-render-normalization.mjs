@@ -8,7 +8,7 @@ const stages = readFileSync(new URL("../youtube-workflow-stages.mjs", import.met
 const renderScript = readFileSync(new URL("../scripts/render-youtube-with-tts.mjs", import.meta.url), "utf8");
 
 assert.match(normalizer, /normalizeSceneVideoClip/, "video Flow clips should have a dedicated normalizer");
-assert.match(normalizer, /scale=1080:1920:force_original_aspect_ratio=increase/, "video normalizer should force 9:16 scale");
+assert.match(normalizer, /scale=\$\{width\}:\$\{height\}:force_original_aspect_ratio=increase/, "video normalizer should force aspect scale");
 assert.match(normalizer, /fps=30/, "video normalizer should force 30fps");
 assert.match(normalizer, /setsar=1/, "video normalizer should force square pixels before xfade");
 assert.match(normalizer, /setpts=PTS-STARTPTS/, "video normalizer should reset clip PTS before xfade");

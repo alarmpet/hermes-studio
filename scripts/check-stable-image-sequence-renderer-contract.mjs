@@ -17,6 +17,18 @@ assert.match(renderer, /TARGET_ASPECT_RATIO/, "final renderer should resolve a t
 assert.match(renderer, /TARGET_WIDTH[\s\S]*1920[\s\S]*1080/, "final renderer should support horizontal longform dimensions");
 assert.match(sequenceService, /outputWidth\s*=\s*OUTPUT_WIDTH/, "stable image renderer should accept custom output width");
 assert.match(sequenceService, /outputHeight\s*=\s*OUTPUT_HEIGHT/, "stable image renderer should accept custom output height");
+for (const preset of [
+  "center-breathe",
+  "reveal-from-top",
+  "reveal-from-bottom",
+  "reverse-diagonal-drift",
+  "subject-hold-push",
+  "wide-pullback",
+  "micro-parallax-crop",
+  "edge-to-center",
+]) {
+  assert.match(sequenceService, new RegExp(`case\\s+["']${preset}["']`), `stable renderer should implement ${preset}`);
+}
 assert.match(packageJson, /check:stable-image-sequence-renderer/, "package checks should include the stable sequence contract");
 
 console.log("Stable image sequence renderer contract OK");

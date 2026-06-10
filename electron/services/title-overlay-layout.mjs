@@ -1,9 +1,18 @@
-export function wrapBalancedTitle(text = "", { maxChars = 10, maxLines = 2 } = {}) {
+export function wrapBalancedTitle(text = "", { maxChars = 10, maxLines = 4 } = {}) {
+  const manualLines = String(text || "")
+    .split(/\r?\n|\\n/g)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (manualLines.length > 1) {
+    return manualLines.slice(0, maxLines).map((line) => compactTitleText(line));
+  }
+
   const title = compactTitleText(text);
   if (!title) return [];
   const chars = Array.from(title);
   const limit = Math.max(1, Number(maxChars || 10));
-  const lineLimit = Math.max(1, Number(maxLines || 2));
+  const lineLimit = Math.max(1, Number(maxLines || 4));
   if (chars.length <= limit || lineLimit === 1) {
     return [chars.slice(0, limit).join("")].filter(Boolean);
   }
@@ -18,8 +27,7 @@ function compactTitleText(text = "") {
   return String(text || "")
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/[|｜].*$/u, "")
-    .slice(0, 80);
+    .slice(0, 160);
 }
 
 function balancedTokenSplit(title, maxChars) {
@@ -43,7 +51,7 @@ function balancedTokenSplit(title, maxChars) {
 }
 
 function balancedCharacterSplit(title, maxChars) {
-  const chars = Array.from(title.replace(/\s+/g, ""));
+  const chars = Array.from(title);
   if (chars.length <= maxChars) return [chars.join("")];
   const candidates = [];
   const minSplit = Math.max(1, chars.length - maxChars);
@@ -80,7 +88,11 @@ function greedyWrapTitle(title, maxChars, maxLines) {
 }
 
 function visualLength(value = "") {
-  return Array.from(String(value).replace(/\s+/g, "")).length;
+  const stripped = String(value)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1")
+    .replace(/\[([^\]]+)\]/g, "$1")
+    .replace(/\s+/g, "");
+  return Array.from(stripped).length;
 }
 
 function tinyLinePenalty(length, maxChars) {

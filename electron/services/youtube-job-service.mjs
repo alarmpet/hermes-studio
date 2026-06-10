@@ -9,6 +9,7 @@ import { emitJobProgress } from "./job-progress-events.mjs";
 import { ingestCharacterSheet } from "./character-sheet-ingest.mjs";
 import { maybeRunWebwrightDiagnostics } from "./webwright-diagnostics-service.mjs";
 import { createThumbnailForJob } from "../../pipeline/youtube-thumbnail.mjs";
+import { createFlowRequestPacer } from "./flow-request-pacer.mjs";
 
 export function buildDesktopJobRequest(input = {}) {
   return normalizeYouTubeJobRequest({
@@ -27,19 +28,22 @@ export function buildDesktopJobRequest(input = {}) {
       scriptLengthPreset: input.scriptLengthPreset || "standard",
       scriptLengthMode: input.scriptLengthMode || "preset",
       customDurationSeconds: input.customDurationSeconds || 60,
+      estimatedScriptSeconds: input.estimatedScriptSeconds || 0,
+      durationSource: input.durationSource || "user-selected",
       scriptStructure: input.scriptStructure || "hpsl",
       sceneStrategy: input.sceneStrategy || "sentence-proportional",
-      voiceId: input.voiceId || "male_30_announcer",
+      voiceId: input.voiceId || "male_30_high",
       speechSpeed: Number(input.speechSpeed || 1.08),
       subtitleStyleId: input.subtitleStyleId || "bold-shorts",
       subtitleStyle: input.subtitleStyle || {},
       titleOverlayEnabled: input.titleOverlayEnabled !== false,
       titleOverlayMode: input.titleOverlayMode || (input.titleOverlayText ? "manual" : "auto"),
-      titleOverlayText: input.titleOverlayText || "",
-      titleOverlayStyleId: input.titleOverlayStyleId || "bold-black-accent",
-      titleOverlayMaxLines: input.titleOverlayMaxLines || 2,
-      titleOverlaySafeTop: input.titleOverlaySafeTop ?? 84,
-      aspectRatio: input.aspectRatio || "9:16",
+        titleOverlayText: input.titleOverlayText || "",
+        titleOverlayStyleId: input.titleOverlayStyleId || "bold-black-accent",
+        titleOverlayMaxLines: input.titleOverlayMaxLines || 2,
+        titleOverlaySafeTop: input.titleOverlaySafeTop ?? 84,
+        titleOverlayStyle: input.titleOverlayStyle || {},
+        aspectRatio: input.aspectRatio || "9:16",
       autoLandscapeLongform: Boolean(input.autoLandscapeLongform),
       thumbnailMode: input.thumbnailMode || "auto",
       thumbnailOverlay: input.thumbnailOverlay || {},
@@ -49,10 +53,15 @@ export function buildDesktopJobRequest(input = {}) {
       transitionPreset: input.transitionPreset || "scene-fade",
       transitionSeconds: input.transitionSeconds ?? 0.3,
       motionIntensity: input.motionIntensity || "light",
-      stylePresetId: input.stylePresetId || "cinematic-tech-news",
+      stylePresetId: input.stylePresetId || "stickmanplus",
       researchProvider: input.researchProvider || "gemini-gems-browser",
       archiveProvider: input.archiveProvider || "local-files",
       characterSheet: input.characterSheet || {},
+      ollamaAssistEnabled: Boolean(input.ollamaAssistEnabled),
+      ollamaBaseUrl: input.ollamaBaseUrl || "http://127.0.0.1:11434",
+      ollamaModel: input.ollamaModel || "gemma4:12b",
+      ollamaTimeoutMs: input.ollamaTimeoutMs,
+      ollamaUseCases: input.ollamaUseCases || {},
       openaiProviderMode: input.openaiProviderMode || "disabled",
       openaiApiKeyConfigured: Boolean(input.openaiApiKeyConfigured),
       sendIntermediateMedia: false,
@@ -72,6 +81,7 @@ export async function createYouTubeJob(input, context = {}) {
   const jobDir = context.jobDir || join(context.outputDir, "desktop", job.id);
   const chromePath = context.chromePath || findChromeExecutable();
   const nodeBin = findNodeExecutable();
+  const flowPacer = context.flowPacer || (context.paths?.userData ? createFlowRequestPacer({ userData: context.paths.userData }) : null);
   await mkdir(jobDir, { recursive: true });
   job.options.characterSheet = await ingestCharacterSheet({
     jobDir,
@@ -111,6 +121,7 @@ export async function createYouTubeJob(input, context = {}) {
     paths: context.paths,
     chromePath,
     ffmpegBin: context.ffmpegBin,
+    flowPacer,
     enableLiveMcp: Boolean(job.options.enableLiveMcp),
     emit: emitWorkflow,
     onFlowProgress: ({ message, details }) => progress({
@@ -128,6 +139,7 @@ export async function createYouTubeJob(input, context = {}) {
     jobDir,
     chromePath,
     nodeBin,
+    flowPacer,
     renderScriptPath: context.paths?.renderScriptPath,
     finalName: `desktop-${job.options.mockMediaMode ? "mock" : "flow"}-${Date.now()}.mp4`,
   });
@@ -137,7 +149,7 @@ export async function createYouTubeJob(input, context = {}) {
     message: "최종 영상 맥락을 반영해 썸네일을 준비하는 중입니다.",
   });
 
-  const thumbnail = await stages.generateThumbnail(result, { ...context, job, jobDir });
+  const thumbnail = await stages.generateThumbnail(result, { ...context, job, jobDir, chromePath });
   if (thumbnail?.primaryProviderFailure) {
     const thumbnailActionRequired = createThumbnailActionRequired(thumbnail.primaryProviderFailure);
     const diagnostics = await maybeRunWebwrightDiagnostics({
@@ -199,6 +211,8 @@ export async function retryThumbnailForJob({ job, jobDir, paths, chromePath, con
     flowTimeoutMs: config.flowTimeoutMs,
     aspectRatio: job?.options?.aspectRatio || "9:16",
     thumbnailOverlay: job?.options?.thumbnailOverlay || {},
+    stylePresetId: job?.options?.stylePresetId || "",
+    stylePreset: job?.options?.stylePreset || {},
     emit,
   });
   if (thumbnail?.primaryProviderFailure) {

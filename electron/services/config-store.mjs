@@ -16,12 +16,27 @@ export const DEFAULT_CONFIG = {
     googleWorkspace: { status: "unknown" },
   },
   defaults: {
+    sourceType: "script",
     scriptLengthMode: "preset",
     scriptLengthPreset: "standard",
     customDurationSeconds: 90,
-    voiceId: "male_30_announcer",
+    voiceId: "male_30_high",
     subtitleStyleId: "bold-shorts",
+    stylePresetId: "stickmanplus",
     mockMediaMode: true,
+    ollamaAssistEnabled: false,
+    ollamaBaseUrl: "http://127.0.0.1:11434",
+    ollamaModel: "gemma4:12b",
+    ollamaTimeoutMs: 20000,
+    ollamaUseCases: {
+      storyboard: true,
+      promptQa: true,
+      failureReport: true,
+      uploadMetadata: false,
+      thumbnailIdeas: false,
+      scriptPolish: false,
+      researchDigest: false,
+    },
   },
 };
 

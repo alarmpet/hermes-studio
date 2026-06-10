@@ -32,6 +32,12 @@ assert.match(stickman.characterContinuity, /same|consistent|proportions/i, "Stic
 assert.match(stickman.worldContinuity, /same|consistent|whiteboard|line/i, "Stickman preset should define world continuity");
 assert.ok(stickman.preferredOutputModes.includes("image"), "Stickman should prefer image mode as a stable option");
 
+const stickmanplus = getStylePreset("stickmanplus");
+assert.equal(stickmanplus.id, "stickmanplus");
+assert.match(stickmanplus.promptSuffix, /stickmanplus|history|castle|scroll|timeline/i, "StickmanPlus should force historical explainer props");
+assert.match(stickmanplus.negativePrompt, /no readable text|no logos|no photorealistic/i, "StickmanPlus should have strict negative constraints");
+assert.ok(stickmanplus.preferredOutputModes.includes("image"), "StickmanPlus should support image mode");
+
 const dbHelper = readFileSync(new URL("../bot_db_helper.py", import.meta.url), "utf8");
 assert.match(dbHelper, /character_continuity/, "style preset DB should store character continuity");
 assert.match(dbHelper, /world_continuity/, "style preset DB should store world continuity");

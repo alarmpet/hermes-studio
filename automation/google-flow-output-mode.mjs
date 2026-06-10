@@ -88,6 +88,7 @@ export async function verifyFlowOutputMode(page, requestedOutputMode, aspectRati
             ? "imagen"
             : "unknown";
     const imageModelOk = requested !== "image" || selectedImageModel !== "unknown";
+    const generatorMenuOpen = /crop_landscape|crop_square|crop_portrait|crop_9_16|Nano Banana Pro\s*arrow_drop_down|credits|credit/i.test(fullText);
 
     return {
       requestedOutputMode: requested,
@@ -103,7 +104,8 @@ export async function verifyFlowOutputMode(page, requestedOutputMode, aspectRati
         width: selectedChip.width,
         height: selectedChip.height,
       } : null,
-      ok: selectedOutputMode === requested && imageModelOk,
+      generatorMenuOpen,
+      ok: selectedOutputMode === requested && imageModelOk && !generatorMenuOpen,
       bottomGeneratorChip,
       textTail: fullText.slice(-1500),
     };
@@ -223,21 +225,43 @@ async function configureFlowGenerator(page, config) {
       el.getAttribute("aria-label"),
       el.getAttribute("title"),
     ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
-    const controls = () => Array.from(document.querySelectorAll("button,[role='button'],[role='option'],[aria-label],div,span"))
+    function clickableAncestorOf(el) {
+      return el.closest("button,[role='button'],[role='option']");
+    }
+    const labelContext = () => Array.from(document.querySelectorAll("button,[role='button'],[role='option'],[aria-label],div,span"))
       .filter(visible)
-      .map((el) => ({ el, text: textOf(el), rect: el.getBoundingClientRect() }))
+      .map((el) => {
+        const clickable = clickableAncestorOf(el);
+        return {
+          el: clickable,
+          text: textOf(el),
+          rect: (clickable || el).getBoundingClientRect(),
+          unsafe: !clickable,
+        };
+      })
       .filter((item) => item.text);
       if (!needles?.length) return { ok: true, skipped: true, optional: Boolean(options.optional) };
       const lowerNeedles = needles.map((needle) => needle.toLowerCase());
-      const matches = controls().filter((item) => {
+      const rejected = [];
+      const matches = labelContext().filter((item) => {
         const text = item.text.toLowerCase();
         const matched = lowerNeedles.some((needle) => options.exact ? text === needle : text.includes(needle));
         if (!matched) return false;
+        if (item.unsafe) {
+          rejected.push({ text: item.text, reason: "non-clickable-label" });
+          return false;
+        }
         if (options.bottomPanel && item.rect.y < window.innerHeight * 0.64) return false;
         if (options.generatorMenuOnly) {
           const inLeftSidebar = item.rect.x < window.innerWidth * 0.18;
-          if (inLeftSidebar) return false;
-          if (item.rect.width > 420 || item.rect.height > 120) return false;
+          if (inLeftSidebar) {
+            rejected.push({ text: item.text, reason: "sidebar" });
+            return false;
+          }
+          if (item.rect.width > 420 || item.rect.height > 120) {
+            rejected.push({ text: item.text, reason: "oversized-container" });
+            return false;
+          }
         }
         if (Number.isFinite(options.minY) && item.rect.y < options.minY) return false;
         if (Number.isFinite(options.maxY) && item.rect.y > options.maxY) return false;
@@ -254,6 +278,8 @@ async function configureFlowGenerator(page, config) {
           ok: Boolean(options.optional),
           optional: Boolean(options.optional),
           reason: `No control matched: ${needles.join(", ")}`,
+          failureCode: "FLOW_UNSAFE_CLICK_TARGET",
+          rejectedClickCandidates: rejected,
         };
       }
       return {
@@ -369,17 +395,60 @@ async function configureFlowGenerator(page, config) {
   results.push({ ...saveResult, saveSettings: true });
   if (!saveResult.ok) await page.keyboard.press("Escape").catch(() => {});
   await delay(300);
+  const menuClosed = await closeFlowGeneratorMenu(page);
 
   const criticalResults = results.filter((item) => !item.optional);
   return {
-    ok: criticalResults.every((item) => item.ok),
+    ok: criticalResults.every((item) => item.ok) && menuClosed.ok,
     requestedOutputMode: config.requestedOutputMode,
     settingsPanelApplied: true,
     saved: saveResult.ok,
+    menuClosed,
     sectionBounds,
     results,
     selectedChip: [...results].reverse().find((item) => item.selectedChip)?.selectedChip,
     rejectedChipReasons: results.flatMap((item) => item.rejectedChipReasons || []),
     summary: await pageSummary(),
   };
+}
+
+async function closeFlowGeneratorMenu(page) {
+  await page.keyboard.press("Escape").catch(() => {});
+  await delay(400);
+  await page.mouse.click(400, 200).catch(() => {});
+  await delay(400);
+  await page.evaluate(() => {
+    if (document.activeElement && typeof document.activeElement.blur === "function") {
+      document.activeElement.blur();
+    }
+  }).catch(() => {});
+  return verifyGeneratorMenuClosed(page);
+}
+
+export async function verifyGeneratorMenuClosed(page) {
+  return page.evaluate(() => {
+    const visible = (el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return style.visibility !== "hidden"
+        && style.display !== "none"
+        && rect.width > 8
+        && rect.height > 8;
+    };
+    const text = Array.from(document.querySelectorAll("button,[role='button'],[role='option'],div,span"))
+      .filter(visible)
+      .map((el) => [
+        el.innerText,
+        el.textContent,
+        el.getAttribute("aria-label"),
+        el.getAttribute("title"),
+      ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim())
+      .join("\n");
+    const menuOpen = /crop_landscape|crop_square|crop_portrait|crop_9_16|Nano Banana Pro\s*arrow_drop_down|credits|credit/i.test(text);
+    return {
+      ok: !menuOpen,
+      menuOpen,
+      textTail: text.slice(-1200),
+    };
+  });
 }

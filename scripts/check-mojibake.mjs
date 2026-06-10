@@ -1,34 +1,39 @@
 #!/usr/bin/env node
 
 import { readFile } from "node:fs/promises";
-import { relative } from "node:path";
+import { dirname, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const root = "C:/Users/amd/hermes";
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const files = [
   "telegram-flow-news-bot.mjs",
   "bot_db_helper.py",
   "electron/renderer/index.html",
   "electron/renderer/app.js",
   "electron/renderer/styles.css",
+  "pipeline/youtube-thumbnail-prompt.mjs",
+  "pipeline/youtube-thumbnail.mjs",
+  "electron/services/youtube-upload-metadata.mjs",
 ];
 
 const allowed = [
   "Possible mojibake outgoing message",
   "mojibake",
+  "Mojibake check",
 ];
 
 const suspiciousPatterns = [
   /\?{4,}/,
-  /[闌-龥][?]{2,}/,
-  /[?]{2,}[闌-龥]/,
   /\uFFFD/,
-  /占./,
+  /�/,
+  /[媛榕諛鍮二蹂異竊][^\n]{0,24}[?]/,
+  /[?][^\n]{0,24}[媛榕諛鍮二蹂異竊]/,
 ];
 
 let failed = false;
 
 for (const file of files) {
-  const path = `${root}/${file}`;
+  const path = resolve(root, file);
   const text = await readFile(path, "utf8");
   const lines = text.split(/\r?\n/);
   for (const [index, line] of lines.entries()) {

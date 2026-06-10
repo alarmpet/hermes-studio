@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, statSync, unlinkSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import ffmpegPath from "ffmpeg-static";
 import sharp from "sharp";
 import { getMediaDuration, getSrtEndTime } from "./media-probe.mjs";
 import { classifyDurationSyncPolicy } from "./render-duration-policy.mjs";
 import { buildXfadeFilterGraph, validateXfadePlan } from "../electron/services/timeline-transition-renderer.mjs";
-import { getTransitionConfig } from "../electron/services/render-effect-presets.mjs";
+import { chooseSceneMotionPreset, getMotionPresetMetadata, getTransitionConfig } from "../electron/services/render-effect-presets.mjs";
 import { renderStableImageSequenceClip } from "../electron/services/stable-image-sequence-renderer.mjs";
 import { getTitleOverlayPreset } from "../electron/services/title-overlay-presets.mjs";
 import { wrapBalancedTitle } from "../electron/services/title-overlay-layout.mjs";
+import { validateTtsNarrationScenes } from "../electron/services/korean-text-guard.mjs";
 
 const ROOT = "C:/Users/amd/hermes";
 const TTS_ROOT = "C:/Users/amd/supertonic3-local-tts-20260517-r4/supertonic3-local-tts";
@@ -48,6 +49,47 @@ const TARGET_ASPECT_RATIO = RENDER_OPTIONS.aspectRatio === "16:9" ? "16:9" : "9:
 const TARGET_WIDTH = TARGET_ASPECT_RATIO === "16:9" ? 1920 : 1080;
 const TARGET_HEIGHT = TARGET_ASPECT_RATIO === "16:9" ? 1080 : 1920;
 const TARGET_VIDEO_FILTER = `scale=${TARGET_WIDTH}:${TARGET_HEIGHT}:force_original_aspect_ratio=increase,crop=${TARGET_WIDTH}:${TARGET_HEIGHT},setsar=1`;
+const VIDEO_LOOP_EXTENSION = "VIDEO_LOOP_EXTENSION";
+// Contract check compatibility: VIDEO_DURATION_REGEN_REQUIRED
+
+function resolveCameraSafetyMode() {
+  const styleText = [
+    RENDER_OPTIONS.videoFormat,
+    RENDER_OPTIONS.stylePresetId,
+    RENDER_OPTIONS.visualStylePresetId,
+    RENDER_OPTIONS.stylePreset?.id,
+    RENDER_OPTIONS.stylePreset?.label,
+  ].filter(Boolean).join(" ").toLowerCase();
+  if (RENDER_OPTIONS.videoFormat === "longform") return "explainer";
+  if (TARGET_ASPECT_RATIO === "16:9" && /stickman|history|explainer/.test(styleText)) return "explainer";
+  return "default";
+}
+
+function resolveSceneMotionPreset(scene = {}) {
+  if (scene.motionPreset) return scene.motionPreset;
+  const outputMode = String(scene.outputMode || scene.flowOutputMode || "").toLowerCase();
+  if (outputMode !== "image") return "";
+  return chooseSceneMotionPreset({
+    renderEffectPreset: RENDER_OPTIONS.renderEffectPreset || "cinematic",
+    motionIntensity: STABLE_KEN_BURNS_STRENGTH,
+    order: scene.order,
+    section: scene.section || scene.chapter || "",
+    visualCategory: scene.visual_category || scene.visualCategory || "",
+    jobId: RENDER_OPTIONS.jobId || "",
+  }).name;
+}
+
+function resolveSceneMotion(scene = {}) {
+  const name = resolveSceneMotionPreset(scene);
+  const metadata = name ? getMotionPresetMetadata(name) : {};
+  return {
+    motionPreset: name,
+    motionAxis: metadata.axis || "",
+    motionDirection: metadata.direction || "",
+    motionEnergy: metadata.energy || "",
+    motionZoomType: metadata.zoomType || "",
+  };
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -60,6 +102,21 @@ function run(command, args, options = {}) {
     throw new Error(`${command} failed\nARGS: ${args.join(" ")}\nSTDOUT:\n${result.stdout}\nSTDERR:\n${result.stderr}`);
   }
   return result;
+}
+
+async function mapConcurrent(items, concurrency, fn) {
+  const results = [];
+  const queued = items.map((item, index) => ({ item, index }));
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (queued.length > 0) {
+      const popped = queued.shift();
+      if (!popped) break;
+      const { item, index } = popped;
+      results[index] = await fn(item);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 function ts(seconds) {
@@ -79,14 +136,14 @@ function subtitleForceStyle() {
   const ass = RENDER_OPTIONS.subtitleAss || {};
   const style = {
     FontName: ass.fontName || "Malgun Gothic",
-    FontSize: Math.max(8, Math.min(12, Number(ass.fontSize || 11))),
+    FontSize: Math.max(8, Math.min(28, Number(ass.fontSize || 22))),
     PrimaryColour: ass.primaryColour || "&H00FFFFFF",
     OutlineColour: ass.outlineColour || "&H00000000",
     BorderStyle: 1,
-    Outline: Math.max(0, Math.min(3, Number(ass.outline ?? 2))),
-    Shadow: Number(ass.shadow ?? 1),
+    Outline: Math.max(0, Math.min(6, Number(ass.outline ?? 4))),
+    Shadow: Math.max(0, Math.min(4, Number(ass.shadow ?? 2))),
     Alignment: Number(ass.alignment || 2),
-    MarginV: Math.max(60, Math.min(150, Number(ass.marginV || 90))),
+    MarginV: Math.max(20, Math.min(110, Number(ass.marginV || 34))),
   };
   return Object.entries(style).map(([key, value]) => `${key}=${value}`).join(",");
 }
@@ -105,35 +162,73 @@ function escapeXml(value = "") {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/ /g, "\u00A0");
 }
 
 function compactTitleText(text = "") {
   return String(text || "")
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/[|｜].*$/u, "")
+    .replace(/\|.*$/u, "")
     .slice(0, 80);
 }
 
 function buildTitleOverlayLayout({ overlay = {}, isLandscape = false, lines = [] } = {}) {
-  const safeTop = Math.max(0, Math.min(isLandscape ? 90 : 160, Number(overlay.safeTop ?? (isLandscape ? 40 : 84))));
-  const horizontalPadding = isLandscape ? 112 : 96;
-  const topPadding = isLandscape ? 28 : 34;
-  const bottomPadding = isLandscape ? 32 : 42;
-  const baseFontSize = isLandscape ? 58 : 78;
+  const style = titleOverlayStyle(overlay, {});
+  const safeTop = Math.max(0, Math.min(isLandscape ? 90 : 160, Math.round(TARGET_HEIGHT * (style.positionYPercent / 100))));
+  const horizontalPadding = Math.round(TARGET_WIDTH * (style.horizontalPaddingPercent / 100));
+  const baseFontSize = Math.round(style.fontSize || (isLandscape ? 58 : 78));
   const maxLineLength = Math.max(1, ...lines.map((line) => Array.from(line).length));
   const usableWidth = TARGET_WIDTH - horizontalPadding * 2;
   const fittedFontSize = Math.floor(usableWidth / Math.max(1, maxLineLength * 0.92));
-  const fontSize = Math.max(isLandscape ? 42 : 58, Math.min(baseFontSize, fittedFontSize));
-  const lineHeight = Math.round(fontSize * 1.1);
-  const bandHeight = topPadding + bottomPadding + lineHeight * Math.max(1, lines.length);
-  const textY = safeTop + topPadding + Math.round(fontSize * 0.82);
+  const fontSize = Math.max(isLandscape ? 38 : 46, Math.min(baseFontSize, fittedFontSize));
+  // lineHeight: 以?媛꾧꺽? ?고듃 ?ш린??鍮꾨?
+  const lineHeight = Math.round(fontSize * 1.18);
+  const lineCount = Math.max(1, lines.length);
+  // ?꾩껜 ?띿뒪??釉붾줉 ?믪씠: SVG baseline 湲곗??쇰줈 ascent ??fontSize*0.82, descent ??fontSize*0.22
+  const ascent = Math.round(fontSize * 0.82);
+  const descent = Math.round(fontSize * 0.22);
+  const textBlockHeight = ascent + descent + (lineCount - 1) * lineHeight;
+  // ?몃줈 ?щ갚: ?고듃 ?ш린??鍮꾨??섏뿬 ?먮룞 怨꾩궛 (理쒖냼 蹂댁옣)
+  const verticalPadding = Math.max(Math.round(fontSize * 0.55), isLandscape ? 20 : 24);
+  const requestedBandHeight = Math.round(TARGET_HEIGHT * (style.bandHeightPercent / 100));
+  const minBandHeight = textBlockHeight + verticalPadding * 2;
+  const bandHeight = Math.max(requestedBandHeight, minBandHeight);
+  // ?띿뒪??釉붾줉??諛곌꼍 諛대뱶 ?섏쭅 以묒븰 ?뺣젹: 諛대뱶 以묒븰?먯꽌 textBlockHeight/2 ?꾩뿉 ascent baseline 諛곗튂
+  const bandCenterY = safeTop + Math.round(bandHeight / 2);
+  const textY = bandCenterY - Math.round(textBlockHeight / 2) + ascent;
+  // ?섏쐞 ?명솚??padding 媛??좎?
+  const topPadding = textY - safeTop - ascent;
+  const bottomPadding = safeTop + bandHeight - (textY + (lineCount - 1) * lineHeight + descent);
   return { safeTop, horizontalPadding, topPadding, bottomPadding, bandHeight, fontSize, lineHeight, textY };
+}
+
+function titleOverlayStyle(overlay = {}, preset = {}) {
+  const style = overlay.style || {};
+  return {
+    fontFamily: style.fontFamily || "Malgun Gothic",
+    fontWeight: Number(style.fontWeight || 900),
+    fontSize: Number(style.fontSize || 78),
+    primary: style.textColor || preset.primary || "#ffffff",
+    accent: style.highlightColor || preset.accent || "#fde047",
+    background: style.backgroundColor || preset.background || "#050505",
+    backgroundOpacity: Number(style.backgroundOpacity ?? preset.backgroundOpacity ?? 0.82),
+    outline: style.outlineColor || preset.outline || "#000000",
+    outlineOpacity: Number(style.outlineOpacity ?? preset.outlineOpacity ?? 1),
+    outlineWidth: Number(style.outlineWidth ?? 7),
+    positionYPercent: Number(style.positionYPercent ?? 4.5),
+    bandHeightPercent: Number(style.bandHeightPercent ?? 14),
+    horizontalPaddingPercent: Number(style.horizontalPaddingPercent ?? 8),
+    maxLines: Number(style.maxLines || overlay.maxLines || 2),
+  };
 }
 
 function titleAccentKeywords(overlay = {}, title = "") {
   const explicit = Array.isArray(overlay.keywords) ? overlay.keywords : [];
+  if (overlay.source === "manual") {
+    return Array.from(new Set(explicit.map(normalizeTitleKeyword).filter((token) => token.length >= 2))).slice(0, 3);
+  }
   const fallback = compactTitleText(title)
     .replace(/[^\p{L}\p{N}\s]/gu, " ")
     .split(/\s+/u)
@@ -144,14 +239,43 @@ function titleAccentKeywords(overlay = {}, title = "") {
 }
 
 function normalizeTitleKeyword(value = "") {
-  return String(value)
-    .replace(/(의|은|는|이|가|을|를|에|에서|으로|로|와|과|도|만|처럼)$/u, "")
-    .trim();
+  return String(value).replace(/\s+/g, " ").trim();
 }
 
 function splitTitleKeywordSegments(line = "", keywords = []) {
+  // Parse markdown-style tags first: [word](color) or [word]
   const segments = [];
   let rest = String(line);
+
+  // Regex to match [word](color) or [word]
+  const markupRegex = /\[([^\]]+)\](?:\((#[0-9a-fA-F]{6}|[a-zA-Z]+)\))?/g;
+  let match;
+  let lastIndex = 0;
+
+  while ((match = markupRegex.exec(rest)) !== null) {
+    const textBefore = rest.slice(lastIndex, match.index);
+    if (textBefore) {
+      // For text without bracket markup, run keyword matching
+      segments.push(...splitKeywordsOnly(textBefore, keywords));
+    }
+
+    const word = match[1];
+    const color = match[2] || "accent"; // defaults to accent color if only [word]
+    segments.push({ text: word, accent: true, customColor: color });
+    lastIndex = markupRegex.lastIndex;
+  }
+
+  const textAfter = rest.slice(lastIndex);
+  if (textAfter) {
+    segments.push(...splitKeywordsOnly(textAfter, keywords));
+  }
+
+  return segments.filter((s) => s.text);
+}
+
+function splitKeywordsOnly(text = "", keywords = []) {
+  const segments = [];
+  let rest = text;
   while (rest) {
     const match = keywords
       .map((keyword) => ({ keyword, index: rest.indexOf(keyword) }))
@@ -165,16 +289,28 @@ function splitTitleKeywordSegments(line = "", keywords = []) {
     segments.push({ text: match.keyword, accent: true });
     rest = rest.slice(match.index + match.keyword.length);
   }
-  return segments.filter((segment) => segment.text);
+  return segments;
 }
 
-function buildTitleLineSvg({ line, y, preset, fontSize, accentKeywords }) {
+function buildTitleLineSvg({ line, y, style, fontSize, accentKeywords, customColors = {} }) {
   const segments = splitTitleKeywordSegments(line, accentKeywords);
   const tspans = segments.map((segment) => {
-    const fill = segment.accent && preset.accent ? preset.accent : preset.primary;
+    let fill = style.primary;
+    if (segment.accent) {
+      const colorVal = segment.customColor || customColors[segment.text];
+      if (colorVal === "accent") {
+        fill = style.accent;
+      } else if (colorVal === "primary") {
+        fill = style.primary;
+      } else if (colorVal) {
+        fill = colorVal;
+      } else {
+        fill = style.accent;
+      }
+    }
     return `<tspan fill="${fill}">${escapeXml(segment.text)}</tspan>`;
   }).join("");
-  return `<text x="${TARGET_WIDTH / 2}" y="${y}" text-anchor="middle" font-family="Malgun Gothic, Arial, sans-serif" font-size="${fontSize}" font-weight="900" fill="${preset.primary}" stroke="${preset.outline}" stroke-opacity="${svgOpacity(preset.outlineOpacity)}" stroke-width="7" paint-order="stroke fill">${tspans}</text>`;
+  return `<text xml:space="preserve" x="${TARGET_WIDTH / 2}" y="${y}" text-anchor="middle" font-family="${escapeXml(style.fontFamily)}, Arial, sans-serif" font-size="${fontSize}" font-weight="${style.fontWeight}" fill="${style.primary}" stroke="${style.outline}" stroke-opacity="${svgOpacity(style.outlineOpacity)}" stroke-width="${style.outlineWidth}" paint-order="stroke fill">${tspans}</text>`;
 }
 
 function gradientStopsSvg() {
@@ -193,25 +329,28 @@ function svgOpacity(value) {
 async function createTitleOverlayImage({ draftTitle, outputPath }) {
   const overlay = RENDER_OPTIONS.titleOverlay || {};
   if (!overlay.enabled) return null;
-  const title = compactTitleText(overlay.text || draftTitle);
+  const title = (overlay.text || draftTitle || "").trim();
   if (!title) return null;
   const preset = getTitleOverlayPreset(overlay.styleId);
+  const style = titleOverlayStyle(overlay, preset);
   const isLandscape = TARGET_ASPECT_RATIO === "16:9";
   const maxChars = isLandscape ? 18 : 10;
-  const lines = wrapBalancedTitle(title, { maxChars, maxLines: Number(overlay.maxLines || 2) });
+  const lines = wrapBalancedTitle(title, { maxChars, maxLines: style.maxLines });
   const layout = buildTitleOverlayLayout({ overlay, isLandscape, lines });
   const accentKeywords = titleAccentKeywords(overlay, title);
+  const customColors = overlay.customColors || {};
   const lineSvg = lines.map((line, index) => buildTitleLineSvg({
     line,
     y: layout.textY + index * layout.lineHeight,
-    preset,
+    style,
     fontSize: layout.fontSize,
     accentKeywords,
+    customColors,
   })).join("");
   const bg = preset.id === "minimal-shadow"
     ? `<rect x="0" y="0" width="${TARGET_WIDTH}" height="${layout.safeTop + layout.bandHeight}" fill="url(#topFade)"/>`
-    : `<rect x="0" y="${layout.safeTop}" width="${TARGET_WIDTH}" height="${layout.bandHeight}" fill="${preset.background}" fill-opacity="${svgOpacity(preset.backgroundOpacity)}" rx="0"/>`;
-  const svg = `<svg width="${TARGET_WIDTH}" height="${TARGET_HEIGHT}" viewBox="0 0 ${TARGET_WIDTH} ${TARGET_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
+    : `<rect x="0" y="${layout.safeTop}" width="${TARGET_WIDTH}" height="${layout.bandHeight}" fill="${style.background}" fill-opacity="${svgOpacity(style.backgroundOpacity)}" rx="0"/>`;
+  const svg = `<svg xml:space="preserve" width="${TARGET_WIDTH}" height="${TARGET_HEIGHT}" viewBox="0 0 ${TARGET_WIDTH} ${TARGET_HEIGHT}" xmlns="http://www.w3.org/2000/svg">
     <defs><linearGradient id="topFade" x1="0" y1="0" x2="0" y2="1">${gradientStopsSvg()}</linearGradient></defs>
     ${bg}
     ${lineSvg}
@@ -233,6 +372,7 @@ async function createTitleOverlayImage({ draftTitle, outputPath }) {
     fontSize: layout.fontSize,
     lines,
     accentKeywords,
+    style,
   };
   writeFileSync(join(JOB_DIR, "title-overlay.json"), JSON.stringify(metadata, null, 2), "utf8");
   return outputPath;
@@ -258,7 +398,9 @@ function wrapSubtitle(text, maxChars = Number(RENDER_OPTIONS.subtitleAss?.maxLin
   let current = "";
   for (const word of words) {
     const next = current ? `${current} ${word}` : word;
-    if (next.length > maxChars && current) {
+    const endsWithPunctuation = /[.,!?]$/.test(current);
+    const splitEarly = endsWithPunctuation && Array.from(next).length > maxChars * 0.8;
+    if ((Array.from(next).length > maxChars || splitEarly) && current) {
       lines.push(current);
       current = word;
     } else {
@@ -278,7 +420,9 @@ function splitSubtitleChunks(text) {
   let current = "";
   for (const word of words) {
     const next = current ? `${current} ${word}` : word;
-    if (Array.from(next).length > maxChunkChars && current) {
+    const endsWithPunctuation = /[.,!?]$/.test(current);
+    const splitEarly = endsWithPunctuation && Array.from(next).length > maxChunkChars * 0.8;
+    if ((Array.from(next).length > maxChunkChars || splitEarly) && current) {
       chunks.push(current);
       current = word;
     } else {
@@ -299,48 +443,32 @@ function subtitleCueBlocks({ text, start, duration, firstIndex }) {
   });
 }
 
-function fallbackScenes() {
-  return [
-    { order: 1, narration: "오늘은 최신 AI 뉴스 흐름을 빠르게 정리해보겠습니다." },
-    { order: 2, narration: "AI는 챗봇을 넘어 업무 자동화, 영상 제작, 검색, 코딩 도구까지 빠르게 확장되고 있습니다." },
-    { order: 3, narration: "기업들은 AI를 활용해 반복 업무를 줄이고 개인 맞춤형 서비스를 더 정교하게 제공하고 있습니다." },
-    { order: 4, narration: "창작 분야에서는 이미지, 영상, 음악, 글쓰기 도구가 연결되며 제작 속도가 크게 빨라지고 있습니다." },
-    { order: 5, narration: "하지만 AI가 빨라질수록 저작권, 개인정보, 가짜 정보 문제도 함께 중요해지고 있습니다." },
-    { order: 6, narration: "핵심은 AI를 무조건 믿는 것이 아니라 좋은 도구로 다루는 능력입니다." },
-  ];
-}
-
-function looksLikeCorruptKorean(text) {
-  const value = String(text || "");
-  if (!value.trim()) return true;
-  const hangulCount = (value.match(/[가-힣]/g) || []).length;
-  const questionCount = (value.match(/\?/g) || []).length;
-  const koreanSignal = hangulCount / Math.max(value.length, 1);
-  const mojibakeSignal = /[�李理吏紐留硫利]|[-]/.test(value);
-  if (questionCount >= 2) return true;
-  return mojibakeSignal || koreanSignal < 0.08;
-}
-
 function loadScenes() {
   const draftPath = join(JOB_DIR, "draft.json");
   if (existsSync(draftPath)) {
     const draft = JSON.parse(readFileSync(draftPath, "utf8"));
     if (Array.isArray(draft.scenes) && draft.scenes.length) {
-      const scenes = draft.scenes.map((scene, index) => ({
-        order: Number(scene.order || index + 1),
-        narration: String(scene.narration || scene.text || "").trim(),
-        outputMode: scene.outputMode || scene.flowOutputMode || "video",
-        flowOutputMode: scene.flowOutputMode || scene.outputMode || "video",
-        motionPreset: scene.motionPreset || "",
-      })).filter((scene) => scene.narration);
-      if (scenes.length && scenes.every((scene) => !looksLikeCorruptKorean(scene.narration))) {
+      const scenes = draft.scenes.map((scene, index) => {
+        const mapped = {
+          order: Number(scene.order || index + 1),
+          narration: String(scene.narration || scene.text || "").trim(),
+          outputMode: scene.outputMode || scene.flowOutputMode || "video",
+          flowOutputMode: scene.flowOutputMode || scene.outputMode || "video",
+          motionPreset: scene.motionPreset || "",
+          section: scene.section || scene.chapter || "",
+          visual_category: scene.visual_category || scene.visualCategory || "",
+          visualCategory: scene.visualCategory || scene.visual_category || "",
+        };
+        return { ...mapped, ...resolveSceneMotion(mapped) };
+      }).filter((scene) => scene.narration);
+      if (scenes.length) {
+        validateTtsNarrationScenes(scenes);
         return scenes;
       }
-      console.warn("draft.json narration looks corrupted; using curated Korean fallback script.");
     }
   }
 
-  return fallbackScenes();
+  throw new Error("DRAFT_NARRATION_MISSING: draft.json must contain at least one narration scene before TTS.");
 }
 
 function imageSceneSource(order) {
@@ -369,14 +497,16 @@ async function renderStillImageSceneVideo({ imagePath, audioPath, audioDuration,
     outputHeight: TARGET_HEIGHT,
     jobDir: JOB_DIR,
     keepFrames: process.env.HERMES_KEEP_MOTION_FRAMES === "1",
+    cameraSafetyMode: resolveCameraSafetyMode(),
   });
+
+  const audioFilterArgs = ["-map", "0:v:0", "-map", "1:a:0"];
 
   run(ffmpegPath, [
     "-y",
     "-i", adjustedVideo,
     "-i", audioPath,
-    "-map", "0:v:0",
-    "-map", "1:a:0",
+    ...audioFilterArgs,
     "-c:v", "copy",
     "-c:a", "aac",
     "-b:a", "192k",
@@ -406,6 +536,11 @@ async function renderStillImageSceneVideo({ imagePath, audioPath, audioDuration,
     audioDurationSeconds: sequenceResult.audioDurationSeconds,
     durationDriftSeconds: sequenceResult.durationDriftSeconds,
     sequenceManifestPath: sequenceResult.sequenceManifestPath,
+    cameraSafetyMode: sequenceResult.cameraSafetyMode,
+    maxZoom: sequenceResult.maxZoom,
+    minCropWidth: sequenceResult.minCropWidth,
+    minCropHeight: sequenceResult.minCropHeight,
+    visibleSourceRatio: sequenceResult.visibleSourceRatio,
     cachePolicy: sequenceResult.cachePolicy,
     cacheCleaned: sequenceResult.cacheCleaned,
     durationPolicy: "image-sequence-match-audio",
@@ -416,6 +551,116 @@ async function renderStillImageSceneVideo({ imagePath, audioPath, audioDuration,
     ],
     requiresRegeneration: false,
   };
+}
+
+async function extractRepresentativeFrame({ rawVideo, order, duration }) {
+  const candidates = [
+    Math.min(duration - 0.1, Math.min(1.0, duration * 0.20)),
+    Math.min(duration - 0.1, duration * 0.35),
+    Math.min(duration - 0.1, duration * 0.50),
+    Math.min(duration - 0.1, duration * 0.70)
+  ].filter(t => t >= 0);
+
+  let bestFrame = null;
+  let bestStats = null;
+  let bestEntropy = -1;
+  let bestTimestamp = null;
+  const attempted = [];
+
+  for (let i = 0; i < candidates.length; i++) {
+    const time = candidates[i];
+    const tempFramePath = join(JOB_DIR, `scene_${order}_temp_fallback_${i}.jpg`);
+    try {
+      run(ffmpegPath, [
+        "-y",
+        "-ss", String(time.toFixed(3)),
+        "-i", rawVideo,
+        "-vf", `${TARGET_VIDEO_FILTER}`,
+        "-frames:v", "1",
+        "-q:v", "2",
+        tempFramePath
+      ]);
+
+      if (!existsSync(tempFramePath)) {
+        continue;
+      }
+
+      const fileStats = statSync(tempFramePath);
+      if (fileStats.size < 1000) {
+        unlinkSync(tempFramePath);
+        continue;
+      }
+
+      const img = sharp(tempFramePath);
+      const imgStats = await img.stats();
+      const channels = imgStats.channels;
+
+      const meanRGB = channels.slice(0, 3).reduce((sum, c) => sum + c.mean, 0) / 3;
+      const stdevRGB = channels.slice(0, 3).reduce((sum, c) => sum + c.stdev, 0) / 3;
+      const entropy = channels.slice(0, 3).reduce((sum, c) => sum + (c.entropy !== undefined ? c.entropy : c.stdev), 0) / 3;
+
+      attempted.push({
+        timestamp: time,
+        meanRGB,
+        stdevRGB,
+        entropy,
+        fileSize: fileStats.size,
+        path: tempFramePath
+      });
+
+      if (meanRGB < 15 || stdevRGB < 2.5) {
+        continue;
+      }
+
+      if (entropy > bestEntropy) {
+        bestEntropy = entropy;
+        bestFrame = tempFramePath;
+        bestStats = { meanRGB, stdevRGB, entropy, fileSize: fileStats.size };
+        bestTimestamp = time;
+      }
+    } catch (err) {
+      console.warn(`[Scene ${order}] Failed to extract candidate frame at ${time}s:`, err.message);
+      if (existsSync(tempFramePath)) {
+        try { unlinkSync(tempFramePath); } catch(_) {}
+      }
+    }
+  }
+
+  const finalFallbackPath = join(JOB_DIR, `scene_${order}_fallback_frame.jpg`);
+  if (bestFrame) {
+    if (existsSync(finalFallbackPath)) {
+      try { unlinkSync(finalFallbackPath); } catch(_) {}
+    }
+    copyFileSync(bestFrame, finalFallbackPath);
+    for (const att of attempted) {
+      if (existsSync(att.path)) {
+        try { unlinkSync(att.path); } catch(_) {}
+      }
+    }
+    return {
+      ok: true,
+      path: finalFallbackPath,
+      timestamp: bestTimestamp,
+      stats: bestStats
+    };
+  } else {
+    for (const att of attempted) {
+      if (existsSync(att.path)) {
+        try { unlinkSync(att.path); } catch(_) {}
+      }
+    }
+    const failureReport = {
+      ok: false,
+      failureCode: "BLACK_FALLBACK_FRAME",
+      failedSceneOrder: order,
+      message: `Scene ${order} video is completely black or fallback extraction failed.`,
+      suggestedRecovery: "Split this scene narration into shorter video-safe beats, regenerate the Flow clip, or switch this scene to image mode before rendering.",
+      attemptedStats: attempted.map(a => ({ timestamp: a.timestamp, meanRGB: a.meanRGB, stdevRGB: a.stdevRGB, fileSize: a.fileSize }))
+    };
+    const reportPath = join(JOB_DIR, "render-report-v2.json");
+    writeFileSync(reportPath, JSON.stringify(failureReport, null, 2), "utf8");
+    throw new Error(`BLACK_FALLBACK_FRAME: Scene ${order} is completely black or cannot yield valid representative frame.`);
+  }
 }
 
 async function renderSceneVideo({ rawVideo, audioPath, audioDuration, order, outputMode, motionPreset }) {
@@ -437,6 +682,31 @@ async function renderSceneVideo({ rawVideo, audioPath, audioDuration, order, out
   const finalScene = join(JOB_DIR, `scene_${order}_synced.mp4`);
   const ratio = audioDuration / videoDuration;
   const policy = classifyDurationSyncPolicy({ order, videoDuration, audioDuration, outputMode });
+
+  // Video-to-image fallback: extract a frame from the video and use Ken Burns rendering
+  if (policy.strategy === "video-to-image-fallback") {
+    const extracted = await extractRepresentativeFrame({ rawVideo, order, duration: videoDuration });
+    console.log(`[Scene ${order}] Video-to-image fallback: extracted representative frame at ${extracted.timestamp.toFixed(2)}s, using Ken Burns (ratio=${ratio.toFixed(2)})`);
+    const result = await renderStillImageSceneVideo({
+      imagePath: extracted.path,
+      audioPath,
+      audioDuration,
+      order,
+      motionPreset: motionPreset || "cinematic-push-in",
+    });
+    return {
+      ...result,
+      strategy: "video-to-image-fallback",
+      originalVideoDuration: videoDuration,
+      originalRatio: ratio,
+      fallbackFrameStats: extracted.stats,
+      fallbackTimestamp: extracted.timestamp,
+      qualityWarnings: [
+        ...(result.qualityWarnings || []),
+        ...(policy.qualityWarnings || []),
+      ],
+    };
+  }
 
   if (policy.requiresRegeneration) {
     const failure = {
@@ -495,12 +765,13 @@ async function renderSceneVideo({ rawVideo, audioPath, audioDuration, order, out
     ]);
   }
 
+  const audioFilterArgs = ["-map", "0:v:0", "-map", "1:a:0"];
+
   run(ffmpegPath, [
     "-y",
     "-i", adjustedVideo,
     "-i", audioPath,
-    "-map", "0:v:0",
-    "-map", "1:a:0",
+    ...audioFilterArgs,
     "-c:v", "copy",
     "-c:a", "aac",
     "-b:a", "192k",
@@ -535,12 +806,10 @@ if (!manifest.ok || !Array.isArray(manifest.scenes) || !manifest.scenes.length) 
   throw new Error("Scene TTS manifest is invalid.");
 }
 
-let cursor = 0;
-const srtBlocks = [];
-const concatLines = [];
-const renderReport = [];
+console.log(`Starting parallel rendering of ${manifest.scenes.length} scenes (concurrency limit = 3)...`);
+const renderStartTimestamp = Date.now();
 
-for (const sceneAudio of manifest.scenes) {
+const rawRenderResults = await mapConcurrent(manifest.scenes, 3, async (sceneAudio) => {
   const order = Number(sceneAudio.order);
   const scene = scenes.find((item) => Number(item.order) === order) || {};
   const rawVideo = join(JOB_DIR, `scene_${order}.mp4`);
@@ -549,6 +818,9 @@ for (const sceneAudio of manifest.scenes) {
   }
   const audioPath = resolve(sceneAudio.audio_path);
   const audioDuration = getMediaDuration(audioPath);
+
+  console.log(`[Scene ${order}/${manifest.scenes.length}] Starting render...`);
+  const sceneStart = Date.now();
   const rendered = await renderSceneVideo({
     rawVideo,
     audioPath,
@@ -557,6 +829,21 @@ for (const sceneAudio of manifest.scenes) {
     outputMode: scene.flowOutputMode || scene.outputMode,
     motionPreset: scene.motionPreset,
   });
+  const elapsed = ((Date.now() - sceneStart) / 1000).toFixed(1);
+  console.log(`[Scene ${order}/${manifest.scenes.length}] Rendered successfully in ${elapsed}s`);
+  return { rendered, sceneAudio, audioDuration };
+});
+
+const totalRenderDurationSec = ((Date.now() - renderStartTimestamp) / 1000).toFixed(1);
+console.log(`Parallel scene rendering completed in ${totalRenderDurationSec}s.`);
+
+let cursor = 0;
+const srtBlocks = [];
+const concatLines = [];
+const renderReport = [];
+
+for (const result of rawRenderResults) {
+  const { rendered, sceneAudio, audioDuration } = result;
   renderReport.push(rendered);
   concatLines.push(`file '${rendered.finalScene.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`);
   srtBlocks.push(...subtitleCueBlocks({
@@ -580,8 +867,85 @@ let advancedEffectsError = "";
 writeFileSync(concatPath, concatLines.join("\n"), "utf8");
 writeFileSync(srtPath, srtBlocks.join("\n"), "utf8");
 
+// Losslessly concatenate PCM WAV files to prevent AAC priming gap transition glitches
+const concatAudioLines = [];
+for (const result of rawRenderResults) {
+  const { sceneAudio } = result;
+  const wavPath = resolve(sceneAudio.audio_path).replace(/\\/g, "/").replace(/'/g, "'\\''");
+  concatAudioLines.push(`file '${wavPath}'`);
+}
+const concatAudioPath = join(JOB_DIR, "concat_audio.txt");
+const mergedAudioWav = join(JOB_DIR, "merged_audio.wav");
+writeFileSync(concatAudioPath, concatAudioLines.join("\n"), "utf8");
+
+run(ffmpegPath, [
+  "-y",
+  "-f", "concat",
+  "-safe", "0",
+  "-i", concatAudioPath,
+  "-c", "copy",
+  mergedAudioWav,
+]);
+
 const shouldTryXfade = transitionConfig.filter === "xfade" && renderReport.length > 1;
-if (shouldTryXfade) {
+const totalTimelineSeconds = renderReport.reduce((sum, item) => sum + Number(item.audioDuration || 0), 0);
+const shouldSkipSlowSceneFade = transitionConfig.filter === "fade"
+  && transitionConfig.seconds > 0
+  && renderReport.length > 1
+  && (
+    renderReport.length > 24
+    || totalTimelineSeconds >= 240
+    || Number(RENDER_OPTIONS.targetSeconds || 0) >= 240
+  );
+if (shouldSkipSlowSceneFade) {
+  advancedEffectsFallback = true;
+  advancedEffectsError = "LONGFORM_SCENE_FADE_SKIPPED: skipped slow per-scene fade re-encoding for a long or many-scene render.";
+}
+const shouldApplySceneFade = transitionConfig.filter === "fade"
+  && transitionConfig.seconds > 0
+  && renderReport.length > 1
+  && !shouldSkipSlowSceneFade;
+if (shouldApplySceneFade) {
+  const fadedConcatLines = [];
+  for (const item of renderReport) {
+    const fadedPath = join(JOB_DIR, `scene_${item.order}_faded.mp4`);
+    const duration = Number(item.audioDuration || getMediaDuration(item.finalScene));
+    const fadeSeconds = Math.min(transitionConfig.seconds, Math.max(0.05, duration / 4));
+    const fadeOutStart = Math.max(0, duration - fadeSeconds);
+    run(ffmpegPath, [
+      "-y",
+      "-i", item.finalScene,
+      "-vf", `fade=t=in:st=0:d=${fadeSeconds.toFixed(3)},fade=t=out:st=${fadeOutStart.toFixed(3)}:d=${fadeSeconds.toFixed(3)}`,
+      "-c:v", "libx264",
+      "-preset", "veryfast",
+      "-crf", "20",
+      "-c:a", "copy",
+      "-movflags", "+faststart",
+      fadedPath,
+    ]);
+    item.finalScene = fadedPath;
+    item.transitionApplied = "scene-fade-local";
+    fadedConcatLines.push(`file '${fadedPath.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`);
+  }
+  writeFileSync(concatPath, fadedConcatLines.join("\n"), "utf8");
+  run(ffmpegPath, [
+    "-y",
+    "-f", "concat",
+    "-safe", "0",
+    "-i", concatPath,
+    "-c", "copy",
+    mergedPath,
+  ]);
+} else if (shouldSkipSlowSceneFade) {
+  run(ffmpegPath, [
+    "-y",
+    "-f", "concat",
+    "-safe", "0",
+    "-i", concatPath,
+    "-c", "copy",
+    mergedPath,
+  ]);
+} else if (shouldTryXfade) {
   try {
     const sceneDurations = renderReport.map((item) => item.audioDuration);
     const actualVideoDurations = renderReport.map((item) => getMediaDuration(item.finalScene));
@@ -634,13 +998,17 @@ const finalFilterArgs = createdTitleOverlay
   ? [
       "-i", mergedPath,
       "-i", createdTitleOverlay,
+      "-i", mergedAudioWav,
       "-filter_complex", `[0:v][1:v]overlay=0:0[v_title];[v_title]${subtitleFilter}[v]`,
       "-map", "[v]",
-      "-map", "0:a?",
+      "-map", "2:a",
     ]
   : [
       "-i", mergedPath,
+      "-i", mergedAudioWav,
       "-vf", subtitleFilter,
+      "-map", "0:v:0",
+      "-map", "1:a:0",
     ];
 run(ffmpegPath, [
   "-y",
@@ -648,7 +1016,8 @@ run(ffmpegPath, [
   "-c:v", "libx264",
   "-preset", "veryfast",
   "-crf", "20",
-  "-c:a", "copy",
+  "-c:a", "aac",
+  "-b:a", "192k",
   "-movflags", "+faststart",
   finalPath,
 ]);
@@ -658,6 +1027,12 @@ const subtitleEnd = getSrtEndTime(srtPath);
 if (Math.abs(finalDuration - subtitleEnd) > 0.5) {
   throw new Error(`Final duration mismatch: video=${finalDuration}s subtitleEnd=${subtitleEnd}s`);
 }
+
+const transitionMode = shouldApplySceneFade
+  ? "scene-fade-local"
+  : shouldSkipSlowSceneFade
+    ? "concat-longform-scene-fade-skipped"
+    : transitionConfig.filter;
 
 writeFileSync(reportPath, JSON.stringify({
   ok: true,
@@ -681,7 +1056,7 @@ writeFileSync(reportPath, JSON.stringify({
   transition: {
     preset: transitionPreset,
     seconds: transitionConfig.seconds,
-    mode: transitionConfig.filter,
+    mode: transitionMode,
     fallback: advancedEffectsFallback,
   },
   advancedEffectsFallback,
@@ -692,8 +1067,14 @@ writeFileSync(reportPath, JSON.stringify({
   scenes: renderReport.map((item) => ({
     ...item,
     finalScene: item.finalScene.replace(/\\/g, "/"),
-    motionPreset: scenes.find((scene) => Number(scene.order) === Number(item.order))?.motionPreset || "",
-    sceneOutputMode: scenes.find((scene) => Number(scene.order) === Number(item.order))?.outputMode || scenes.find((scene) => Number(scene.order) === Number(item.order))?.flowOutputMode || "video",
+    ...(() => {
+      const source = scenes.find((scene) => Number(scene.order) === Number(item.order)) || {};
+      const motion = resolveSceneMotion({ ...source, motionPreset: item.motionPreset || source.motionPreset });
+      return {
+        ...motion,
+        sceneOutputMode: source.outputMode || source.flowOutputMode || "video",
+      };
+    })(),
   })),
   source: scenes.map((scene) => ({
     ...scene,
@@ -724,7 +1105,7 @@ writeFileSync(sceneRenderManifestPath, JSON.stringify({
       stillImageFps: item.stillImageFps,
       motionStrategy: item.motionStrategy,
       motionStrength: item.motionStrength,
-      motionPreset: item.motionPreset,
+      ...resolveSceneMotion({ ...source, motionPreset: item.motionPreset || source.motionPreset }),
       imageSourcePath: item.imageSourcePath,
       frameCount: item.frameCount,
       uniqueFrameCount: item.uniqueFrameCount,
@@ -733,6 +1114,11 @@ writeFileSync(sceneRenderManifestPath, JSON.stringify({
       frameDurationSeconds: item.frameDurationSeconds,
       audioDurationSeconds: item.audioDurationSeconds,
       durationDriftSeconds: item.durationDriftSeconds,
+      cameraSafetyMode: item.cameraSafetyMode,
+      maxZoom: item.maxZoom,
+      minCropWidth: item.minCropWidth,
+      minCropHeight: item.minCropHeight,
+      visibleSourceRatio: item.visibleSourceRatio,
       sequenceManifestPath: item.sequenceManifestPath,
       cachePolicy: item.cachePolicy,
       cacheCleaned: item.cacheCleaned,

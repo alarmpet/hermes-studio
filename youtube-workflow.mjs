@@ -3,13 +3,21 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { planScenesFromHpsl, planScenesFromScript } from "./electron/services/script-planner.mjs";
+import { getStylePreset } from "./electron/services/style-presets.mjs";
 import { getVoicePreset } from "./electron/services/voice-presets.mjs";
 import { sanitizeFlowPrompt } from "./electron/services/flow-prompt-safety.mjs";
 import { SCRIPT_LENGTH_PRESETS, SUBTITLE_STYLE_PRESETS } from "./youtube-job-schema.mjs";
 import { assertDraftQuality, validateDraftQuality } from "./scripts/youtube-draft-quality.mjs";
 import { assertDraftDurationContract } from "./scripts/youtube-draft-duration.mjs";
 import { buildLongformMediaPlan, isLongformJob, planLongformScenesFromDraft } from "./electron/services/longform-planner.mjs";
+import {
+  createLongformChapterAssets,
+  isChapteredLongformRenderEnabled,
+  renderChapteredYouTubeVideo,
+  syncChapterSceneMedia,
+} from "./electron/services/longform-chapter-renderer.mjs";
 import { resolveTitleOverlayText } from "./electron/services/title-overlay-text-resolver.mjs";
+import { probeVideoDimensions, resolveSceneVideoDimensions } from "./electron/services/scene-video-normalizer.mjs";
 
 const MIN_SCENES = 3;
 const ROOT = process.env.HERMES_ROOT || "C:/Users/amd/hermes";
@@ -142,9 +150,14 @@ export function buildRenderOptions(job) {
   const preset = SCRIPT_LENGTH_PRESETS[job.options.scriptLengthPreset] || SCRIPT_LENGTH_PRESETS.standard;
   const voicePreset = getVoicePreset(job.options.voiceId);
   const subtitlePreset = SUBTITLE_STYLE_PRESETS.find((item) => item.id === job.options.subtitleStyleId) || SUBTITLE_STYLE_PRESETS[0];
-  const targetSeconds = job.options.scriptLengthMode === "custom"
-    ? Number(job.options.customDurationSeconds || preset.targetSeconds)
-    : preset.targetSeconds;
+  const isLongform = String(job.options.videoFormat || "") === "longform";
+  const targetSeconds = job.options.scriptLengthMode === "auto" && job.sourceType === "script"
+      ? Number(job.options.customDurationSeconds || job.options.estimatedScriptSeconds || preset.targetSeconds)
+      : isLongform
+        ? Math.max(600, Math.min(1200, Number(job.options.longformTargetSeconds || job.options.customDurationSeconds || 720)))
+        : job.options.scriptLengthMode === "custom"
+          ? Number(job.options.customDurationSeconds || preset.targetSeconds)
+          : preset.targetSeconds;
   return {
     jobId: job.id,
     voiceId: job.options.voiceId,
@@ -159,7 +172,8 @@ export function buildRenderOptions(job) {
       text: job.options.titleOverlayText || "",
       keywords: [],
       styleId: job.options.titleOverlayStyleId || "bold-black-accent",
-      maxLines: job.options.titleOverlayMaxLines || 2,
+      style: job.options.titleOverlayStyle || {},
+      maxLines: job.options.titleOverlayStyle?.maxLines || job.options.titleOverlayMaxLines || 2,
       safeTop: job.options.titleOverlaySafeTop ?? 84,
     },
     aspectRatio: job.options.aspectRatio,
@@ -171,14 +185,80 @@ export function buildRenderOptions(job) {
     smoothFrameInterpolation: Boolean(job.options.smoothFrameInterpolation),
     scriptLengthPreset: job.options.scriptLengthPreset,
     targetSeconds,
+    durationSource: job.options.durationSource || (job.options.scriptLengthMode === "auto" ? "script-auto" : "user-selected"),
+    estimatedScriptSeconds: Number(job.options.estimatedScriptSeconds || 0),
     sceneCount: preset.sceneCount,
     characterMode: job.options.characterMode,
     videoFormat: job.options.videoFormat || "shorts",
     longformTargetSeconds: job.options.longformTargetSeconds,
+    longformChapteredRenderEnabled: Boolean(job.options.longformChapteredRenderEnabled),
+    chapterTargetSeconds: job.options.chapterTargetSeconds,
     introVideoClipCount: job.options.introVideoClipCount,
     bodyVisualMode: job.options.bodyVisualMode,
     bodyImageSeconds: job.options.bodyImageSeconds,
   };
+}
+
+export function splitIntroVideoNarrationByBudget(scene, { maxIntroVideoNarrationSeconds = 8 } = {}) {
+  const outputMode = String(scene.outputMode || scene.flowOutputMode || "").toLowerCase();
+  if (outputMode !== "video") return [scene];
+  const narration = cleanText(scene.narration);
+  if (!narration) return [scene];
+  const estimatedSeconds = estimateNarrationSeconds(narration);
+  if (estimatedSeconds <= maxIntroVideoNarrationSeconds * 1.15) return [scene];
+
+  const chunks = splitNarrationChunks(narration, maxIntroVideoNarrationSeconds);
+  if (chunks.length <= 1) return [scene];
+  return chunks.map((chunk, index) => ({
+    ...scene,
+    originalOrder: scene.originalOrder || scene.order,
+    splitPart: index + 1,
+    splitPartCount: chunks.length,
+    narration: chunk,
+    duration_seconds: Math.max(5, Math.min(8, Math.round(estimateNarrationSeconds(chunk)))),
+    visual_intent: cleanText(`${scene.visual_intent || ""} part ${index + 1}`),
+  }));
+}
+
+function splitNarrationChunks(narration, maxSeconds) {
+  const maxChars = Math.max(24, Math.floor(maxSeconds * 5.5));
+  const sentences = String(narration)
+    .split(/(?<=[.!?。！？]|[.?!])\s*/u)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const source = sentences.length > 1 ? sentences : splitLongSentence(narration, maxChars);
+  const chunks = [];
+  let current = "";
+  for (const sentence of source) {
+    const next = current ? `${current} ${sentence}` : sentence;
+    if (current && compactLength(next) > maxChars) {
+      chunks.push(current);
+      current = sentence;
+    } else {
+      current = next;
+    }
+  }
+  if (current) chunks.push(current);
+  return chunks.flatMap((chunk) => compactLength(chunk) > maxChars * 1.25 ? splitLongSentence(chunk, maxChars) : [chunk]);
+}
+
+function splitLongSentence(text, maxChars) {
+  const tokens = String(text).split(/([,，、;；]\s*)/u).filter(Boolean);
+  if (tokens.length > 1) return tokens.map((item) => item.trim()).filter((item) => item && !/^[,，、;；]$/.test(item));
+  const chars = Array.from(String(text).replace(/\s+/g, ""));
+  const chunks = [];
+  for (let index = 0; index < chars.length; index += maxChars) {
+    chunks.push(chars.slice(index, index + maxChars).join(""));
+  }
+  return chunks.filter(Boolean);
+}
+
+function estimateNarrationSeconds(text = "") {
+  return Math.max(1, compactLength(text) / 5.5);
+}
+
+function compactLength(text = "") {
+  return Array.from(String(text || "").replace(/\s+/g, "")).length;
 }
 
 export async function generateYouTubeWorkflowAssets(job, context = {}) {
@@ -217,7 +297,11 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
     message: "Normalized draft duration QA passed before Flow generation.",
     details: { durationQa: initialDurationQa },
   });
-  if (isLongformJob(job)) {
+  const stylePreset = job.options.stylePreset?.promptSuffix
+    ? job.options.stylePreset
+    : getStylePreset(job.options.stylePresetId);
+
+  if (isLongformJob(job) && !(job.sourceType === "script" && job.options.scriptLengthMode === "auto")) {
     draft = {
       ...draft,
       structure: "LONGFORM_CHAPTERS",
@@ -225,7 +309,7 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
       scenes: planLongformScenesFromDraft({
         job,
         draft,
-        stylePreset: job.options.stylePreset,
+        stylePreset,
         characterSheet: job.options.characterSheet,
       }),
     };
@@ -258,7 +342,7 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
         hpsl: draft.hpsl,
         targetSeconds: renderOptions.targetSeconds,
         characterProfile: draft.character_profile,
-        stylePreset: job.options.stylePreset,
+        stylePreset,
         characterSheet: job.options.characterSheet,
         flowOutputMode: job.options.flowOutputMode || "video",
         hybridIntroVideoSceneCount: job.options.hybridIntroVideoSceneCount,
@@ -308,8 +392,9 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
         title: draft.title,
         targetSeconds: renderOptions.targetSeconds,
         customDurationSeconds: job.options.scriptLengthMode === "custom" ? job.options.customDurationSeconds : undefined,
+        speechSpeed: renderOptions.speechSpeed,
         characterProfile: draft.character_profile,
-        stylePreset: job.options.stylePreset,
+        stylePreset,
         characterSheet: job.options.characterSheet,
         flowOutputMode: job.options.flowOutputMode || "video",
         hybridIntroVideoSceneCount: job.options.hybridIntroVideoSceneCount,
@@ -324,6 +409,8 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
       details: {
         scriptStructure: draft.structure || "script",
         effectiveTargetSeconds: renderOptions.targetSeconds,
+        durationSource: renderOptions.durationSource,
+        estimatedScriptSeconds: renderOptions.estimatedScriptSeconds,
         flowOutputMode: job.options.flowOutputMode || "video",
         hybridIntroVideoSceneCount: job.options.hybridIntroVideoSceneCount,
         sceneOutputModes: draft.scenes.map((scene) => ({
@@ -333,6 +420,19 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
         })),
       },
     });
+  }
+  if (!isLongformJob(job)) {
+    draft = {
+      ...draft,
+      scenes: draft.scenes
+        .flatMap((scene) => splitIntroVideoNarrationByBudget(scene, {
+          maxIntroVideoNarrationSeconds: 8,
+        }))
+        .map((scene, index) => ({
+          ...scene,
+          order: index + 1,
+        })),
+    };
   }
   const plannedQaPreview = validateDraftQuality({ draft, job, stage: "scene-planned-draft", jobDir });
   if (!plannedQaPreview.ok) {
@@ -355,13 +455,24 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
     sourceValue: job.sourceValue,
   });
   renderOptions.titleOverlay.text = resolvedTitleOverlay.text;
+  const markup = parseTitleMarkup(renderOptions.titleOverlay.text);
+  renderOptions.titleOverlay.text = markup.cleaned;
   renderOptions.titleOverlay.source = resolvedTitleOverlay.source;
-  renderOptions.titleOverlay.keywords = buildTitleOverlayKeywords({
-    job,
-    draft,
-    title: resolvedTitleOverlay.text,
-  });
-  job.options.titleOverlayResolvedText = resolvedTitleOverlay.text;
+  if (resolvedTitleOverlay.source === "manual") {
+    renderOptions.titleOverlay.keywords = markup.keywords.slice(0, 3);
+  } else {
+    const autoKeywords = buildTitleOverlayKeywords({
+      job,
+      draft,
+      title: markup.cleaned,
+    });
+    renderOptions.titleOverlay.keywords = Array.from(new Set([
+      ...markup.keywords,
+      ...autoKeywords
+    ])).slice(0, 3);
+  }
+  renderOptions.titleOverlay.customColors = markup.customColors;
+  job.options.titleOverlayResolvedText = markup.cleaned;
   job.options.titleOverlayTextSource = resolvedTitleOverlay.source;
 
   const requestPath = join(jobDir, "job-request.json");
@@ -375,6 +486,7 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
   await writeFile(draftPath, JSON.stringify(draft, null, 2), "utf8");
   await writeFile(renderOptionsPath, JSON.stringify(renderOptions, null, 2), "utf8");
   const longformMediaPlan = isLongformJob(job) ? buildLongformMediaPlan({ job, draft }) : null;
+  const longformChapterPlan = await createLongformChapterAssets({ job, draft, renderOptions, jobDir });
   if (longformMediaPlan) {
     await writeFile(longformMediaPlanPath, JSON.stringify(longformMediaPlan, null, 2), "utf8");
   }
@@ -384,9 +496,10 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
   if (typeof context.generateSceneMedia === "function") {
     for (const scene of draft.scenes) {
       const outputMode = scene.outputMode || scene.flowOutputMode || job.options.flowOutputMode || "video";
-      const reusable = findReusableSceneMedia(sceneMediaManifest, scene, outputMode);
+      const reusable = findReusableSceneMedia(sceneMediaManifest, scene, outputMode, job);
       if (reusable) {
         sceneMedia.push(reusable);
+        await syncChapterSceneMedia({ jobDir, chapterPlan: longformChapterPlan, scene, media: reusable });
         emit({
           type: "workflow-progress",
           jobId: job.id,
@@ -414,6 +527,7 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
           completedAt: new Date().toISOString(),
         });
         await writeSceneMediaManifest(sceneMediaManifestPath, sceneMediaManifest);
+        await syncChapterSceneMedia({ jobDir, chapterPlan: longformChapterPlan, scene, media: mediaRecord });
         if (media?.motionPreset) scene.motionPreset = media.motionPreset;
         emit({ type: "flow-scene-completed", jobId: job.id, scene, media });
       } catch (error) {
@@ -423,6 +537,11 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
           outputMode,
           sceneOutputMode: outputMode,
           error: error.message,
+          failureCode: error.failureCode || error.details?.failureCode || "",
+          actionRequired: Boolean(error.actionRequired || error.details?.actionRequired),
+          retryAfterMs: error.retryAfterMs ?? error.details?.retryAfterMs ?? null,
+          nextAllowedAt: error.nextAllowedAt || error.details?.nextAllowedAt || "",
+          failureDetails: error.details || null,
           failedAt: new Date().toISOString(),
         });
         await writeSceneMediaManifest(sceneMediaManifestPath, sceneMediaManifest);
@@ -469,10 +588,12 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
     draftPath,
     renderOptionsPath,
     longformMediaPlanPath: longformMediaPlan ? longformMediaPlanPath : "",
+    longformChapterPlanPath: longformChapterPlan ? join(jobDir, "longform-chapter-plan.json") : "",
     metadataPath,
     sceneMediaManifestPath,
     sceneMedia,
     longformMediaPlan,
+    longformChapterPlan,
   };
 }
 
@@ -492,11 +613,32 @@ async function readSceneMediaManifest(manifestPath) {
   }
 }
 
-function findReusableSceneMedia(manifest, scene, outputMode) {
+function isReusableAspectMatch(record, job = {}) {
+  const requested = resolveSceneVideoDimensions(job?.options?.aspectRatio || "9:16");
+  const recordAspect = record.aspectRatio || "";
+  const recordWidth = Number(record.normalizedWidth || record.width || 0);
+  const recordHeight = Number(record.normalizedHeight || record.height || 0);
+  const hasAspectMetadata = Boolean(recordAspect || recordWidth || recordHeight);
+
+  if (!hasAspectMetadata) {
+    const probed = probeVideoDimensions(record.path);
+    if (probed?.width && probed?.height) {
+      return probed.width === requested.width && probed.height === requested.height;
+    }
+    return requested.aspectRatio !== "16:9";
+  }
+  if (recordAspect && recordAspect !== requested.aspectRatio) return false;
+  if (recordWidth && recordWidth !== requested.width) return false;
+  if (recordHeight && recordHeight !== requested.height) return false;
+  return true;
+}
+
+function findReusableSceneMedia(manifest, scene, outputMode, job = {}) {
   const record = manifest.scenes.find((item) => Number(item.order) === Number(scene.order));
   if (!record || record.status !== "completed") return null;
   if ((record.sceneOutputMode || record.outputMode || "") !== outputMode) return null;
   if (!record.path || !existsSync(record.path)) return null;
+  if (!isReusableAspectMatch(record, job)) return null;
   return {
     ...record,
     order: scene.order,
@@ -530,9 +672,9 @@ async function writeSceneMediaManifest(manifestPath, manifest) {
 function buildTitleOverlayKeywords({ job = {}, draft = {}, title = "" } = {}) {
   const sourceText = job.sourceType === "url" ? "" : job.sourceValue;
   const candidates = [
-    sourceText,
     title,
     draft.title,
+    sourceText,
     draft.hpsl?.hook?.narration,
     draft.hpsl?.point?.narration,
   ];
@@ -559,6 +701,27 @@ function normalizeTitleKeyword(value = "") {
     .trim();
 }
 
+export function parseTitleMarkup(text = "") {
+  const customColors = {};
+  const keywords = [];
+
+  // Match [word](color)
+  let cleaned = String(text || "").replace(/\[([^\]]+)\]\((#[0-9a-fA-F]{6}|[a-zA-Z]+)\)/g, (match, word, color) => {
+    customColors[word] = color;
+    keywords.push(word);
+    return word;
+  });
+
+  // Match [word] (default to accent)
+  cleaned = cleaned.replace(/\[([^\]]+)\]/g, (match, word) => {
+    customColors[word] = "accent";
+    keywords.push(word);
+    return word;
+  });
+
+  return { cleaned, keywords, customColors };
+}
+
 export async function renderFinalYouTubeVideo(job, assets = {}, context = {}) {
   if (typeof context.renderFinalVideo === "function") {
     return context.renderFinalVideo(job, assets, context);
@@ -569,6 +732,18 @@ export async function renderFinalYouTubeVideo(job, assets = {}, context = {}) {
   const scriptPath = context.renderScriptPath || join(ROOT, "scripts/render-youtube-with-tts.mjs");
   const runner = resolveRenderNodeRunner(context);
   const timeoutMs = Number(context.timeoutMs || process.env.HERMES_YOUTUBE_RENDER_TIMEOUT_MS || 15 * 60 * 1000);
+  if (isChapteredLongformRenderEnabled(job)) {
+    return renderChapteredYouTubeVideo({
+      job,
+      assets,
+      context,
+      runner,
+      scriptPath,
+      timeoutMs,
+      finalName: context.finalName || process.env.HERMES_YOUTUBE_FINAL_NAME || "final-youtube-chaptered.mp4",
+      runRenderChild,
+    });
+  }
   let childOutput;
 
   try {

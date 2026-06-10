@@ -8,6 +8,14 @@ const PUBLIC_FIGURE_REPLACEMENTS = [
   { pattern: /\bLee Jae-yong\b|이재용/gi, replacement: "a large technology company executive" },
 ];
 
+const FLOW_PROMPT_REWRITE_RULES = [
+  { pattern: /\bNapoleon Bonaparte\b/gi, replacement: "an anonymous historical ruler represented as a simple stickman symbol" },
+  { pattern: /\bMicrosoft\b/gi, replacement: "a generic four-square technology icon without readable branding" },
+  { pattern: /Korean sign saying [^.]+/gi, replacement: "a blank placard with abstract icon marks only" },
+  { pattern: /English sign saying [^.]+/gi, replacement: "a blank placard with abstract icon marks only" },
+  { pattern: /logo appears/gi, replacement: "generic icon appears" },
+];
+
 const ROLE_HINTS = [
   "ceo", "founder", "president", "minister", "candidate", "politician", "actor", "singer",
   "athlete", "football player", "influencer", "journalist", "executive", "idol",
@@ -43,6 +51,14 @@ export function sanitizeFlowPrompt(prompt = "", context = {}) {
   for (const rule of PUBLIC_FIGURE_REPLACEMENTS) {
     output = output.replace(rule.pattern, (match) => {
       flags.push("PUBLIC_FIGURE_REFERENCE");
+      replacements.push({ from: match, to: rule.replacement });
+      return rule.replacement;
+    });
+  }
+
+  for (const rule of FLOW_PROMPT_REWRITE_RULES) {
+    output = output.replace(rule.pattern, (match) => {
+      flags.push("FLOW_PROMPT_REWRITE");
       replacements.push({ from: match, to: rule.replacement });
       return rule.replacement;
     });

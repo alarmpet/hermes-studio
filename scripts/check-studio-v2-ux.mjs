@@ -14,6 +14,8 @@ assert.match(html, /HPSL|후킹|포인트|스토리|교훈/, "UI should expose H
 assert.match(html, /durationSummary/, "UI should show actual duration summary");
 assert.match(html, /qualitySummary|qaSummary/, "UI should reserve space for QA summary");
 assert.match(html, /value="script"/, "UI should expose direct script source mode");
+assert.match(html, /name="sourceType"\s+value="script"\s+checked/, "Script should be the default Studio input mode");
+assert.doesNotMatch(html, /name="sourceType"\s+value="url"\s+checked/, "URL should not be the default Studio input mode");
 assert.match(html, /sceneSplitPreview/, "UI should expose direct script scene split preview");
 assert.match(html, /scriptDurationValidation/, "UI should expose direct script duration validation");
 assert.match(html, /stylePresetId/, "UI should expose visual style preset selection");
@@ -23,6 +25,7 @@ assert.match(html, /autoLandscapeLongform/, "UI should expose optional longform 
 assert.match(app, /aspectRatio:\s*getRequestedAspectRatio\(\)/, "renderer should submit selected output aspect ratio");
 assert.match(app, /autoLandscapeLongform:\s*Boolean/, "renderer should submit the landscape checkbox");
 assert.match(html, /value="hybrid"/, "UI should expose Hybrid Google Flow mode");
+assert.match(html, /value="auto"/, "UI should expose Auto Google Flow mode");
 assert.match(html, /id="hybridIntroVideoSceneCount"/, "UI should expose opening video scene count");
 assert.match(html, /id="renderEffectPreset"/, "Studio should expose render effect preset");
 assert.match(html, /value="none"[^>]*>효과없음</, "Studio should expose no render effect option");
@@ -41,12 +44,18 @@ assert.match(html, /titleOverlayPreview/, "Studio should show a top-title previe
 assert.match(app, /updateDurationPreview/, "renderer should update duration preview");
 assert.match(app, /scriptStructure:\s*getSourceType\(\) === "script" \? "direct-script" : "hpsl"/, "job payload should choose direct-script or HPSL structure");
 assert.match(app, /populateStylePresets/, "renderer should load style presets");
+assert.match(app, /stickmanplus/, "Studio should prefer the history-channel stickmanplus style when available");
+assert.doesNotMatch(app, /if\s*\(\s*!stylePresetId\.value[\s\S]{0,140}stylePresetId\.value\s*=\s*preferredDefaultStyle/, "Studio must not skip StickmanPlus just because the select auto-picked the first option");
+assert.match(app, /stylePresetId\.value\s*=\s*preferredDefaultStyle/, "Studio should actively select StickmanPlus after loading style presets");
+assert.match(app, /stylePresetId:\s*stylePresetId\?\.value\s*\|\|\s*"stickmanplus"/, "job payload should fall back to stickmanplus");
+assert.match(service, /stylePresetId:\s*input\.stylePresetId\s*\|\|\s*"stickmanplus"/, "desktop job service should fall back to stickmanplus");
 assert.match(app, /updateFlowOutputModeHint/, "renderer should update Flow output mode hint");
 assert.match(
   app,
-  /flowOutputMode:\s*getVideoFormat\(\)\s*===\s*"longform"\s*\?\s*"hybrid"\s*:\s*getFlowOutputMode\(\)/,
-  "job payload should include Flow output mode and force longform jobs to hybrid",
+  /flowOutputMode:\s*getFlowOutputMode\(\)/,
+  "job payload should include the selected Flow output mode",
 );
+assert.match(app, /Auto: Hermes places Flow video clips/, "renderer should describe Auto Flow mode");
 assert.match(app, /hybridIntroVideoSceneCount:\s*getHybridIntroVideoSceneCount\(\)/, "job payload should include hybrid opening scene count");
 assert.match(app, /\^https\?:\\\/\\\//, "renderer should detect pasted URL values");
 assert.match(app, /input\[name='sourceType'\]\[value='url'\]/, "renderer should switch pasted URLs to URL mode");
@@ -65,6 +74,9 @@ assert.match(app, /CHATGPT_IMAGE_TOOL_NOT_FOUND/, "Studio should explain ChatGPT
 assert.match(app, /explainThumbnailFailure/, "Studio should centralize thumbnail failure explanations");
 assert.match(app, /updateTitleOverlayPreview/, "Studio should preview title overlay style");
 assert.match(app, /titleOverlayEnabled/, "Studio should submit title overlay options");
+assert.match(app, /shouldSuppressTitleOverlay/, "Studio should suppress top title controls for longform or 3min+ horizontal output");
+assert.match(app, /titleOverlayEnabled:\s*shouldSuppressTitleOverlay\(\)\s*\?\s*false\s*:/, "job payload should disable top titles when longform-style output is selected");
+assert.match(app, /titleOverlayEnabled\.disabled\s*=\s*suppressed/, "Studio should disable the top title toggle when top titles are suppressed");
 assert.match(app, /titleOverlayMode/, "Studio should submit titleOverlayMode");
 assert.match(service, /titleOverlayMode/, "job service should forward titleOverlayMode");
 

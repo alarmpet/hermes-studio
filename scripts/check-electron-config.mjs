@@ -60,6 +60,7 @@ assert.match(styles, /content-grid/, "Renderer styles should define the producti
 const authService = readFileSync(resolve(root, "electron/services/auth-service.mjs"), "utf8");
 const flowAutomation = readFileSync(resolve(root, "automation/google-flow-media.mjs"), "utf8");
 const geminiAutomation = readFileSync(resolve(root, "automation/gemini-research-draft.mjs"), "utf8");
+const chromiumWindowBounds = readFileSync(resolve(root, "automation/chromium-window-bounds.mjs"), "utf8");
 const urlLiveWorkflow = readFileSync(resolve(root, "scripts/run-url-ui-workflow-live.mjs"), "utf8");
 const longformLiveWorkflow = readFileSync(resolve(root, "scripts/run-longform-history-ui-workflow.mjs"), "utf8");
 
@@ -68,16 +69,17 @@ assert.match(authService, /--window-size=1920,1080/, "Auth Chrome windows should
 assert.match(authService, /--window-position=0,0/, "Auth Chrome windows should start at the primary display origin");
 assert.match(flowAutomation, /viewport:\s*\{\s*width:\s*1920,\s*height:\s*1080\s*\}/, "Google Flow automation should use a large viewport");
 assert.match(flowAutomation, /--start-maximized/, "Google Flow Chrome should start maximized");
-assert.match(flowAutomation, /Browser\.setWindowBounds/, "Google Flow automation should maximize the actual Chrome window via CDP");
-assert.match(flowAutomation, /windowState:\s*"maximized"/, "Google Flow automation should verify Chrome window maximized state");
+assert.match(flowAutomation, /chromium-window-bounds\.mjs/, "Google Flow automation should use the shared Chromium bounds guard");
+assert.match(chromiumWindowBounds, /Browser\.setWindowBounds/, "Google Flow automation should maximize the actual Chrome window via CDP");
+assert.match(chromiumWindowBounds, /windowState:\s*"maximized"/, "Chromium bounds guard should request maximized state");
+assert.match(chromiumWindowBounds, /isEffectivelyMaximizedBounds/, "Chromium bounds guard should accept large normal-state windows");
 assert.match(flowAutomation, /setViewportSize\(\{\s*width,\s*height\s*\}\)/, "Google Flow page should enforce a large viewport");
 assert.match(flowAutomation, /ensureLargeViewport/, "Google Flow automation should verify the large viewport was actually applied");
 assert.doesNotMatch(flowAutomation, /setViewportSize\([^\n]+\)\.catch/, "Google Flow automation should not ignore viewport failures");
 assert.doesNotMatch(flowAutomation, /width:\s*1280,\s*height:\s*720/, "Google Flow automation should not fall back to a small viewport");
 assert.match(geminiAutomation, /viewport:\s*\{\s*width:\s*1920,\s*height:\s*1080\s*\}/, "Gemini automation should use a large viewport");
 assert.match(geminiAutomation, /--start-maximized/, "Gemini Chrome should start maximized");
-assert.match(geminiAutomation, /Browser\.setWindowBounds/, "Gemini automation should maximize the actual Chrome window via CDP");
-assert.match(geminiAutomation, /windowState:\s*"maximized"/, "Gemini automation should verify Chrome window maximized state");
+assert.match(geminiAutomation, /chromium-window-bounds\.mjs/, "Gemini automation should use the shared Chromium bounds guard");
 assert.match(geminiAutomation, /ensureLargeViewport/, "Gemini automation should verify the large viewport was actually applied");
 assert.doesNotMatch(geminiAutomation, /setViewportSize\([^\n]+\)\.catch/, "Gemini automation should not ignore viewport failures");
 assert.match(urlLiveWorkflow, /BrowserWindow[\s\S]*maximize\(\)/, "URL live workflow should maximize the Electron app before clicking");

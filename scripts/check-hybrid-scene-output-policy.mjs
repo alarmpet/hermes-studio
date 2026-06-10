@@ -13,9 +13,12 @@ const scenes = [
 assert.deepEqual(assignSceneOutputModes({ scenes, flowOutputMode: "video", hybridIntroVideoSceneCount: 2 }).map((scene) => scene.outputMode), ["video", "video", "video", "video"]);
 assert.deepEqual(assignSceneOutputModes({ scenes, flowOutputMode: "image", hybridIntroVideoSceneCount: 2 }).map((scene) => scene.outputMode), ["image", "image", "image", "image"]);
 assert.deepEqual(assignSceneOutputModes({ scenes, flowOutputMode: "hybrid", hybridIntroVideoSceneCount: 2 }).map((scene) => scene.outputMode), ["video", "video", "image", "image"]);
+const autoModes = assignSceneOutputModes({ scenes, flowOutputMode: "auto", hybridIntroVideoSceneCount: 2, targetSeconds: 60 }).map((scene) => scene.outputMode);
+assert.equal(autoModes[0], "video");
+assert.ok(autoModes.includes("image"), "Auto mode should not turn every shortform scene into video");
 
 const planned = planScenesFromScript({
-  script: "첫 문장입니다. 두 번째 문장입니다. 세 번째 문장입니다.",
+  script: Array.from({ length: 16 }, (_, index) => `${index + 1}번째 문장입니다`).join(". ") + ".",
   title: "테스트",
   targetSeconds: 30,
   flowOutputMode: "hybrid",

@@ -28,8 +28,17 @@ assert.equal(genericFailure.code, "FLOW_GENERATION_FAILED");
 assert.match(flow, /writeFlowFailureDiagnostics/, "Flow automation should persist hard failure diagnostics");
 assert.match(flow, /flow-abnormal-activity/, "Flow automation should classify abnormal activity");
 assert.match(flow, /FLOW_ABNORMAL_ACTIVITY/, "Flow automation should expose a searchable failure code");
+assert.match(flow, /tryAbnormalActivityFallback/, "Flow automation should implement a retry fallback for abnormal activity");
+assert.match(flow, /alreadySubmitted/, "Flow automation should check if submission started before doing DOM click fallback");
 assert.match(flow, /actionRequired/, "Flow hard failure should be action-required");
 assert.match(stages, /isFlowHardFailure/, "workflow stages should forward Flow hard failures as warnings");
 assert.match(workflowDbEvents, /FLOW_ABNORMAL_ACTIVITY/, "workflow DB mirror should preserve Flow abnormal activity failures");
+
+// FLOW_GENERATION_FAILED retryable 자동 재시도 계약
+const retryableFailure = classifyFlowGenerationFailureText("실패\n생성하는 데 예상보다 오래 걸릴 수 있습니다. 잠시 후 다시 확인해 주세요.\n다시 시도 삭제");
+assert.equal(retryableFailure?.code, "FLOW_GENERATION_FAILED", "generation failure card should be classified as FLOW_GENERATION_FAILED");
+assert.equal(retryableFailure?.retryable, true, "generation failure card should be retryable");
+assert.match(flow, /tryGenerationFailedFallback/, "Flow automation should implement a retry fallback for retryable generation failures");
+assert.match(flow, /FLOW_GENERATION_FAILED.*retryable|retryable.*FLOW_GENERATION_FAILED|flowFailure\.retryable/, "wait-loop should check retryable before hard-throwing on FLOW_GENERATION_FAILED");
 
 console.log(JSON.stringify({ ok: true, checked: "flow-abnormal-activity-diagnostics", root }));

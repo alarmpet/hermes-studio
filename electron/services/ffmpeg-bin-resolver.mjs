@@ -1,5 +1,16 @@
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+
+function canExecuteFfmpeg(candidate = "") {
+  if (!candidate) return false;
+  const result = spawnSync(candidate, ["-version"], {
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024,
+    windowsHide: true,
+  });
+  return result.status === 0;
+}
 
 export function resolveFfmpegBin(candidate = "") {
   const pathEntries = String(process.env.PATH || "")
@@ -18,5 +29,8 @@ export function resolveFfmpegBin(candidate = "") {
     ...pathCandidates,
     "ffmpeg",
   ].filter(Boolean);
-  return candidates.find((item) => item === "ffmpeg" || existsSync(item)) || "";
+  return candidates.find((item) => {
+    if (item === "ffmpeg") return canExecuteFfmpeg(item);
+    return existsSync(item) && canExecuteFfmpeg(item);
+  }) || "";
 }

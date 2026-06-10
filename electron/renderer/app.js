@@ -24,8 +24,21 @@ const subtitleShadow = document.querySelector("#subtitleShadow");
 const subtitlePreviewText = document.querySelector("#subtitlePreviewText");
 const titleOverlayEnabled = document.querySelector("#titleOverlayEnabled");
 const titleOverlayText = document.querySelector("#titleOverlayText");
+const titleOverlaySubtitleText = document.querySelector("#titleOverlaySubtitleText");
 const titleOverlayStyleId = document.querySelector("#titleOverlayStyleId");
 const titleOverlayPreviewText = document.querySelector("#titleOverlayPreviewText");
+const titleOverlayFontFamily = document.querySelector("#titleOverlayFontFamily");
+const titleOverlayFontWeight = document.querySelector("#titleOverlayFontWeight");
+const titleOverlayFontSize = document.querySelector("#titleOverlayFontSize");
+const titleOverlayTextColor = document.querySelector("#titleOverlayTextColor");
+const titleOverlayHighlightColor = document.querySelector("#titleOverlayHighlightColor");
+const titleOverlayBackgroundColor = document.querySelector("#titleOverlayBackgroundColor");
+const titleOverlayBackgroundOpacity = document.querySelector("#titleOverlayBackgroundOpacity");
+const titleOverlayPositionY = document.querySelector("#titleOverlayPositionY");
+const titleOverlayBandHeight = document.querySelector("#titleOverlayBandHeight");
+const titleOverlayHorizontalPadding = document.querySelector("#titleOverlayHorizontalPadding");
+const titleOverlayOutlineWidth = document.querySelector("#titleOverlayOutlineWidth");
+const titleOverlayOutlineColor = document.querySelector("#titleOverlayOutlineColor");
 const thumbnailTextEnabled = document.querySelector("#thumbnailTextEnabled");
 const thumbnailHeadlineText = document.querySelector("#thumbnailHeadlineText");
 const thumbnailSubheadlineText = document.querySelector("#thumbnailSubheadlineText");
@@ -68,7 +81,19 @@ const hybridIntroVideoSceneCount = document.querySelector("#hybridIntroVideoScen
 const longformTargetSeconds = document.querySelector("#longformTargetSeconds");
 const introVideoClipCount = document.querySelector("#introVideoClipCount");
 const bodyImageSeconds = document.querySelector("#bodyImageSeconds");
+const longformChapteredRenderEnabled = document.querySelector("#longformChapteredRenderEnabled");
+const chapterTargetSeconds = document.querySelector("#chapterTargetSeconds");
 const hybridFlowPreview = document.querySelector("#hybridFlowPreview");
+const ollamaAssistEnabled = document.querySelector("#ollamaAssistEnabled");
+const ollamaBaseUrl = document.querySelector("#ollamaBaseUrl");
+const ollamaModel = document.querySelector("#ollamaModel");
+const ollamaStatusBadge = document.querySelector("#ollamaStatusBadge");
+const ollamaUseCaseStoryboard = document.querySelector("#ollamaUseCaseStoryboard");
+const ollamaUseCasePromptQa = document.querySelector("#ollamaUseCasePromptQa");
+const ollamaUseCaseFailureReport = document.querySelector("#ollamaUseCaseFailureReport");
+const ollamaUseCaseUploadMetadata = document.querySelector("#ollamaUseCaseUploadMetadata");
+const ollamaUseCaseThumbnailIdeas = document.querySelector("#ollamaUseCaseThumbnailIdeas");
+const ollamaUnsupportedUseCases = document.querySelectorAll(".ollamaUnsupportedUseCase input");
 const characterSheetText = document.querySelector("#characterSheetText");
 const characterSheetImages = document.querySelector("#characterSheetImages");
 const characterSheetSummary = document.querySelector("#characterSheetSummary");
@@ -102,9 +127,16 @@ const presetSeconds = { micro: 30, short: 45, standard: 60, extended: 90 };
 const presetScenes = { micro: 3, short: 4, standard: 5, extended: 6 };
 
 const subtitlePresetDefaults = {
-  "clean-news": { fontSize: 10, outline: 2, shadow: 1, marginV: 80, maxLineChars: 12, maxLines: 2 },
-  "bold-shorts": { fontSize: 11, outline: 2, shadow: 1, marginV: 90, maxLineChars: 10, maxLines: 2 },
-  minimal: { fontSize: 9, outline: 1, shadow: 0, marginV: 80, maxLineChars: 13, maxLines: 2 },
+  "clean-news": { fontSize: 20, outline: 4, shadow: 2, marginV: 36, maxLineChars: 12, maxLines: 2 },
+  "bold-shorts": { fontSize: 22, outline: 4, shadow: 2, marginV: 34, maxLineChars: 10, maxLines: 2 },
+  minimal: { fontSize: 18, outline: 2, shadow: 0, marginV: 36, maxLineChars: 13, maxLines: 2 },
+};
+
+const titleOverlayPresetDefaults = {
+  "bold-black-accent":  { primary: "#ffffff", accent: "#fde047", background: "#000000", backgroundOpacity: 0.86, outlineColor: "#000000", outlineWidth: 7 },
+  "white-editorial":    { primary: "#111827", accent: "#f97316", background: "#ffffff", backgroundOpacity: 0.96, outlineColor: "#ffffff", outlineWidth: 7 },
+  "black-green-hook":   { primary: "#ffffff", accent: "#22c55e", background: "#000000", backgroundOpacity: 0.90, outlineColor: "#000000", outlineWidth: 7 },
+  "minimal-shadow":     { primary: "#ffffff", accent: "#ffffff", background: "#000000", backgroundOpacity: 0.72, outlineColor: "#000000", outlineWidth: 7 },
 };
 
 const PROGRESS_PERCENT_BY_PHASE = {
@@ -128,6 +160,7 @@ let appIsPackaged = false;
 let selectedJobId = "";
 let selectedUploadMetadata = null;
 let selectedUploadState = null;
+let ollamaStatusTimer = null;
 
 function appendLog(message, detail) {
   const row = document.createElement("div");
@@ -205,11 +238,11 @@ function renderConsoleEvent(event = {}) {
 }
 
 function getSourceType() {
-  return document.querySelector("input[name='sourceType']:checked")?.value || "keyword";
+  return document.querySelector("input[name='sourceType']:checked")?.value || "script";
 }
 
 function getFlowOutputMode() {
-  return document.querySelector("input[name='flowOutputMode']:checked")?.value || "video";
+  return document.querySelector("input[name='flowOutputMode']:checked")?.value || "hybrid";
 }
 
 function getVideoFormat() {
@@ -220,10 +253,20 @@ function getLongformTargetSeconds() {
   return Math.max(600, Math.min(1200, Number(longformTargetSeconds?.value || 720)));
 }
 
+function getChapterTargetSeconds() {
+  return Math.max(60, Math.min(120, Math.round(Number(chapterTargetSeconds?.value || 90))));
+}
+
 function getRequestedAspectRatio() {
   const customDuration = Number(document.querySelector("#customDurationSeconds")?.value || 60);
   const longformLike = getVideoFormat() === "longform" || customDuration >= 180 || getLongformTargetSeconds() >= 180;
   return autoLandscapeLongform?.checked && longformLike ? "16:9" : "9:16";
+}
+
+function shouldSuppressTitleOverlay() {
+  return getVideoFormat() === "longform"
+    || getRequestedAspectRatio() === "16:9"
+    || effectiveTargetSeconds() >= 180;
 }
 
 function getHybridIntroVideoSceneCount() {
@@ -234,37 +277,47 @@ function getHybridIntroVideoSceneCount() {
 }
 
 function updateHybridFlowControls() {
-  const mode = getVideoFormat() === "longform" ? "hybrid" : getFlowOutputMode();
+  const mode = getFlowOutputMode();
   if (hybridFlowControls) hybridFlowControls.hidden = mode !== "hybrid";
   if (hybridFlowPreview) {
     const count = getHybridIntroVideoSceneCount();
-    hybridFlowPreview.textContent = `First ${count} scene${count === 1 ? "" : "s"}: video / remaining scenes: image`;
+    hybridFlowPreview.textContent = mode === "auto"
+      ? "Auto chooses video for hooks, reversals, chapter starts, and climax beats; explanation scenes use images."
+      : `First ${count} scene${count === 1 ? "" : "s"}: video / remaining scenes: image`;
   }
 }
 
 function readJobInput() {
+  const lengthMode = document.querySelector("#scriptLengthMode").value;
+  const estimatedScriptSeconds = getSourceType() === "script" ? estimateScriptSeconds(sourceValue.value) : 0;
   return {
     sourceType: getSourceType(),
     sourceValue: sourceValue.value.trim(),
     videoFormat: getVideoFormat(),
     longformTargetSeconds: getLongformTargetSeconds(),
+    longformChapteredRenderEnabled: getVideoFormat() === "longform" && Boolean(longformChapteredRenderEnabled?.checked),
+    chapterTargetSeconds: getChapterTargetSeconds(),
     introVideoSeconds: 60,
     introVideoClipCount: Math.max(1, Math.min(10, Math.round(Number(introVideoClipCount?.value || 10)))),
     bodyVisualMode: "image",
     bodyImageSeconds: Math.max(10, Math.min(30, Number(bodyImageSeconds?.value || 18))),
     enableLiveMcp: Boolean(enableLiveMcp?.checked),
-    scriptLengthMode: document.querySelector("#scriptLengthMode").value,
+    scriptLengthMode: lengthMode,
     scriptLengthPreset: document.querySelector("#scriptLengthPreset").value,
-    customDurationSeconds: Number(document.querySelector("#customDurationSeconds").value || 60),
+    customDurationSeconds: lengthMode === "auto" && getSourceType() === "script"
+      ? estimatedScriptSeconds
+      : Number(document.querySelector("#customDurationSeconds").value || 60),
+    estimatedScriptSeconds,
+    durationSource: lengthMode === "auto" && getSourceType() === "script" ? "script-auto" : "user-selected",
     scriptStructure: getSourceType() === "script" ? "direct-script" : "hpsl",
     sceneStrategy: "sentence-proportional",
-    flowOutputMode: getVideoFormat() === "longform" ? "hybrid" : getFlowOutputMode(),
+    flowOutputMode: getFlowOutputMode(),
     hybridIntroVideoSceneCount: getHybridIntroVideoSceneCount(),
     renderEffectPreset: renderEffectPreset?.value || "cinematic",
     motionIntensity: motionIntensity?.value || "light",
     transitionPreset: transitionPreset?.value || "scene-fade",
     transitionSeconds: Number(transitionSeconds?.value || 0.3),
-    stylePresetId: stylePresetId?.value || "cinematic-tech-news",
+    stylePresetId: stylePresetId?.value || "stickmanplus",
     characterSheet: {
       mode: characterSheetImages?.files?.length && characterSheetText?.value.trim()
         ? "text-and-image"
@@ -288,17 +341,35 @@ function readJobInput() {
       maxLineChars: subtitlePresetDefaults[subtitleStyleId.value]?.maxLineChars || 11,
       maxLines: subtitlePresetDefaults[subtitleStyleId.value]?.maxLines || 2,
     },
-    titleOverlayEnabled: Boolean(titleOverlayEnabled?.checked),
-    titleOverlayMode: titleOverlayText?.value.trim() ? "manual" : "auto",
-    titleOverlayText: titleOverlayText?.value.trim() || "",
+    titleOverlayEnabled: shouldSuppressTitleOverlay() ? false : Boolean(titleOverlayEnabled?.checked),
+    titleOverlayMode: (titleOverlayText?.value.trim() || titleOverlaySubtitleText?.value.trim()) ? "manual" : "auto",
+    titleOverlayText: (() => {
+      const main = titleOverlayText?.value.trim() || "";
+      const sub = titleOverlaySubtitleText?.value.trim() || "";
+      if (main && sub) return `${main}\n${sub}`;
+      return main || sub || "";
+    })(),
     titleOverlayStyleId: titleOverlayStyleId?.value || "bold-black-accent",
-    titleOverlayMaxLines: 2,
+    titleOverlayMaxLines: 4,
     titleOverlaySafeTop: getRequestedAspectRatio() === "16:9" ? 40 : 84,
+    titleOverlayStyle: readTitleOverlayStyleInput(),
     thumbnailOverlay: readThumbnailOverlayInput(),
     aspectRatio: getRequestedAspectRatio(),
     autoLandscapeLongform: Boolean(autoLandscapeLongform?.checked),
     speechSpeed: Number(speed.value),
     mockMediaMode: !appIsPackaged && mockMediaModeInput.checked,
+    ollamaAssistEnabled: Boolean(ollamaAssistEnabled?.checked),
+    ollamaBaseUrl: ollamaBaseUrl?.value || "http://127.0.0.1:11434",
+    ollamaModel: ollamaModel?.value || "gemma4:12b",
+    ollamaUseCases: {
+      storyboard: Boolean(ollamaUseCaseStoryboard?.checked),
+      promptQa: Boolean(ollamaUseCasePromptQa?.checked),
+      failureReport: Boolean(ollamaUseCaseFailureReport?.checked),
+      uploadMetadata: Boolean(ollamaUseCaseUploadMetadata?.checked),
+      thumbnailIdeas: Boolean(ollamaUseCaseThumbnailIdeas?.checked),
+      scriptPolish: false,
+      researchDigest: false,
+    },
     thumbnailMode: document.querySelector("#chatgptThumbnail").checked ? thumbnailProviderName.toLowerCase() : "auto",
     uploadEnabled: document.querySelector("#uploadEnabled").checked,
     privacyStatus: "private",
@@ -317,6 +388,16 @@ async function loadConfig() {
     mockMediaModeInput.checked = false;
     mockMediaModeInput.disabled = true;
   }
+  if (persistedConfig) {
+    if (ollamaAssistEnabled) ollamaAssistEnabled.checked = Boolean(persistedConfig.ollamaAssistEnabled);
+    if (ollamaBaseUrl) ollamaBaseUrl.value = persistedConfig.ollamaBaseUrl || "http://127.0.0.1:11434";
+    if (ollamaModel) ollamaModel.value = persistedConfig.ollamaModel || "gemma4:12b";
+    if (ollamaUseCaseStoryboard) ollamaUseCaseStoryboard.checked = persistedConfig.ollamaUseCases?.storyboard !== false;
+  }
+  for (const input of ollamaUnsupportedUseCases) {
+    input.checked = false;
+    input.disabled = true;
+  }
   rootPath.textContent = config.root;
   await populateVoicePresets();
   await populateStylePresets();
@@ -328,14 +409,68 @@ async function loadConfig() {
   updateFlowOutputModeHint();
   updateRenderEffectPreview();
   appendLog("App ready", config);
+  await refreshOllamaStatus();
   await renderAuthStatus();
   await renderJobs();
   renderEmptyUploadPanel();
 }
 
+function setOllamaStatusBadge(result = {}) {
+  if (!ollamaStatusBadge) return;
+  const status = result.status || (ollamaAssistEnabled?.checked ? "checking" : "disabled");
+  ollamaStatusBadge.className = `ollama-status is-${status}`;
+  const labelByStatus = {
+    connected: "Connected",
+    unreachable: "Unreachable",
+    "model-missing": "Model missing",
+    disabled: "Disabled",
+    blocked: "Blocked",
+    timeout: "Timeout",
+    checking: "Checking...",
+  };
+  const suffix = result.model ? ` (${result.model})` : "";
+  ollamaStatusBadge.textContent = `${labelByStatus[status] || status}${suffix}`;
+  ollamaStatusBadge.title = result.failureCode || result.message || "Ollama local assist status";
+}
+
+async function refreshOllamaStatus({ log = false } = {}) {
+  const enabled = Boolean(ollamaAssistEnabled?.checked);
+  const model = ollamaModel?.value || "gemma4:12b";
+  if (!enabled) {
+    const disabled = { ok: false, status: "disabled", failureCode: "OLLAMA_DISABLED", model };
+    setOllamaStatusBadge(disabled);
+    return disabled;
+  }
+  setOllamaStatusBadge({ status: "checking", model });
+  const result = await window.hermes.ollamaHealth?.({
+    ollamaAssistEnabled: enabled,
+    ollamaBaseUrl: ollamaBaseUrl?.value || "http://127.0.0.1:11434",
+    ollamaModel: model,
+  }).catch((error) => ({
+    ok: false,
+    status: "unreachable",
+    failureCode: "OLLAMA_HEALTH_CHECK_FAILED",
+    message: error?.message || String(error),
+    model,
+  }));
+  setOllamaStatusBadge(result);
+  if (log || !result?.ok) appendLog("Ollama assist status", result);
+  return result;
+}
+
+function scheduleOllamaStatusRefresh() {
+  clearTimeout(ollamaStatusTimer);
+  ollamaStatusTimer = setTimeout(() => {
+    refreshOllamaStatus().catch((error) => appendLog("Ollama status failed", error?.message || String(error)));
+  }, 350);
+}
+
 function effectiveTargetSeconds() {
-  if (getVideoFormat() === "longform") return getLongformTargetSeconds();
+  if (getVideoFormat() === "longform" && getSourceType() !== "script") return getLongformTargetSeconds();
   const mode = document.querySelector("#scriptLengthMode").value;
+  if (mode === "auto" && getSourceType() === "script") {
+    return estimateScriptSeconds(sourceValue.value);
+  }
   if (mode === "custom") {
     return Math.max(15, Math.min(1200, Number(document.querySelector("#customDurationSeconds").value || 60)));
   }
@@ -347,17 +482,27 @@ function updateDurationPreview() {
   const mode = document.querySelector("#scriptLengthMode").value;
   const preset = document.querySelector("#scriptLengthPreset").value;
   const customInput = document.querySelector("#customDurationSeconds");
+  const presetInput = document.querySelector("#scriptLengthPreset");
   customInput.disabled = mode !== "custom";
+  if (presetInput) presetInput.disabled = mode !== "preset";
   if (longformControls) longformControls.hidden = getVideoFormat() !== "longform";
   if (videoFormatHint) {
     videoFormatHint.textContent = getVideoFormat() === "longform"
       ? "Longform: 초반은 Flow 영상 클립, 이후는 Flow 이미지와 로컬 모션 렌더로 구성합니다."
       : "Shorts: 30-90초 중심의 빠른 영상입니다.";
   }
-  const scenes = mode === "custom" ? Math.max(3, Math.ceil(seconds / 10)) : (presetScenes[preset] || 5);
-  durationSummary.textContent = `실제 적용 길이: ${seconds}초 · 예상 장면 ${scenes}개 · ${getSourceType() === "script" ? "직접 대본" : "HPSL"}`;
+  const scenes = mode === "custom" || (mode === "auto" && getSourceType() === "script")
+    ? Math.max(3, Math.ceil(seconds / 6))
+    : (presetScenes[preset] || 5);
+  const label = mode === "auto" && getSourceType() === "script"
+    ? "입력 대본 기준 자동생성"
+    : getSourceType() === "script"
+      ? "직접 대본"
+      : "HPSL";
+  durationSummary.textContent = `실제 적용 길이: ${seconds}초 · 예상 장면 ${scenes}개 · ${label}`;
   updateScriptDurationValidation();
   updateAspectRatioHint();
+  updateTitleOverlayAvailability();
 }
 
 function updateAspectRatioHint() {
@@ -366,6 +511,15 @@ function updateAspectRatioHint() {
   aspectRatioHint.textContent = aspect === "16:9"
     ? "Landscape 16:9: Flow prompts, final render, and thumbnail target horizontal longform output."
     : "Portrait 9:16: Flow prompts, final render, and thumbnail target vertical output.";
+  updateTitleOverlayAvailability();
+}
+
+function updateTitleOverlayAvailability() {
+  if (!titleOverlayEnabled) return;
+  const suppressed = shouldSuppressTitleOverlay();
+  titleOverlayEnabled.disabled = suppressed;
+  if (suppressed) titleOverlayEnabled.checked = false;
+  updateTitleOverlayPreview();
 }
 
 for (const selector of ["#scriptLengthMode", "#scriptLengthPreset", "#customDurationSeconds"]) {
@@ -376,9 +530,10 @@ for (const selector of ["#scriptLengthMode", "#scriptLengthPreset", "#customDura
 for (const input of document.querySelectorAll("input[name='videoFormat']")) {
   input.addEventListener("change", () => {
     if (getVideoFormat() === "longform") {
-      document.querySelector("#scriptLengthMode").value = "custom";
-      document.querySelector("#customDurationSeconds").value = String(getLongformTargetSeconds());
-      document.querySelector("input[name='flowOutputMode'][value='hybrid']").checked = true;
+      if (getSourceType() !== "script" || document.querySelector("#scriptLengthMode").value !== "auto") {
+        document.querySelector("#scriptLengthMode").value = "custom";
+        document.querySelector("#customDurationSeconds").value = String(getLongformTargetSeconds());
+      }
       if (researchProvider) researchProvider.value = "notebooklm-mcp";
       if (enableLiveMcp) enableLiveMcp.checked = true;
     }
@@ -390,7 +545,7 @@ for (const input of document.querySelectorAll("input[name='videoFormat']")) {
 
 autoLandscapeLongform?.addEventListener("change", updateAspectRatioHint);
 
-for (const selector of ["#longformTargetSeconds", "#introVideoClipCount", "#bodyImageSeconds"]) {
+for (const selector of ["#longformTargetSeconds", "#introVideoClipCount", "#bodyImageSeconds", "#chapterTargetSeconds", "#longformChapteredRenderEnabled"]) {
   document.querySelector(selector)?.addEventListener("input", () => {
     if (getVideoFormat() === "longform") {
       document.querySelector("#customDurationSeconds").value = String(getLongformTargetSeconds());
@@ -409,11 +564,11 @@ async function populateVoicePresets() {
     option.dataset.speed = String(voice.speed || "");
     return option;
   }));
-  const defaultVoiceId = "female_30_announcer";
+  const defaultVoiceId = "male_30_high";
   const defaultPreset = voices.find((v) => v.id === defaultVoiceId) || voices[0];
   if (defaultPreset) {
     voiceSelect.value = defaultPreset.id;
-    speed.value = String(defaultPreset.speed || 1.06);
+    speed.value = String(defaultPreset.speed || 1.08);
     speedValue.textContent = `${Number(speed.value).toFixed(2)}x`;
   }
 }
@@ -429,6 +584,10 @@ async function populateStylePresets() {
     option.dataset.promptSuffix = preset.promptSuffix || "";
     return option;
   }));
+  const preferredDefaultStyle = presets.some((preset) => preset.id === "stickmanplus")
+    ? "stickmanplus"
+    : "stickman-explainer";
+  stylePresetId.value = preferredDefaultStyle;
   updateStylePresetPreview();
 }
 
@@ -440,8 +599,10 @@ function updateStylePresetPreview() {
 
 function updateFlowOutputModeHint() {
   if (!flowOutputModeHint) return;
-  const mode = getVideoFormat() === "longform" ? "hybrid" : getFlowOutputMode();
-  if (mode === "hybrid") {
+  const mode = getFlowOutputMode();
+  if (mode === "auto") {
+    flowOutputModeHint.textContent = "Auto: Hermes places Flow video clips at hooks, reversals, chapter starts, and climax beats; quieter explanation scenes use Nano Banana Pro images with smooth render motion.";
+  } else if (mode === "hybrid") {
     flowOutputModeHint.textContent = "Hybrid: opening scenes use Flow video for motion and attention; later scenes use Nano Banana Pro images rendered as smooth motion clips.";
   } else if (mode === "image") {
     flowOutputModeHint.textContent = "Image: Google Flow creates Nano Banana Pro images and Hermes renders them into moving clips.";
@@ -481,6 +642,7 @@ async function renderAuthStatus() {
 
 speed.addEventListener("input", () => {
   speedValue.textContent = `${Number(speed.value).toFixed(2)}x`;
+  updateDurationPreview();
 });
 
 voiceSelect.addEventListener("change", () => {
@@ -488,6 +650,7 @@ voiceSelect.addEventListener("change", () => {
   if (!presetSpeed) return;
   speed.value = presetSpeed;
   speedValue.textContent = `${Number(speed.value).toFixed(2)}x`;
+  updateDurationPreview();
 });
 
 subtitleStyleId.addEventListener("change", () => {
@@ -502,6 +665,38 @@ for (const input of [subtitleFontSize, subtitleOutline, subtitleShadow]) {
   input.addEventListener("input", updateSubtitlePreview);
 }
 
+titleOverlayStyleId?.addEventListener("change", () => {
+  const preset = titleOverlayPresetDefaults[titleOverlayStyleId.value] || titleOverlayPresetDefaults["bold-black-accent"];
+  if (titleOverlayTextColor) titleOverlayTextColor.value = preset.primary;
+  if (titleOverlayHighlightColor) titleOverlayHighlightColor.value = preset.accent;
+  if (titleOverlayBackgroundColor) titleOverlayBackgroundColor.value = preset.background;
+  if (titleOverlayBackgroundOpacity) titleOverlayBackgroundOpacity.value = preset.backgroundOpacity;
+  if (titleOverlayOutlineWidth) titleOverlayOutlineWidth.value = preset.outlineWidth;
+  if (titleOverlayOutlineColor) titleOverlayOutlineColor.value = preset.outlineColor || "#000000";
+  updateTitleOverlayPreview();
+});
+
+for (const input of [
+  titleOverlayFontFamily,
+  titleOverlayFontWeight,
+  titleOverlayFontSize,
+  titleOverlayTextColor,
+  titleOverlayHighlightColor,
+  titleOverlayBackgroundColor,
+  titleOverlayBackgroundOpacity,
+  titleOverlayPositionY,
+  titleOverlayBandHeight,
+  titleOverlayHorizontalPadding,
+  titleOverlayOutlineWidth,
+  titleOverlayOutlineColor,
+  titleOverlayText,
+  titleOverlaySubtitleText,
+  titleOverlayEnabled
+].filter(Boolean)) {
+  input.addEventListener("input", updateTitleOverlayPreview);
+  input.addEventListener("change", updateTitleOverlayPreview);
+}
+
 function updateSubtitlePreview() {
   const outline = Math.max(0, Number(subtitleOutline.value || 0));
   const shadow = Math.max(0, Number(subtitleShadow.value || 0));
@@ -511,10 +706,55 @@ function updateSubtitlePreview() {
 
 function updateTitleOverlayPreview() {
   if (!titleOverlayPreviewText) return;
+  const style = readTitleOverlayStyleInput();
   const fallback = sourceValue.value.trim().slice(0, 24) || "Auto: generated title";
-  titleOverlayPreviewText.textContent = titleOverlayText?.value.trim() || fallback;
-  titleOverlayPreviewText.parentElement.dataset.style = titleOverlayStyleId?.value || "bold-black-accent";
-  titleOverlayPreviewText.parentElement.dataset.enabled = titleOverlayEnabled?.checked ? "true" : "false";
+  const preview = titleOverlayPreviewText.parentElement;
+  const mainText = titleOverlayText?.value.trim() || "";
+  const subText = titleOverlaySubtitleText?.value.trim() || "";
+  const rawText = mainText && subText ? `${mainText}\n${subText}` : (mainText || subText || fallback);
+  const lines = rawText.split(/\r?\n|\\n/).filter(Boolean);
+  const escHtml = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const highlightColor = style.highlightColor || "#fde047";
+  function applyMarkup(line) {
+    return escHtml(line)
+      .replace(/\[([^\]]+)\]\((#[0-9a-fA-F]{6}|[a-zA-Z]+)\)/g, (_, word, color) => {
+        const fill = color === "accent" ? highlightColor : color === "primary" ? (style.textColor || "#ffffff") : color;
+        return `<span style="color:${fill}">${word}</span>`;
+      })
+      .replace(/\[([^\]]+)\]/g, (_, word) => `<span style="color:${highlightColor}">${word}</span>`);
+  }
+  titleOverlayPreviewText.innerHTML = lines.map(applyMarkup).join("<br>");
+  preview.dataset.style = titleOverlayStyleId?.value || "bold-black-accent";
+  preview.dataset.enabled = titleOverlayEnabled?.checked && !shouldSuppressTitleOverlay() ? "true" : "false";
+  preview.style.setProperty("--title-overlay-font", style.fontFamily);
+  preview.style.setProperty("--title-overlay-weight", String(style.fontWeight));
+  preview.style.setProperty("--title-overlay-size", `${Math.round(style.fontSize / 3)}px`);
+  preview.style.setProperty("--title-overlay-text", style.textColor);
+  preview.style.setProperty("--title-overlay-highlight", style.highlightColor);
+  preview.style.setProperty("--title-overlay-bg", style.backgroundColor);
+  preview.style.setProperty("--title-overlay-bg-opacity", String(style.backgroundOpacity));
+  preview.style.setProperty("--title-overlay-y", `${style.positionYPercent}%`);
+  preview.style.setProperty("--title-overlay-band-h", `${style.bandHeightPercent}%`);
+  preview.style.setProperty("--title-overlay-x-pad", `${style.horizontalPaddingPercent}%`);
+  preview.style.setProperty("--title-overlay-outline", `${Math.round(style.outlineWidth / 3)}px`);
+}
+
+function readTitleOverlayStyleInput() {
+  return {
+    fontFamily: titleOverlayFontFamily?.value || "Malgun Gothic",
+    fontWeight: Number(titleOverlayFontWeight?.value || 900),
+    fontSize: Number(titleOverlayFontSize?.value || 78),
+    textColor: titleOverlayTextColor?.value || "#ffffff",
+    highlightColor: titleOverlayHighlightColor?.value || "#fde047",
+    backgroundColor: titleOverlayBackgroundColor?.value || "#050505",
+    backgroundOpacity: Number(titleOverlayBackgroundOpacity?.value ?? 0.82),
+    positionYPercent: Number(titleOverlayPositionY?.value ?? 4.5),
+    bandHeightPercent: Number(titleOverlayBandHeight?.value ?? 14),
+    horizontalPaddingPercent: Number(titleOverlayHorizontalPadding?.value ?? 8),
+    outlineColor: titleOverlayOutlineColor?.value || "#000000",
+    outlineWidth: Number(titleOverlayOutlineWidth?.value ?? 7),
+    maxLines: 4,
+  };
 }
 
 function readThumbnailOverlayInput() {
@@ -564,7 +804,23 @@ function escapeHtml(value) {
   }[char]));
 }
 
-for (const input of [titleOverlayEnabled, titleOverlayText, titleOverlayStyleId, sourceValue]) {
+for (const input of [
+  titleOverlayEnabled,
+  titleOverlayText,
+  titleOverlayStyleId,
+  titleOverlayFontFamily,
+  titleOverlayFontWeight,
+  titleOverlayFontSize,
+  titleOverlayTextColor,
+  titleOverlayHighlightColor,
+  titleOverlayBackgroundColor,
+  titleOverlayBackgroundOpacity,
+  titleOverlayPositionY,
+  titleOverlayBandHeight,
+  titleOverlayHorizontalPadding,
+  titleOverlayOutlineWidth,
+  sourceValue,
+]) {
   input?.addEventListener("input", updateTitleOverlayPreview);
   input?.addEventListener("change", updateTitleOverlayPreview);
 }
@@ -642,6 +898,11 @@ for (const input of document.querySelectorAll("input[name='flowOutputMode']")) {
 }
 hybridIntroVideoSceneCount?.addEventListener("input", updateHybridFlowControls);
 
+for (const input of [ollamaAssistEnabled, ollamaBaseUrl, ollamaModel, ollamaUseCaseStoryboard]) {
+  input?.addEventListener("change", scheduleOllamaStatusRefresh);
+  input?.addEventListener("input", scheduleOllamaStatusRefresh);
+}
+
 for (const input of document.querySelectorAll("input[name='sourceType']")) {
   input.addEventListener("change", updateSourceModeUi);
 }
@@ -656,6 +917,7 @@ sourceValue.addEventListener("input", () => {
     }
   }
   updateSceneSplitPreview();
+  updateDurationPreview();
   updateScriptDurationValidation();
 });
 
@@ -692,6 +954,13 @@ for (const button of document.querySelectorAll("#consoleFilters [data-filter]"))
 
 function updateSourceModeUi() {
   const sourceType = getSourceType();
+  const lengthModeInput = document.querySelector("#scriptLengthMode");
+  if (sourceType === "script" && lengthModeInput?.value === "preset") {
+    lengthModeInput.value = "auto";
+  }
+  if (sourceType !== "script" && lengthModeInput?.value === "auto") {
+    lengthModeInput.value = "preset";
+  }
   if (sourceValueLabel) {
     sourceValueLabel.textContent = sourceType === "url"
       ? "URL"
@@ -724,7 +993,10 @@ function updateSceneSplitPreview() {
 }
 
 function estimateScriptSeconds(text) {
-  return Math.max(0, Math.round((text || "").replace(/\s+/g, "").length / 5.5));
+  const compactLength = Array.from(String(text || "").replace(/\s+/g, "")).length;
+  const currentSpeed = Math.max(0.75, Math.min(1.5, Number(speed?.value || 1.06)));
+  const rawSeconds = Math.round((compactLength / 5.5) / currentSpeed);
+  return Math.max(15, Math.min(1200, rawSeconds || 15));
 }
 
 function updateScriptDurationValidation() {
@@ -1194,6 +1466,7 @@ form.addEventListener("submit", async (event) => {
   generateBtn.disabled = true;
   generateBtn.textContent = "Generating...";
   jobState.textContent = "Running";
+  if (input.ollamaAssistEnabled) await refreshOllamaStatus({ log: true });
   appendLog("Submitting YouTube job", input);
   try {
     const result = await window.hermes.youtubeCreateJob(input);

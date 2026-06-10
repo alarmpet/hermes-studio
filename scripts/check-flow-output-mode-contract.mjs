@@ -33,6 +33,20 @@ const hybridJob = normalizeYouTubeJobRequest({
 assert.equal(hybridJob.options.flowOutputMode, "hybrid");
 assert.equal(hybridJob.options.hybridIntroVideoSceneCount, 2);
 
+const autoJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "google glass",
+  options: { flowOutputMode: "auto" },
+});
+assert.equal(autoJob.options.flowOutputMode, "auto");
+
+const defaultLongformJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "history longform",
+  options: { videoFormat: "longform", customDurationSeconds: 600 },
+});
+assert.equal(defaultLongformJob.options.flowOutputMode, "auto", "longform should default to Auto unless the user explicitly selects another Flow mode");
+
 assert.throws(() => normalizeYouTubeJobRequest({
   sourceType: "keyword",
   sourceValue: "google glass",
@@ -41,14 +55,18 @@ assert.throws(() => normalizeYouTubeJobRequest({
 
 assert.match(schema, /flowOutputMode/, "schema should define flowOutputMode");
 assert.match(schema, /hybridIntroVideoSceneCount/, "schema should define the hybrid opening video scene count");
-assert.match(schema, /\["video", "image", "hybrid"\]/, "schema should accept hybrid Flow output mode");
+for (const mode of ["video", "image", "hybrid", "auto"]) {
+  assert.match(schema, new RegExp(`"${mode}"`), `schema should accept ${mode} Flow output mode`);
+}
 assert.match(rendererHtml, /name="flowOutputMode"/, "UI should expose flow output mode");
+assert.match(rendererHtml, /value="auto"/, "UI should expose Auto Google Flow mode");
 assert.match(rendererHtml, /flowOutputModeHint/, "UI should explain flow output mode");
 assert.match(
   rendererApp,
-  /flowOutputMode:\s*getVideoFormat\(\)\s*===\s*"longform"\s*\?\s*"hybrid"\s*:\s*getFlowOutputMode\(\)/,
-  "renderer should submit Flow output mode and force longform jobs to hybrid",
+  /flowOutputMode:\s*getFlowOutputMode\(\)/,
+  "renderer should submit the selected Flow output mode without forcing longform jobs to hybrid",
 );
+assert.match(rendererApp, /Auto: Hermes places Flow video clips/, "renderer should explain Auto mode");
 assert.match(stages, /flowOutputMode/, "workflow stages should branch by flow output mode");
 assert.match(stages, /scene\.outputMode\s*\|\|\s*scene\.flowOutputMode\s*\|\|\s*job\?\.options\?\.flowOutputMode/, "scene media generation should prefer per-scene output mode");
 assert.match(stages, /hybridIntroVideoSceneCount/, "workflow stages should preserve hybrid opening scene count in progress details");

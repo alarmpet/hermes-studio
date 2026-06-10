@@ -6,6 +6,7 @@ import { normalizeYouTubeDraft, parseJsonMarkdown } from "../youtube-workflow.mj
 import { buildDesktopYouTubeDraft, fetchArticleSource } from "../electron/services/youtube-draft-service.mjs";
 import { assertDraftQuality } from "../scripts/youtube-draft-quality.mjs";
 import { assertDraftDurationContract } from "../scripts/youtube-draft-duration.mjs";
+import { maximizeChromiumWindow } from "./chromium-window-bounds.mjs";
 
 export const GEMINI_URL = "https://gemini.google.com/";
 export const GEMINI_GEMS_URL = "https://gemini.google.com/gem/500bb37978fe";
@@ -18,27 +19,9 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function maximizeChromiumWindow(page) {
-  const session = await page.context().newCDPSession(page);
-  try {
-    const { windowId } = await session.send("Browser.getWindowForTarget");
-    await session.send("Browser.setWindowBounds", {
-      windowId,
-      bounds: { windowState: "maximized" },
-    });
-    const bounds = await session.send("Browser.getWindowBounds", { windowId });
-    if (bounds?.bounds?.windowState !== "maximized") {
-      throw new Error(`Chrome window did not enter maximized state: ${JSON.stringify(bounds?.bounds || {})}`);
-    }
-    return bounds?.bounds || {};
-  } finally {
-    await session.detach().catch(() => {});
-  }
-}
-
 async function ensureLargeViewport(page, { width = 1920, height = 1080 } = {}) {
   await page.setViewportSize({ width, height });
-  const windowBounds = await maximizeChromiumWindow(page);
+  const windowBounds = await maximizeChromiumWindow(page, { width, height, label: "Gemini Chrome" });
   const viewport = page.viewportSize?.();
   if (!viewport || viewport.width < width || viewport.height < height) {
     throw new Error(`Browser viewport is too small for stable Gemini automation: ${JSON.stringify(viewport)}`);
@@ -294,6 +277,13 @@ export function buildGeminiPrompt(job, extraInstruction = "") {
         "- For image scenes, use clear visual variety and symbols without readable text.",
       ]
     : [];
+  const autoInstruction = job?.options?.flowOutputMode === "auto"
+    ? [
+        "- Auto Flow Mode: Hermes will choose video for hooks, reversals, chapter starts, and climax beats; explanation scenes become still images with render motion.",
+        "- Keep prompts motion-neutral and image-friendly. Hermes will add the final video/image mode hint after scene analysis.",
+        "- Keep each narration sentence compact enough to become a short visual scene; avoid packing multiple ideas into one scene.",
+      ]
+    : [];
   return [
     extraInstruction ? `[REPAIR COMMAND]\n${extraInstruction}\n` : "",
     `[SOURCE]\n${sourceText}\n(Instruction: Rewrite and transform the source. Do not copy sentences.)\n`,
@@ -312,6 +302,7 @@ export function buildGeminiPrompt(job, extraInstruction = "") {
     "- Flow Prompt Safety: No real person likeness, no celebrities, no logos, no readable text, no subtitles, no watermarks.",
     "- Maintain source_grounding: The title, script, and scenes must align with the user source.",
     ...hybridInstruction,
+    ...autoInstruction,
     buildNotebookLmPromptContext(job),
   ].filter(Boolean).join("\n");
 }
@@ -335,6 +326,9 @@ export function buildGemsPrompt(job, extraInstruction = "") {
   const hybridLine = job?.options?.flowOutputMode === "hybrid"
     ? `Hybrid Mode: first ${hybridIntroVideoSceneCount} scenes are video, remaining scenes are still images.`
     : "";
+  const autoLine = job?.options?.flowOutputMode === "auto"
+    ? "Auto Flow Mode: Hermes chooses scene-by-scene video/image output later. Write compact scene narrations and motion-neutral, image-friendly prompts."
+    : "";
   return [
     extraInstruction ? `[REPAIR COMMAND]\n${extraInstruction}\n` : "",
     `[SOURCE]\n${sourceText}\n(Instruction: Rewrite and transform the source. Do not copy sentences.)\n`,
@@ -351,6 +345,7 @@ export function buildGemsPrompt(job, extraInstruction = "") {
     `- Narration script must be at least ${Math.round(targetSeconds * 5)} Korean characters.`,
     "- Maintain source_grounding: must align with the user source.",
     hybridLine,
+    autoLine,
     buildNotebookLmPromptContext(job),
   ].filter(Boolean).join("\n");
 }
@@ -364,6 +359,9 @@ function buildLegacyGemsPrompt(job, extraInstruction = "") {
   const hybridLine = job?.options?.flowOutputMode === "hybrid"
     ? `Hybrid: first ${hybridIntroVideoSceneCount} scene(s) as Google Flow video, remaining scenes as Google Flow images with render motion.`
     : "";
+  const autoLine = job?.options?.flowOutputMode === "auto"
+    ? "Auto Flow Mode: Hermes chooses which scenes become Google Flow video versus image after scene analysis. Keep scene narration compact and prompts usable as either still images or short motion clips."
+    : "";
   return [
     `${sourceLabel}: ${job.sourceValue}`,
     "",
@@ -373,6 +371,7 @@ function buildLegacyGemsPrompt(job, extraInstruction = "") {
     "Rewrite and transform the source. Do not copy article sentences.",
     "Keep Flow prompts policy-safe: no real person likeness, no logos, no readable text, no subtitles, no watermarks.",
     hybridLine,
+    autoLine,
     buildNotebookLmPromptContext(job),
     extraInstruction,
   ].filter(Boolean).join("\n");

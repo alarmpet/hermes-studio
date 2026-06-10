@@ -47,8 +47,8 @@
               <label for="sourceValue">입력 방식</label>
               <div class="segmented">
                 <label><input type="radio" name="sourceType" value="keyword"><span>Keyword</span></label>
-                <label><input type="radio" name="sourceType" value="url" checked><span>URL</span></label>
-                <label><input type="radio" name="sourceType" value="script"><span>Script</span></label>
+                <label><input type="radio" name="sourceType" value="url"><span>URL</span></label>
+                <label><input type="radio" name="sourceType" value="script" checked><span>Script</span></label>
               </div>
             </div>
 
@@ -78,15 +78,16 @@
 
             <div class="form-grid">
               <div class="field-group">
-                <label for="scriptLengthMode">대본 길이 방식</label>
+                <label for="scriptLengthMode">대본 분량 방식</label>
                 <select id="scriptLengthMode">
+                  <option value="auto">대본 분량 (자동생성)</option>
                   <option value="preset" selected>프리셋</option>
                   <option value="custom">수동 초 입력</option>
                 </select>
               </div>
 
               <div class="field-group">
-                <label for="scriptLengthPreset">대본 분량</label>
+                <label for="scriptLengthPreset">프리셋 분량</label>
                 <select id="scriptLengthPreset">
                   <option value="micro">30초</option>
                   <option value="short">45초</option>
@@ -107,6 +108,12 @@
                 <input id="introVideoClipCount" type="number" min="1" max="10" value="10">
                 <label for="bodyImageSeconds">본문 이미지 길이(초)</label>
                 <input id="bodyImageSeconds" type="number" min="10" max="30" value="18">
+                <label class="checkbox-row" for="longformChapteredRenderEnabled">
+                  <input id="longformChapteredRenderEnabled" type="checkbox">
+                  <span>챕터 분할 렌더</span>
+                </label>
+                <label for="chapterTargetSeconds">챕터 목표 길이(초)</label>
+                <input id="chapterTargetSeconds" type="number" min="60" max="120" value="90">
               </div>
 
               <div class="field-group">
@@ -143,7 +150,7 @@
 
               <div class="field-group">
                 <label for="subtitleFontSize">자막 크기</label>
-                <input id="subtitleFontSize" type="number" min="8" max="18" value="11">
+                <input id="subtitleFontSize" type="number" min="8" max="36" value="22">
               </div>
 
               <div class="field-group">
@@ -203,6 +210,7 @@
               <div class="field-group">
                 <label>Google Flow 생성 방식</label>
                 <div class="segmented" id="flowOutputModeControl">
+                  <label><input type="radio" name="flowOutputMode" value="auto"><span>Auto</span></label>
                   <label><input type="radio" name="flowOutputMode" value="video"><span>Video</span></label>
                   <label><input type="radio" name="flowOutputMode" value="image"><span>Image</span></label>
                   <label><input type="radio" name="flowOutputMode" value="hybrid" checked><span>Hybrid</span></label>
@@ -213,6 +221,24 @@
                   <input id="hybridIntroVideoSceneCount" type="number" min="0" max="10" value="1">
                   <div id="hybridFlowPreview" class="preset-preview">First 1 scene: video / remaining scenes: image</div>
                 </div>
+              </div>
+
+              <div class="field-group ollama-assist-panel">
+                <label class="checkbox-line">
+                  <input id="ollamaAssistEnabled" type="checkbox">
+                  Use local LLM assist
+                </label>
+                <input id="ollamaBaseUrl" type="url" value="http://127.0.0.1:11434" placeholder="http://desktop-ip:11434">
+                <input id="ollamaModel" type="text" value="gemma4:12b" placeholder="gemma4:12b">
+                <div id="ollamaStatusBadge" class="ollama-status is-disabled">Disabled</div>
+                <div class="checkbox-grid">
+                  <label><input id="ollamaUseCaseStoryboard" type="checkbox" checked> Storyboard</label>
+                  <label class="ollamaUnsupportedUseCase"><input id="ollamaUseCasePromptQa" type="checkbox" disabled> Prompt QA</label>
+                  <label class="ollamaUnsupportedUseCase"><input id="ollamaUseCaseFailureReport" type="checkbox" disabled> Failure report</label>
+                  <label class="ollamaUnsupportedUseCase"><input id="ollamaUseCaseUploadMetadata" type="checkbox" disabled> Upload metadata</label>
+                  <label class="ollamaUnsupportedUseCase"><input id="ollamaUseCaseThumbnailIdeas" type="checkbox" disabled> Thumbnail ideas</label>
+                </div>
+                <div class="preset-preview">Only Storyboard assist is active. Other local LLM lanes are visible but not wired yet.</div>
               </div>
             </div>
 
@@ -247,8 +273,12 @@
               <div class="form-grid">
                 <div class="field-group">
                   <label for="titleOverlayText">Title text</label>
-                  <input id="titleOverlayText" type="text" maxlength="80" placeholder="Auto from generated draft title">
-                  <small class="field-hint">Auto uses generated draft title when empty.</small>
+                  <textarea id="titleOverlayText" rows="1" maxlength="160" placeholder="Auto uses generated draft title when empty"></textarea>
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlaySubtitleText">Subtitle text</label>
+                  <textarea id="titleOverlaySubtitleText" rows="1" maxlength="160" placeholder="Optional subtitle text to show below title"></textarea>
+                  <small class="field-hint">색상 마크업: [단어](#ff0000) 또는 [단어](accent)</small>
                 </div>
                 <div class="field-group">
                   <label for="titleOverlayStyleId">Title style</label>
@@ -258,6 +288,60 @@
                     <option value="black-green-hook">Black Green Hook</option>
                     <option value="minimal-shadow">Minimal Shadow</option>
                   </select>
+                </div>
+              </div>
+              <div class="form-grid compact-grid">
+                <div class="field-group">
+                  <label for="titleOverlayFontFamily">Font</label>
+                  <select id="titleOverlayFontFamily">
+                    <option value="Malgun Gothic" selected>Malgun Gothic</option>
+                    <option value="Pretendard">Pretendard</option>
+                    <option value="Arial">Arial</option>
+                  </select>
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayFontWeight">Weight</label>
+                  <input id="titleOverlayFontWeight" type="number" min="500" max="1000" step="50" value="900">
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayFontSize">Size</label>
+                  <input id="titleOverlayFontSize" type="number" min="42" max="120" value="78">
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayTextColor">Text color</label>
+                  <input id="titleOverlayTextColor" type="color" value="#ffffff">
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayHighlightColor">Keyword color</label>
+                  <input id="titleOverlayHighlightColor" type="color" value="#fde047">
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayBackgroundColor">Background</label>
+                  <input id="titleOverlayBackgroundColor" type="color" value="#050505">
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayBackgroundOpacity">Background opacity</label>
+                  <input id="titleOverlayBackgroundOpacity" type="range" min="0" max="0.92" step="0.01" value="0.82">
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayPositionY">Top position</label>
+                  <input id="titleOverlayPositionY" type="range" min="0" max="18" step="0.5" value="4.5">
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayBandHeight">Band height</label>
+                  <input id="titleOverlayBandHeight" type="range" min="10" max="24" step="0.5" value="14">
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayHorizontalPadding">Side padding</label>
+                  <input id="titleOverlayHorizontalPadding" type="range" min="4" max="18" step="0.5" value="8">
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayOutlineWidth">Outline width</label>
+                  <input id="titleOverlayOutlineWidth" type="number" min="0" max="10" value="7">
+                </div>
+                <div class="field-group">
+                  <label for="titleOverlayOutlineColor">Outline color</label>
+                  <input id="titleOverlayOutlineColor" type="color" value="#000000">
                 </div>
               </div>
               <div class="title-overlay-preview" id="titleOverlayPreview" data-style="bold-black-accent" data-enabled="true">
@@ -298,7 +382,7 @@
                 </div>
                 <div class="field-group">
                   <label for="thumbnailSubFontSize">Sub size</label>
-                  <input id="thumbnailSubFontSize" type="number" min="24" max="80" value="52">
+                  <input id="thumbnailSubFontSize" type="number" min="24" max="80" value="70">
                 </div>
                 <div class="field-group">
                   <label for="thumbnailTextColor">Text color</label>
@@ -339,7 +423,7 @@
                 YouTube 업로드 승인 단계 포함
               </label>
               <label class="switch">
-                <input id="chatgptThumbnail" type="checkbox" checked>
+                <input id="chatgptThumbnail" type="checkbox">
                 <span></span>
                 ChatGPT 썸네일 생성
               </label>

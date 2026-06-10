@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 import { normalizeYouTubeJobRequest } from "../youtube-job-schema.mjs";
 import { buildLongformMediaPlan, planLongformScenesFromDraft } from "../electron/services/longform-planner.mjs";
 import { normalizeResearchBrief, persistResearchBrief } from "../electron/services/longform-research-brief.mjs";
-import { generateYouTubeWorkflowAssets } from "../youtube-workflow.mjs";
+import { buildRenderOptions, generateYouTubeWorkflowAssets } from "../youtube-workflow.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const html = readFileSync(resolve(root, "electron/renderer/index.html"), "utf8");
@@ -36,6 +36,20 @@ assert.equal(longformJob.options.introVideoClipCount, 10);
 assert.equal(longformJob.options.bodyVisualMode, "image");
 assert.equal(longformJob.options.bodyImageSeconds, 18);
 assert.equal(longformJob.options.enableLiveMcp, true);
+assert.equal(buildRenderOptions(longformJob).targetSeconds, 720, "longform render target should use longformTargetSeconds");
+
+const longformScriptAutoJob = normalizeYouTubeJobRequest({
+  sourceType: "script",
+  sourceValue: "짧은 입력 대본이어도 롱폼으로 선택했다면 렌더 목표는 장편 목표 길이를 따라야 합니다.",
+  options: {
+    videoFormat: "longform",
+    scriptLengthMode: "auto",
+    estimatedScriptSeconds: 245,
+    customDurationSeconds: 245,
+    longformTargetSeconds: 600,
+  },
+});
+assert.equal(buildRenderOptions(longformScriptAutoJob).targetSeconds, 245, "longform direct-script auto should use the estimated script duration");
 
 assert.match(html, /name="videoFormat"/, "UI should expose shorts/longform video format");
 assert.match(html, /id="longformControls"/, "UI should expose longform controls");
@@ -64,14 +78,16 @@ const scenes = planLongformScenesFromDraft({
   characterSheet: {},
 });
 assert.equal(scenes.length, 10 + Math.ceil((720 - 60) / 18));
-assert.deepEqual(scenes.slice(0, 10).map((scene) => scene.outputMode), Array(10).fill("video"));
+const openingVideoScenes = scenes.slice(0, 10).filter((scene) => scene.outputMode === "video");
+assert.ok(openingVideoScenes.length < 10, "longform auto should not force all first 10 opening scenes to video");
+assert.ok(scenes.slice(0, 10).some((scene) => scene.autoReason || scene.autoRejectedReason), "longform opening scenes should expose auto decision reasons");
 assert.ok(scenes.slice(10).every((scene) => scene.outputMode === "image"));
 assert.ok(scenes.every((scene) => scene.duration_seconds >= 4 && scene.duration_seconds <= 30), "longform media scene durations should remain render-safe");
 assert.ok(scenes.every((scene) => /Output mode: (video|image)/i.test(scene.image_prompt)), "longform prompts should include explicit output mode");
 
 const mediaPlan = buildLongformMediaPlan({ job: longformJob, draft: { ...draft, scenes } });
 assert.equal(mediaPlan.videoFormat, "longform");
-assert.equal(mediaPlan.introVideoClipCount, 10);
+assert.equal(mediaPlan.introVideoClipCount, openingVideoScenes.length);
 assert.equal(mediaPlan.visualScenes.length, scenes.length);
 assert.ok(mediaPlan.narrationSegments.length >= scenes.length);
 
@@ -119,8 +135,8 @@ const assets = await generateYouTubeWorkflowAssets(assetJob, {
 const planPath = join(assets.jobDir, "longform-media-plan.json");
 assert.ok(existsSync(planPath), "longform jobs should persist longform-media-plan.json");
 const savedPlan = JSON.parse(readFileSync(planPath, "utf8"));
-assert.equal(savedPlan.introVideoClipCount, 10);
-assert.equal(savedPlan.visualScenes.filter((scene) => scene.outputMode === "video").length, 10);
+assert.ok(savedPlan.introVideoClipCount < 10, "saved longform plan should reflect auto-selected opening video count, not the requested max");
+assert.equal(savedPlan.visualScenes.filter((scene) => scene.outputMode === "video").length, savedPlan.introVideoClipCount);
 assert.ok(savedPlan.visualScenes.some((scene) => scene.outputMode === "image"));
 assert.equal(assets.sceneMedia.length, savedPlan.visualScenes.length, "asset generation should visit every planned longform scene");
 

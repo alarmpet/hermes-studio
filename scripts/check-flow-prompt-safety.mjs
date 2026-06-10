@@ -45,4 +45,11 @@ assert.equal(isFlowPolicyWarningText("이 프롬프트는 유명인의 동영상
 assert.equal(isFlowPolicyWarningText("This prompt may violate Google policy for celebrity video generation."), true);
 assert.equal(isFlowPolicyWarningText("Flow did not expose a new video URL."), false);
 
+const stickmanHistorySafe = sanitizeFlowPrompt(
+  "Draw Napoleon Bonaparte with a Korean sign saying 진짜 키. Microsoft logo appears on the map.",
+  { title: "나폴레옹 키 조작", sceneOrder: 1, visualCategory: "history-stickmanplus" },
+);
+assert.doesNotMatch(stickmanHistorySafe.prompt, /Napoleon Bonaparte|Microsoft|진짜 키/i);
+assert.match(stickmanHistorySafe.prompt, /anonymous historical ruler|generic historical figure|no readable text|no logos/i);
+
 console.log(JSON.stringify({ ok: true, checked: "flow-prompt-safety", root }));

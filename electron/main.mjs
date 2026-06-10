@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import ffmpegPath from "ffmpeg-static";
 import { changeAuthAccount, clearAuthSession, getAuthStatus, startAuth } from "./services/auth-service.mjs";
 import { loadConfig, saveConfig } from "./services/config-store.mjs";
+import { checkOllamaHealth, normalizeOllamaConfig } from "./services/ollama-provider.mjs";
 import { listJobs, readJob, upsertJob } from "./services/job-store.mjs";
 import { getRuntimePaths } from "./services/path-resolver.mjs";
 import { findChromeExecutable } from "./services/browser-profile-service.mjs";
@@ -28,6 +29,7 @@ import { uploadVideoToYouTube } from "../pipeline/youtube-upload.mjs";
 import { mirrorWorkflowEventToDb } from "../workflow-db-events.mjs";
 import { createFailureProgressEvent } from "./services/job-progress-events.mjs";
 import { stopAllProviders } from "./services/external-provider-registry.mjs";
+import { createFlowRequestPacer } from "./services/flow-request-pacer.mjs";
 import { generateYouTubeWorkflowAssets, renderFinalYouTubeVideo } from "../youtube-workflow.mjs";
 import { createDefaultYouTubeStages } from "../youtube-workflow-stages.mjs";
 
@@ -110,6 +112,7 @@ async function readJobRequestFromJobDir(jobId) {
 
 function createRecoveryWorkflowContext({ job, jobDir, config }) {
   const chromePath = config.chromePath;
+  const flowPacer = createFlowRequestPacer({ userData: paths.userData });
   const emitWorkflow = (event = {}) => {
     if (event.type === "workflow-progress" || event.type === "workflow-warning") {
       sendJobEvent({
@@ -130,6 +133,7 @@ function createRecoveryWorkflowContext({ job, jobDir, config }) {
     jobDir,
     chromePath,
     ffmpegBin: FFMPEG_BIN,
+    flowPacer,
     enableLiveMcp: Boolean(job.options?.enableLiveMcp),
     emit: emitWorkflow,
     onFlowProgress: ({ message, details }) => sendJobEvent({
@@ -141,7 +145,7 @@ function createRecoveryWorkflowContext({ job, jobDir, config }) {
       details: { ...(details || {}) },
     }),
   });
-  return { stages, emitWorkflow, chromePath };
+  return { stages, emitWorkflow, chromePath, flowPacer };
 }
 
 async function loadExistingAssets(jobDir) {
@@ -335,6 +339,12 @@ ipcMain.handle("config:get", async () => loadConfig(paths.configPath));
 
 ipcMain.handle("config:save", async (_event, config) => saveConfig(paths.configPath, config));
 
+ipcMain.handle("ollama:health", async (_event, options = {}) => {
+  const persisted = await loadConfig(paths.configPath).catch(() => ({}));
+  const config = normalizeOllamaConfig({ ...persisted, ...options });
+  return checkOllamaHealth({ config });
+});
+
 ipcMain.handle("presets:voices", async () => listVisibleVoicePresets());
 
 ipcMain.handle("presets:styles", async () => listStylePresets({
@@ -426,6 +436,28 @@ ipcMain.handle("youtube:createJob", async (_event, input) => {
   const activeJobDir = join(OUTPUT_DIR, "desktop", jobIdFromInput);
   try {
     const config = await loadConfig(paths.configPath);
+    if (inputWithId.ollamaAssistEnabled) {
+      const ollamaHealth = await checkOllamaHealth({
+        config: normalizeOllamaConfig(inputWithId),
+      });
+      if (!ollamaHealth.ok) {
+        sendJobEvent({
+          type: "workflow-warning",
+          jobId: jobIdFromInput,
+          phase: "ollama-preflight",
+          message: `Ollama assist is enabled but unavailable: ${ollamaHealth.failureCode || ollamaHealth.status}. Local planner output will be preserved.`,
+          details: ollamaHealth,
+        });
+      } else {
+        sendJobEvent({
+          type: "workflow-progress",
+          jobId: jobIdFromInput,
+          phase: "ollama-preflight",
+          message: `Ollama assist connected: ${ollamaHealth.model}.`,
+          details: ollamaHealth,
+        });
+      }
+    }
     const result = await createYouTubeJob(inputWithId, {
       paths,
       emit: sendJobEvent,
@@ -456,21 +488,42 @@ ipcMain.handle("youtube:createJob", async (_event, input) => {
     sendJobEvent({ type: "desktop-job-finished", jobId: result.job.id, jobDir: result.assets.jobDir });
     return result;
   } catch (error) {
+    const failureDetails = error?.details || error?.failureDetails || null;
+    const renderReportPath = join(activeJobDir, "render-report-v2.json");
+    const failureReportPath = join(activeJobDir, "desktop-failure.json");
     await writeFile(join(activeJobDir, "desktop-failure.json"), JSON.stringify({
       ok: false,
       message: error?.message || String(error),
       stack: error?.stack || "",
       input: sanitizeFailurePayload(inputWithId),
+      failureDetails,
+      renderReportPath,
+      failureReportPath,
       updatedAt: new Date().toISOString(),
     }, null, 2), "utf8").catch(() => {});
-    sendJobEvent(createFailureProgressEvent({
+    const failureProgressEvent = createFailureProgressEvent({
+      jobId: jobIdFromInput,
       message: error?.message || String(error),
-      details: { input: sanitizeFailurePayload(inputWithId) },
-    }));
+      details: { input: sanitizeFailurePayload(inputWithId), failureDetails, renderReportPath, failureReportPath },
+    });
+    await upsertJob(paths.jobsDir, {
+      id: jobIdFromInput,
+      title: inputWithId.sourceValue || jobIdFromInput,
+      sourceValue: inputWithId.sourceValue || "",
+      status: failureProgressEvent.status || "failed",
+      jobDir: activeJobDir,
+      finalPath: "",
+      thumbnailPath: "",
+      createdAt: inputWithId.createdAt || new Date().toISOString(),
+    }).catch(() => {});
+    sendJobEvent(failureProgressEvent);
     sendJobEvent({
       type: "desktop-job-failed",
       message: error?.message || String(error),
       input: sanitizeFailurePayload(inputWithId),
+      failureDetails,
+      renderReportPath,
+      failureReportPath,
       updatedAt: new Date().toISOString(),
     });
     throw error;

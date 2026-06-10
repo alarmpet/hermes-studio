@@ -321,13 +321,36 @@ output {
 }
 
 .title-overlay-preview {
-  min-height: 160px;
+  --title-overlay-font: "Malgun Gothic";
+  --title-overlay-weight: 900;
+  --title-overlay-size: 26px;
+  --title-overlay-text: #ffffff;
+  --title-overlay-highlight: #fde047;
+  --title-overlay-bg: #050505;
+  --title-overlay-bg-opacity: .82;
+  --title-overlay-y: 4.5%;
+  --title-overlay-band-h: 14%;
+  --title-overlay-x-pad: 8%;
+  --title-overlay-outline: 2px;
+  position: relative;
+  /* 쇼츠(9:16) 비율 고정 */
+  aspect-ratio: 9 / 16;
+  max-height: 340px;
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
   background: linear-gradient(160deg, #2f6f6a, #1f2937 55%, #6b3f2a);
-  display: grid;
-  align-items: start;
+}
+
+.title-overlay-preview::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--title-overlay-y);
+  height: var(--title-overlay-band-h);
+  background: var(--title-overlay-bg);
+  opacity: var(--title-overlay-bg-opacity);
 }
 
 .title-overlay-preview[data-enabled="false"] {
@@ -335,18 +358,31 @@ output {
 }
 
 #titleOverlayPreviewText {
-  margin: 18px 22px 0;
-  padding: 12px 16px;
-  border-radius: 4px;
-  color: #fff;
-  background: rgba(0, 0, 0, .86);
-  font-size: 22px;
-  line-height: 1.08;
-  font-weight: 900;
+  position: absolute;
+  left: var(--title-overlay-x-pad);
+  right: var(--title-overlay-x-pad);
+  /* 배경 밴드 내 수직 중앙 정렬 */
+  top: var(--title-overlay-y);
+  height: var(--title-overlay-band-h);
+  margin: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--title-overlay-text);
+  background: transparent;
+  font-family: var(--title-overlay-font), sans-serif;
+  font-size: var(--title-overlay-size);
+  line-height: 1.18;
+  font-weight: var(--title-overlay-weight);
   text-align: center;
-  text-shadow: -2px -2px 0 #000, 2px 2px 0 #000;
+  text-shadow:
+    calc(var(--title-overlay-outline) * -1) calc(var(--title-overlay-outline) * -1) 0 #000,
+    var(--title-overlay-outline) var(--title-overlay-outline) 0 #000;
+  /* 쇼츠처럼 자연스러운 줄바꿈 */
   word-break: keep-all;
   overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .title-overlay-preview[data-style="white-editorial"] #titleOverlayPreviewText {
@@ -865,6 +901,39 @@ output {
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.ollama-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  width: fit-content;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+  background: #f8fafc;
+}
+
+.ollama-status.is-connected {
+  color: #166534;
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.ollama-status.is-unreachable,
+.ollama-status.is-timeout,
+.ollama-status.is-model-missing,
+.ollama-status.is-blocked {
+  color: #92400e;
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.ollamaUnsupportedUseCase {
+  color: var(--muted);
 }
 
 @media (max-width: 980px) {

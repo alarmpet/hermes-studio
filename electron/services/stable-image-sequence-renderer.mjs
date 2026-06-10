@@ -52,6 +52,19 @@ function motionScale(strength) {
   return 1;
 }
 
+function normalizeCameraSafetyMode(value) {
+  return String(value || "default").toLowerCase() === "explainer" ? "explainer" : "default";
+}
+
+function maxZoomForSafetyMode({ cameraSafetyMode, motionStrength }) {
+  if (normalizeCameraSafetyMode(cameraSafetyMode) !== "explainer") return Number.POSITIVE_INFINITY;
+  const strength = String(motionStrength || "light").toLowerCase();
+  if (strength === "strong") return 1.12;
+  if (strength === "medium") return 1.09;
+  if (strength === "none") return 1;
+  return 1.06;
+}
+
 function presetEndpoints({ motionPreset, motionStrength }) {
   const preset = String(motionPreset || "slow-zoom-in").toLowerCase();
   const scale = motionScale(motionStrength);
@@ -63,6 +76,20 @@ function presetEndpoints({ motionPreset, motionStrength }) {
   const zoomSmall = 0.045 * scale;
   const zoomMedium = 0.07 * scale;
   switch (preset) {
+    case "center-breathe":
+      return { ...center, z0: 1 + zoomSmall * 0.25, z1: 1 + zoomSmall * 0.75 };
+    case "subject-hold-push":
+      return { ...center, z0: 1 + zoomSmall * 0.15, z1: 1 + zoomMedium * 0.85 };
+    case "wide-pullback":
+      return { ...center, z0: 1 + zoomMedium * 1.15, z1: 1 + zoomSmall * 0.2 };
+    case "edge-to-center":
+      return { x0: 0.5 - pan * 0.7, x1: 0.5, y0: 0.5 - tilt * 0.45, y1: 0.5, z0: 1 + zoomSmall, z1: 1 + zoomMedium };
+    case "micro-parallax-crop":
+      return { x0: 0.5 - pan * 0.22, x1: 0.5 + pan * 0.22, y0: 0.5 + tilt * 0.18, y1: 0.5 - tilt * 0.18, z0: 1 + zoomSmall * 0.55, z1: 1 + zoomSmall * 0.8 };
+    case "reveal-from-top":
+      return { x0: 0.5, x1: 0.5, y0: 0.5 - tilt * 0.9, y1: 0.5 + tilt * 0.25, z0: 1 + zoomSmall, z1: 1 + zoomSmall };
+    case "reveal-from-bottom":
+      return { x0: 0.5, x1: 0.5, y0: 0.5 + tilt * 0.9, y1: 0.5 - tilt * 0.25, z0: 1 + zoomSmall, z1: 1 + zoomSmall };
     case "slow-pan-left":
       return { x0: 0.5 + pan, x1: 0.5 - pan, y0: 0.5, y1: 0.5, z0: 1 + zoomSmall, z1: 1 + zoomSmall };
     case "slow-pan-right":
@@ -79,6 +106,8 @@ function presetEndpoints({ motionPreset, motionStrength }) {
       return { x0: 0.5 + pan * 0.75, x1: 0.5 - pan * 0.75, y0: 0.5 - tilt * 0.75, y1: 0.5 + tilt * 0.75, z0: 1 + zoomMedium, z1: 1 + zoomMedium };
     case "diagonal-drift-down-right":
       return { x0: 0.5 - pan * 0.75, x1: 0.5 + pan * 0.75, y0: 0.5 - tilt * 0.75, y1: 0.5 + tilt * 0.75, z0: 1 + zoomMedium, z1: 1 + zoomMedium };
+    case "reverse-diagonal-drift":
+      return { x0: 0.5 + pan * 0.75, x1: 0.5 - pan * 0.75, y0: 0.5 + tilt * 0.75, y1: 0.5 - tilt * 0.75, z0: 1 + zoomMedium, z1: 1 + zoomMedium };
     case "diagonal-drift":
       return { x0: 0.5 - pan * 0.75, x1: 0.5 + pan * 0.75, y0: 0.5 - tilt * 0.75, y1: 0.5 + tilt * 0.75, z0: 1 + zoomMedium, z1: 1 + zoomMedium };
     case "tilt-reveal":
@@ -120,17 +149,21 @@ export function buildStableCameraPath({
   motionPreset = "slow-zoom-in",
   motionStrength = "light",
   framesPerMotionStep = 1,
+  cameraSafetyMode = "default",
 } = {}) {
   const totalFrames = Math.max(1, Math.round(finiteNumber(frameCount, 1)));
   const step = Math.max(1, Math.round(finiteNumber(framesPerMotionStep, 1)));
   const uniqueFrameCount = Math.max(1, Math.ceil(totalFrames / step));
   const endpoints = presetEndpoints({ motionPreset, motionStrength });
+  const normalizedCameraSafetyMode = normalizeCameraSafetyMode(cameraSafetyMode);
+  const maxZoom = maxZoomForSafetyMode({ cameraSafetyMode: normalizedCameraSafetyMode, motionStrength });
   const rawPoints = [];
 
   for (let uniqueIndex = 0; uniqueIndex < uniqueFrameCount; uniqueIndex += 1) {
     const progress = uniqueFrameCount === 1 ? 0 : uniqueIndex / (uniqueFrameCount - 1);
     const eased = easeInOut(progress);
-    const zoom = endpoints.z0 + (endpoints.z1 - endpoints.z0) * eased;
+    const rawZoom = endpoints.z0 + (endpoints.z1 - endpoints.z0) * eased;
+    const zoom = Math.min(rawZoom, maxZoom);
     const cropWidth = clamp(Math.round(outputWidth / zoom), 1, Math.min(width, outputWidth));
     const cropHeight = clamp(Math.round(outputHeight / zoom), 1, Math.min(height, outputHeight));
     const centerX = endpoints.x0 + (endpoints.x1 - endpoints.x0) * eased;
@@ -202,6 +235,7 @@ export async function renderStableImageSequenceClip({
   outputHeight = OUTPUT_HEIGHT,
   jobDir,
   keepFrames = false,
+  cameraSafetyMode = "default",
 } = {}) {
   const resolvedFfmpegBin = resolveFfmpegBin(ffmpegBin);
   if (!resolvedFfmpegBin) throw new Error("ffmpegBin is required for stable image sequence rendering.");
@@ -220,6 +254,7 @@ export async function renderStableImageSequenceClip({
   const duplicateMethods = new Set();
   const warnings = [];
   let cacheCleaned = false;
+  const normalizedCameraSafetyMode = normalizeCameraSafetyMode(cameraSafetyMode);
 
   rmSync(cacheDir, { recursive: true, force: true });
   mkdirSync(uniqueDir, { recursive: true });
@@ -229,7 +264,7 @@ export async function renderStableImageSequenceClip({
     .resize(
       Math.round(outputWidth * (DEFAULT_CANVAS_WIDTH / OUTPUT_WIDTH)),
       Math.round(outputHeight * (DEFAULT_CANVAS_HEIGHT / OUTPUT_HEIGHT)),
-      { fit: "cover", position: "attention" },
+      { fit: "cover", position: normalizedCameraSafetyMode === "explainer" ? "center" : "attention" },
     )
     .jpeg({ quality: 94, chromaSubsampling: "4:4:4" })
     .toBuffer();
@@ -242,7 +277,12 @@ export async function renderStableImageSequenceClip({
     motionPreset,
     motionStrength: policy.motionStrength,
     framesPerMotionStep: policy.framesPerMotionStep,
+    cameraSafetyMode: normalizedCameraSafetyMode,
   });
+  const maxPathZoom = Math.max(...path.map((point) => Number(point.zoom || 1)));
+  const minCropWidth = Math.min(...path.map((point) => Number(point.cropWidth || outputWidth)));
+  const minCropHeight = Math.min(...path.map((point) => Number(point.cropHeight || outputHeight)));
+  const visibleSourceRatio = Number(Math.min(minCropWidth / outputWidth, minCropHeight / outputHeight).toFixed(4));
 
   try {
     for (let uniqueIndex = 0; uniqueIndex < path.length; uniqueIndex += 1) {
@@ -321,6 +361,11 @@ export async function renderStableImageSequenceClip({
     frameDurationSeconds,
     audioDurationSeconds,
     durationDriftSeconds,
+    cameraSafetyMode: normalizedCameraSafetyMode,
+    maxZoom: Number(maxPathZoom.toFixed(6)),
+    minCropWidth,
+    minCropHeight,
+    visibleSourceRatio,
     cameraPath: path,
     warnings,
   };

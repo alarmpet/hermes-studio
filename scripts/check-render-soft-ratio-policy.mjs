@@ -16,8 +16,9 @@ assert.equal(longImageModeSoft.requiresRegeneration, false, "image-mode scenes s
 assert.equal(longImageModeSoft.strategy, "slowdown-loop");
 
 const hardByRatio = classifyDurationSyncPolicy({ order: 6, videoDuration: 8, audioDuration: 14 });
-assert.equal(hardByRatio.requiresRegeneration, false, "short Flow video clips up to 2.5x should render with loop-extension instead of failing");
-assert.equal(hardByRatio.strategy, "loop-extension");
+assert.equal(hardByRatio.requiresRegeneration, false, "short Flow video clips with excessive narration should fall back to image motion instead of failing");
+assert.equal(hardByRatio.strategy, "video-to-image-fallback");
+assert.ok(hardByRatio.qualityWarnings.some((warning) => warning.code === "VIDEO_TO_IMAGE_FALLBACK"));
 
 const hardByHold = classifyDurationSyncPolicy({ order: 3, videoDuration: 8, audioDuration: 12.5 });
 assert.equal(hardByHold.requiresRegeneration, false, "short Flow video clips with moderate extra audio should not fail final render");
@@ -26,7 +27,7 @@ assert.equal(hardByHold.extraHoldSeconds > 4, true);
 
 const reportedFailureCase = classifyDurationSyncPolicy({ order: 1, videoDuration: 8, audioDuration: 16.88 });
 assert.equal(reportedFailureCase.requiresRegeneration, false, "reported scene=1 ratio=2.11 should not fail final render");
-assert.equal(reportedFailureCase.strategy, "loop-extension", "reported scene=1 ratio=2.11 should loop the Flow clip instead of freezing");
+assert.equal(reportedFailureCase.strategy, "video-to-image-fallback", "reported scene=1 ratio=2.11 should use still-frame motion instead of repeating a short Flow clip");
 
 const extremeVideoMismatch = classifyDurationSyncPolicy({ order: 1, videoDuration: 8, audioDuration: 25 });
 assert.equal(extremeVideoMismatch.requiresRegeneration, true, "extreme video mismatch should still require regeneration");

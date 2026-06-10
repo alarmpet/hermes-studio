@@ -3,6 +3,7 @@ import { join } from "node:path";
 import sharp from "sharp";
 import { generateGoogleFlowVideoFromPrompt } from "../automation/google-flow-media.mjs";
 import { buildFlowThumbnailPrompt, buildThumbnailOverlayPlan } from "./youtube-thumbnail-prompt.mjs";
+import { findChromeExecutable } from "../electron/services/browser-profile-service.mjs";
 
 export async function createThumbnailForJob({
   draft,
@@ -13,12 +14,17 @@ export async function createThumbnailForJob({
   emit,
   flowTimeoutMs,
   thumbnailOverlay = {},
+  stylePresetId = "",
+  stylePreset = {},
 }) {
+  const resolvedChromePath = chromePath || findChromeExecutable();
   const overlayPlan = buildThumbnailOverlayPlan({
     title: draft?.title,
     script: draft?.script,
     hpsl: draft?.hpsl,
     userOverlay: thumbnailOverlay,
+    stylePresetId,
+    stylePreset,
   });
   const prompt = buildFlowThumbnailPrompt({
     title: draft?.title,
@@ -27,6 +33,8 @@ export async function createThumbnailForJob({
     aspectRatio,
     visualContext: summarizeSceneVisuals(draft?.scenes),
     userOverlay: thumbnailOverlay,
+    stylePresetId,
+    stylePreset,
   });
 
   emit?.({
@@ -38,6 +46,7 @@ export async function createThumbnailForJob({
       aspectRatio,
       hookHeadline: overlayPlan.hookHeadline,
       highlightKeywords: overlayPlan.highlightKeywords,
+      styleMode: overlayPlan.styleMode,
     },
   });
 
@@ -45,7 +54,7 @@ export async function createThumbnailForJob({
     prompt,
     jobDir,
     sceneOrder: "thumbnail",
-    chromePath,
+    chromePath: resolvedChromePath,
     profileDir: paths?.flowProfileDir,
     outputMode: "image",
     aspectRatio,
@@ -134,6 +143,8 @@ export async function composeFlowThumbnail({ backgroundPath, overlayPlan, jobDir
     highlightKeywords: overlayPlan.highlightKeywords || [],
     overlayEnabled: overlayPlan.enabled !== false,
     style: overlayPlan.style || {},
+    styleMode: overlayPlan.styleMode || "cinematic-contrast",
+    styleWarning: thumbnailStyleWarning(overlayPlan),
     updatedAt: new Date().toISOString(),
   }, null, 2), "utf8");
 
@@ -286,6 +297,13 @@ function summarizeSceneVisuals(scenes = []) {
     .filter(Boolean)
     .join(" | ")
     .slice(0, 360);
+}
+
+function thumbnailStyleWarning(overlayPlan = {}) {
+  if (overlayPlan.styleMode === "cinematic-contrast" && overlayPlan.videoStyleFamily === "flat-explainer") {
+    return "THUMBNAIL_VIDEO_STYLE_CONTRAST";
+  }
+  return "";
 }
 
 function thumbnailSize(aspectRatio) {

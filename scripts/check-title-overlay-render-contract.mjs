@@ -10,14 +10,14 @@ const renderer = readFileSync(resolve(root, "scripts/render-youtube-with-tts.mjs
 const html = readFileSync(resolve(root, "electron/renderer/index.html"), "utf8");
 const app = readFileSync(resolve(root, "electron/renderer/app.js"), "utf8");
 
-assert.match(schema, /hasExplicitTitleOverlayEnabled/, "schema should distinguish explicit longform title overlay opt-in");
+assert.match(schema, /suppressTitleOverlay/, "schema should suppress top titles for longform or horizontal 3min+ output");
 assert.match(schema, /titleOverlayMode/, "schema should normalize title overlay auto/manual mode");
 assert.match(schema, /titleOverlayStyleId/, "schema should validate title overlay style");
 assert.match(workflow, /resolveTitleOverlayText/, "workflow should resolve automatic title overlay text after draft normalization");
 assert.match(workflow, /titleOverlay:\s*\{/, "workflow should write title overlay render options");
 assert.match(workflow, /titleOverlayTextSource/, "workflow metadata should expose the title overlay text source");
 assert.match(workflow, /renderOptions\.titleOverlay\.text\s*=\s*resolvedTitleOverlay\.text/, "workflow should write resolved title into render options");
-assert.match(workflow, /titleOverlay\.keywords\s*=\s*buildTitleOverlayKeywords/, "workflow should pass title keyword hints to the renderer");
+assert.match(workflow, /buildTitleOverlayKeywords/, "workflow should pass title keyword hints to the renderer");
 assert.match(renderer, /createTitleOverlayImage/, "renderer should generate a title overlay PNG");
 assert.match(renderer, /wrapBalancedTitle/, "renderer should use balanced top-title line wrapping");
 assert.match(renderer, /buildTitleOverlayLayout/, "renderer should compute title safe-area layout");
