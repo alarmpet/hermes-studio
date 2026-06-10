@@ -105,6 +105,8 @@ function isFlowSubmissionActive(state = {}) {
   return Boolean(
     state.hasProgressPercent
     || state.hasVideo
+    || state.hasThinkingStatus
+    || state.hasStopButton
     || state.failureClassification
   );
 }
@@ -766,6 +768,8 @@ async function submitFlowPromptByKeyboard(page) {
       createButtonVisible: state.createButtonVisible,
       hasProgressPercent: state.hasProgressPercent,
       hasVideo: state.hasVideo,
+      hasThinkingStatus: state.hasThinkingStatus,
+      hasStopButton: state.hasStopButton,
       failureCode: state.failureClassification?.code || "",
     });
     if (submitted) {
@@ -826,6 +830,8 @@ async function probeFlowSubmitState(page) {
         return bArrow - aArrow || bBottom - aBottom || (b.rect.x - a.rect.x) || (b.rect.y - a.rect.y);
       })[0];
     const generatorMenuOpen = /crop_landscape|crop_square|crop_portrait|crop_9_16|Nano Banana Pro\s*arrow_drop_down|credits|credit/i.test(text);
+    const hasThinkingStatus = /생각 중|thinking|generating|작업 중|processing/i.test(text);
+    const hasStopButton = buttons.some((item) => /stop|중지/i.test(item.text) && !item.disabled);
     const promptTextboxFocused = Boolean(document.activeElement && (
       document.activeElement.matches?.("[contenteditable='true'],textarea,[role='textbox']")
       || document.activeElement.closest?.("[contenteditable='true'],textarea,[role='textbox']")
@@ -852,6 +858,8 @@ async function probeFlowSubmitState(page) {
       hasProgressPercent: percents.length > 0,
       maxPercent: percents.length ? Math.max(...percents) : null,
       hasVideo: document.querySelectorAll("video").length > 0,
+      hasThinkingStatus,
+      hasStopButton,
       generatorMenuOpen,
       textTail: text.slice(-1000),
     };
@@ -864,7 +872,7 @@ async function probeFlowSubmitState(page) {
   };
 }
 
-async function approveFlowGenerationConfirmation(page) {
+async function probeFlowGenerationConfirmation(page) {
   return page.evaluate(() => {
     const bodyText = document.body?.innerText || "";
     const confirmationOpen = /(크레딧|credit).*(사용|use)|생성을 시작|start generation/i.test(bodyText)
@@ -902,6 +910,86 @@ async function approveFlowGenerationConfirmation(page) {
       y: Math.round(target.rect.y + target.rect.height / 2),
     };
   }).catch((error) => ({ approved: false, reason: error?.message || String(error) }));
+}
+
+async function probeFlowGenerationConfirmationState(page) {
+  return page.evaluate(() => {
+    const bodyText = document.body?.innerText || "";
+    const visible = (el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return !el.disabled
+        && el.getAttribute("aria-disabled") !== "true"
+        && style.visibility !== "hidden"
+        && style.display !== "none"
+        && rect.width > 8
+        && rect.height > 8;
+    };
+    const textOf = (el) => [
+      el.innerText,
+      el.textContent,
+      el.getAttribute("aria-label"),
+      el.getAttribute("title"),
+    ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const candidates = Array.from(document.querySelectorAll("button,[role='button']"))
+      .filter(visible)
+      .map((el) => ({ el, text: textOf(el), rect: el.getBoundingClientRect() }))
+      .filter((item) => /승인|확인|approve|confirm/i.test(item.text))
+      .filter((item) => !/다시 묻지 않음|don't ask|dont ask/i.test(item.text))
+      .map((item) => {
+        const centerX = item.rect.x + item.rect.width / 2;
+        const centerY = item.rect.y + item.rect.height / 2;
+        const inRightPanel = viewportWidth ? centerX > viewportWidth * 0.58 : true;
+        const lowerPanel = viewportHeight ? centerY > viewportHeight * 0.55 : true;
+        const exactApproval = /^(check\s*)?(승인|확인|approve|confirm)$/i.test(item.text);
+        return {
+          text: item.text,
+          x: Math.round(centerX),
+          y: Math.round(centerY),
+          width: Math.round(item.rect.width),
+          height: Math.round(item.rect.height),
+          inRightPanel,
+          lowerPanel,
+          score: (inRightPanel ? 1000 : 0) + (lowerPanel ? 500 : 0) + (exactApproval ? 200 : 0) + Math.round(centerY),
+        };
+      })
+      .sort((a, b) => b.score - a.score);
+    const approvalVisible = candidates.some((item) => /승인|approve/i.test(item.text));
+    const open = approvalVisible
+      && (/크레딧|credit|사용|use|생성을 시작|start generation|going to generate|generate a/i.test(bodyText));
+    return {
+      open,
+      approvalVisible,
+      target: candidates[0] || null,
+      candidates: candidates.slice(0, 5),
+    };
+  }).catch((error) => ({ open: false, approvalVisible: false, reason: error?.message || String(error) }));
+}
+
+async function approveFlowGenerationConfirmation(page) {
+  let state = await probeFlowGenerationConfirmationState(page);
+  if (!state.open) return { approved: false, reason: "no-generation-confirmation", state };
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const target = state.target;
+    if (!target) return { approved: false, reason: "approval-button-not-found", state };
+    await page.mouse.click(target.x, target.y).catch(() => {});
+    await delay(900);
+    const after = await probeFlowGenerationConfirmationState(page);
+    if (!after.open || !after.approvalVisible) {
+      return {
+        approved: true,
+        label: target.text,
+        x: target.x,
+        y: target.y,
+        attempt,
+        after,
+      };
+    }
+    state = after;
+  }
+  return { approved: false, reason: "approval-button-still-visible", state };
 }
 
 async function verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode = "video", onProgress, accountSlotId = "default") {

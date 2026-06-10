@@ -365,6 +365,7 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
         motionPreset: motion.name,
         motionStrength: job?.options?.motionIntensity || "light",
         jobDir,
+        aspectRatio: job?.options?.aspectRatio || "9:16",
       });
       return {
         path: renderPath,
@@ -381,6 +382,9 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
         motionDirection: motion.direction,
         motionEnergy: motion.energy,
         motionZoomType: motion.zoomType,
+        aspectRatio: rendered.aspectRatio,
+        normalizedWidth: rendered.normalizedWidth,
+        normalizedHeight: rendered.normalizedHeight,
       };
     } catch (error) {
       context.emit?.({
@@ -648,6 +652,7 @@ export async function generateMockMedia({ scene, jobDir }, context = {}) {
       motionPreset: motion.name,
       motionStrength: context.job?.options?.motionIntensity || "light",
       jobDir,
+      aspectRatio: jobAspectRatio,
     });
     return {
       path: outputPath,
@@ -663,7 +668,9 @@ export async function generateMockMedia({ scene, jobDir }, context = {}) {
       motionEnergy: motion.energy,
       motionZoomType: motion.zoomType,
       motionStrategy: rendered.motionStrategy,
-      aspectRatio: jobAspectRatio,
+      aspectRatio: rendered.aspectRatio,
+      normalizedWidth: rendered.normalizedWidth,
+      normalizedHeight: rendered.normalizedHeight,
     };
   }
 

@@ -87,10 +87,11 @@ assert.match(outputModeHelper, /verifyFlowOutputMode/, "Flow output helper must 
 assert.match(outputModeHelper, /requestedOutputMode/, "verification must report requested output mode");
 assert.match(outputModeHelper, /selectedOutputMode/, "verification must report selected output mode");
 assert.match(outputModeHelper, /bottomGeneratorChip/, "mode selection must target the bottom generator chip, not the sidebar");
-assert.match(outputModeHelper, /Nano Banana Pro/, "image mode should request Nano Banana Pro, not Imagen 4");
+assert.match(outputModeHelper, /Imagen 4/, "image mode should allow a non-Pro model when Nano Banana Pro is daily-limit blocked");
+assert.match(outputModeHelper, /excludeGeneratorLabels/, "image mode should explicitly exclude daily-limit-prone Pro model choices");
 assert.match(outputModeHelper, /selectedImageModel/, "Flow verification should report selected image model");
 assert.match(outputModeHelper, /selectedImageModel !== "unknown"/, "image mode verification should require a known image model");
-assert.doesNotMatch(outputModeHelper, /imageModel:\s*\[[^\]]*"Imagen"/s, "image model selection should not prefer or fall back to Imagen");
+assert.doesNotMatch(outputModeHelper, /imageModel:\s*\[[^\]]*"Nano Banana Pro"/s, "image model selection should not be pinned to Nano Banana Pro");
 assert.match(flow, /locale:\s*["']ko-KR["']/, "Flow browser context should force ko-KR locale for stable labels");
 assert.match(flow, /retryFlowOutputModeAfterReload/, "Flow automation should have one bounded reload retry for transient mode-switch failures");
 assert.match(flow, /flow_mode_verification/, "Flow automation must save mode verification artifacts");

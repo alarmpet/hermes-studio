@@ -8,7 +8,7 @@ const LABELS = {
   video: ["동영상", "video"],
   imageSection: ["이미지 생성 기본값", "image generation"],
   videoSection: ["동영상 생성 기본값", "video generation"],
-  imageModel: ["Nano Banana 2", "Nano Banana Pro"],
+  imageModel: ["Imagen 4", "Nano Banana 2"],
   imageModelDropdown: ["Imagen 4", "Nano Banana 2", "Nano Banana"],
   videoModel: ["Veo 3.1 - Lite", "Veo"],
   aspect: ["9:16", "crop_9_16"],
@@ -132,6 +132,7 @@ async function configureFlowImage(page, aspectRatio = "9:16") {
     sectionLabels: LABELS.imageSection,
     modelDropdownLabels: LABELS.imageModelDropdown,
     generatorLabels: LABELS.imageModel,
+    excludeGeneratorLabels: ["Nano Banana Pro"],
     modelRequired: true,
     aspectLabels: aspectRatio === "16:9" ? LABELS.landscapeAspect : LABELS.aspect,
     countLabels: LABELS.count,
@@ -270,6 +271,10 @@ async function configureFlowGenerator(page, config) {
         if (Number.isFinite(options.minY) && item.rect.y < options.minY) return false;
         if (Number.isFinite(options.maxY) && item.rect.y > options.maxY) return false;
         if (options.requireArrowDropDown && !text.includes("arrow_drop_down")) return false;
+        if ((options.excludeLabels || []).some((label) => text.includes(String(label || "").toLowerCase()))) {
+          rejected.push({ text: item.text, reason: "excluded-label" });
+          return false;
+        }
         return true;
       }).sort((a, b) => {
         const aClickable = a.el.closest("button,[role='button'],[role='option']") ? 1 : 0;
@@ -401,7 +406,7 @@ async function configureFlowGenerator(page, config) {
     }
     await delay(500);
   }
-  results.push(await clickMatch(config.generatorLabels, { ...scoped, optional: !config.modelRequired }));
+  results.push(await clickMatch(config.generatorLabels, { ...scoped, optional: !config.modelRequired, excludeLabels: config.excludeGeneratorLabels || [] }));
   await delay(300);
 
   if (!agentSettingsPanelOpen) results.push(await openBottomGeneratorChip());

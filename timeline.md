@@ -429,3 +429,12 @@
 - Added automatic approval for Flow's video-generation credit confirmation dialog so Veo scenes can start after the create click instead of failing as submit-idle.
 - Final QA passed: 49 scenes, final duration 318.57s, generated scenes 32-49 complete, black-span QA ok, no failure codes.
 - Verification: `node --check automation/google-flow-media.mjs`, `node --check automation/google-flow-output-mode.mjs`, `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781029420405"`.
+
+## 2026-06-11 - Recovery - Flow approval, image model, and 16:9 final render
+
+- Investigated desktop job `youtube-1781097468679`, where scene 29 failed because Flow's video confirmation card still showed `Approve` after the automation clicked a non-final check element.
+- Hardened Flow approval handling to use mouse-coordinate approval clicks with post-click disappearance checks, and treated Flow's `thinking`/`stop` UI as active generation so idle retry does not retype over an in-progress job.
+- Fixed longform image-motion rendering so Flow stills honor the job aspect ratio; existing image clips for the job were re-rendered to 1920x1080 and scene 38 was completed as a Flow image after Flow cancelled video generation.
+- Switched default Flow image model selection away from daily-limit-prone `Nano Banana Pro` by excluding Pro choices and allowing non-Pro image models.
+- Final QA passed: 38 scenes, all scene clips 1920x1080, final render `desktop-manual-scene38-1781111191696.mp4`, black-span QA ok, no failure codes.
+- Verification: `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `node scripts/check-image-scene-renderer-contract.mjs`, `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781097468679"`.
