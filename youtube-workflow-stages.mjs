@@ -226,6 +226,13 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
   const outputMode = scene.outputMode || scene.flowOutputMode || job?.options?.flowOutputMode || "video";
   const jobFlowOutputMode = job?.options?.flowOutputMode || "video";
   const hybridIntroVideoSceneCount = job?.options?.hybridIntroVideoSceneCount;
+  const flowSceneContext = context.flowAccountRouter
+    ? context.flowAccountRouter.resolveSceneContext({ sceneOrder: scene.order })
+    : {
+    slot: { id: "default", label: "Default Flow" },
+    profileDir: context.paths?.flowProfileDir,
+    flowPacer: context.flowPacer,
+  };
   const prompt = scene.image_prompt;
   const fallback = buildFlowSafeFallbackPrompt({
     title: context.draft?.title || context.assets?.draft?.title || "",
@@ -248,6 +255,8 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
       flowOutputMode: jobFlowOutputMode,
       sceneOutputMode: outputMode,
       hybridIntroVideoSceneCount,
+      flowAccountSlotId: flowSceneContext.slot.id,
+      flowAccountSlotLabel: flowSceneContext.slot.label,
     },
   });
   context.emit?.({
@@ -260,6 +269,8 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
       flowOutputMode: jobFlowOutputMode,
       sceneOutputMode: outputMode,
       hybridIntroVideoSceneCount,
+      flowAccountSlotId: flowSceneContext.slot.id,
+      flowAccountSlotLabel: flowSceneContext.slot.label,
       phase: "hybrid-scene-render",
     },
   });
@@ -270,13 +281,14 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
       jobDir,
       sceneOrder: scene.order,
       chromePath: context.chromePath,
-      profileDir: context.paths?.flowProfileDir,
+      profileDir: flowSceneContext.profileDir,
       outputMode,
       aspectRatio: job?.options?.aspectRatio || "9:16",
       timeoutMs: context.flowTimeoutMs,
       safeFallbackPrompt: fallback.prompt,
       ingredientImagePaths: job?.options?.characterSheet?.referenceImagePaths || [],
-      flowPacer: context.flowPacer,
+      flowPacer: flowSceneContext.flowPacer,
+      flowAccountSlotId: flowSceneContext.slot.id,
       jobId: job?.id || context.job?.id || "",
       onProgress: ({ message, details } = {}) => {
         const isFlowModeMismatch = details?.eventType === "flow-mode-mismatch";
@@ -290,6 +302,8 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
           sceneOutputMode: outputMode,
           hybridIntroVideoSceneCount,
           sceneOrder: scene.order,
+          flowAccountSlotId: flowSceneContext.slot.id,
+          flowAccountSlotLabel: flowSceneContext.slot.label,
         };
         context.emit?.({
           type: details?.eventType === "flow-policy-warning" || isFlowModeMismatch || isFlowHardFailure ? "workflow-warning" : "workflow-progress",
@@ -303,6 +317,11 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
       },
     });
   } catch (error) {
+    error.details = {
+      ...(error.details || {}),
+      flowAccountSlotId: flowSceneContext.slot.id,
+      flowAccountSlotLabel: flowSceneContext.slot.label,
+    };
     return handleFlowImageSceneFailure({ error, outputMode, scene, job, jobDir, context: mediaContext, jobFlowOutputMode, hybridIntroVideoSceneCount });
   }
   if (outputMode === "image") {
@@ -325,6 +344,8 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
         flowOutputMode: jobFlowOutputMode,
         sceneOutputMode: "image",
         hybridIntroVideoSceneCount,
+        flowAccountSlotId: flowSceneContext.slot.id,
+        flowAccountSlotLabel: flowSceneContext.slot.label,
         renderEffectPreset: job?.options?.renderEffectPreset || "cinematic",
         motionIntensity: job?.options?.motionIntensity || "light",
         motionPreset: motion.name,
@@ -353,6 +374,8 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
         sourceContentType: media.contentType,
         flowOutputMode: "image",
         sceneOutputMode: "image",
+        flowAccountSlotId: flowSceneContext.slot.id,
+        flowAccountSlotLabel: flowSceneContext.slot.label,
         motionPreset: rendered.motionPreset,
         motionAxis: motion.axis,
         motionDirection: motion.direction,
@@ -371,6 +394,8 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
           flowOutputMode: jobFlowOutputMode,
           sceneOutputMode: "image",
           hybridIntroVideoSceneCount,
+          flowAccountSlotId: flowSceneContext.slot.id,
+          flowAccountSlotLabel: flowSceneContext.slot.label,
           renderEffectPreset: job?.options?.renderEffectPreset || "cinematic",
           motionPreset: motion.name,
           motionAxis: motion.axis,
@@ -395,6 +420,8 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
       flowOutputMode: jobFlowOutputMode,
       sceneOutputMode: "video",
       hybridIntroVideoSceneCount,
+      flowAccountSlotId: flowSceneContext.slot.id,
+      flowAccountSlotLabel: flowSceneContext.slot.label,
       phase: "flow-video-normalize",
     },
   });
@@ -416,6 +443,8 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
     sourceContentType: media.contentType,
     flowOutputMode: outputMode,
     sceneOutputMode: outputMode,
+    flowAccountSlotId: flowSceneContext.slot.id,
+    flowAccountSlotLabel: flowSceneContext.slot.label,
     normalizedDurationSeconds: normalized.durationSeconds,
     aspectRatio: jobAspectRatio,
     normalizedWidth: normalized.width,

@@ -21,6 +21,16 @@ assert.match(preload, /youtubeRetryFailedScenes/, "preload should expose retry f
 assert.match(preload, /youtubeRenderExistingAssets/, "preload should expose render existing assets IPC");
 assert.match(main, /ipcMain\.handle\("youtube:retryFailedScenes"/, "main should handle retry failed scenes");
 assert.match(main, /ipcMain\.handle\("youtube:renderExistingAssets"/, "main should handle render existing assets");
+assert.match(main, /youtube:authenticateFlowAccountSlot/, "main should expose slot-aware Flow authentication");
+assert.match(main, /youtube:clearFlowAccountSlot/, "main should expose slot-aware Flow session clearing");
+assert.match(preload, /youtubeAuthenticateFlowAccountSlot/, "preload should expose slot-aware Flow authentication");
+assert.match(preload, /youtubeClearFlowAccountSlot/, "preload should expose slot-aware Flow session clearing");
+assert.match(app, /authenticateFlowAccountSlot/, "renderer should call slot-aware Flow authentication");
+assert.match(app, /clearFlowAccountSlot/, "renderer should call slot-aware Flow session clearing");
+assert.match(main, /openPersistentChrome/, "slot-aware Flow auth should reuse the existing persistent Chrome launcher");
+assert.doesNotMatch(main, /authenticateGoogleFlow/, "main must not call a nonexistent authenticateGoogleFlow helper");
+assert.match(main, /flowAccountRouter/, "failed scene retry should reuse the same Flow account router");
+assert.match(main, /flowAccountSlotId/, "recovery events should expose Flow account slot id");
 assert.match(main, /readJobRequestFromJobDir/, "main recovery should load job-request.json from the selected output folder");
 assert.match(main, /renderFinalYouTubeVideo/, "render existing assets should reuse final renderer");
 assert.match(workflow, /scene-media-manifest\.json/, "workflow should persist scene media manifest for recovery");

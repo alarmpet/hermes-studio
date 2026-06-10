@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("hermes", {
   selectDirectory: () => ipcRenderer.invoke("app:selectDirectory"),
   openPath: (targetPath) => ipcRenderer.invoke("app:openPath", targetPath),
   youtubeCreateJob: (input) => ipcRenderer.invoke("youtube:createJob", input),
+  youtubeAuthenticateFlowAccountSlot: (slotId) => ipcRenderer.invoke("youtube:authenticateFlowAccountSlot", slotId),
+  youtubeClearFlowAccountSlot: (slotId) => ipcRenderer.invoke("youtube:clearFlowAccountSlot", slotId),
   youtubeRetryFailedScenes: (jobId) => ipcRenderer.invoke("youtube:retryFailedScenes", jobId),
   youtubeRenderExistingAssets: (jobId) => ipcRenderer.invoke("youtube:renderExistingAssets", jobId),
   youtubeRetryThumbnail: (jobId) => ipcRenderer.invoke("youtube:retryThumbnail", jobId),

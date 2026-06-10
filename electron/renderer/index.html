@@ -114,6 +114,32 @@
                 </label>
                 <label for="chapterTargetSeconds">챕터 목표 길이(초)</label>
                 <input id="chapterTargetSeconds" type="number" min="60" max="120" value="90">
+                <label class="checkbox-row flow-account-routing-toggle" for="flowAccountRoutingEnabled">
+                  <input id="flowAccountRoutingEnabled" type="checkbox">
+                  <span>Use Flow A/B account batch routing</span>
+                </label>
+                <label class="flow-account-batch-size" for="flowAccountBatchSize">Scenes per account batch</label>
+                <input id="flowAccountBatchSize" class="flow-account-batch-size" type="number" min="1" max="60" value="30">
+                <div class="flow-account-slot-grid">
+                  <section class="flow-account-slot">
+                    <strong>Flow A</strong>
+                    <label for="flowAccountSlotALabel">Label</label>
+                    <input id="flowAccountSlotALabel" type="text" value="Flow A">
+                    <div class="flow-account-actions">
+                      <button id="authFlowAccountA" type="button" class="secondary-button">Login</button>
+                      <button id="clearFlowAccountA" type="button" class="secondary-button danger-button">Clear</button>
+                    </div>
+                  </section>
+                  <section class="flow-account-slot">
+                    <strong>Flow B</strong>
+                    <label for="flowAccountSlotBLabel">Label</label>
+                    <input id="flowAccountSlotBLabel" type="text" value="Flow B">
+                    <div class="flow-account-actions">
+                      <button id="authFlowAccountB" type="button" class="secondary-button">Login</button>
+                      <button id="clearFlowAccountB" type="button" class="secondary-button danger-button">Clear</button>
+                    </div>
+                  </section>
+                </div>
               </div>
 
               <div class="field-group">

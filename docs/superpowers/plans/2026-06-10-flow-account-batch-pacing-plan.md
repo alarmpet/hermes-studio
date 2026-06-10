@@ -27,6 +27,18 @@
 - `scene-media-manifest.json` persists scene status and should also persist `flowAccountSlotId`.
 - Desktop auth currently assumes one Flow profile; this plan adds slot-aware auth without removing the existing single-account path.
 
+## Review-Vetted Corrections To Apply
+
+These corrections came from `HERMES_FLOW_ACCOUNT_BATCH_PACING_PLAN_REVIEW.md` and were checked against the current codebase before updating this plan.
+
+- `electron/services/youtube-job-service.mjs` has a lossy `buildDesktopJobRequest(input)` mapper. UI fields added for A/B routing will not reach `normalizeYouTubeJobRequest` unless this mapper explicitly forwards `flowAccountRoutingEnabled`, `flowAccountBatchSize`, `flowAccountMinSubmitGapMs`, `flowAccountFailureCooldownMs`, and `flowAccountSlots`.
+- `electron/main.mjs` does not have an `authenticateGoogleFlow` helper. Slot-aware auth must reuse the existing auth infrastructure: `claimBrowserProfile`, `openPersistentChrome`, `writeBrowserProfileLock`, `findChromeExecutable`, `loadConfig`, and `saveConfig`.
+- `auth-service.mjs` currently returns only the default `googleFlow` auth status. The plan must add slot status entries such as `flow-profile-flow-a` and `flow-profile-flow-b` so the renderer can show whether each slot was opened/cleared.
+- Slot clear/reset is required for real account switching. Add `youtube:clearFlowAccountSlot` instead of relying only on the default `auth:clearSession("googleFlow")`.
+- Recovery/retry must build the same `flowAccountRouter` as fresh jobs. Otherwise failed scene retry can fall back to the default Flow profile and defeat slot-stable resume.
+- Avoid duplicate helper names: use `normalizeJobFlowSlots` inside `youtube-job-schema.mjs`, while `normalizeFlowAccountSlots` remains owned by `electron/services/flow-account-router.mjs`.
+- UI should be laid out as two compact Flow A / Flow B columns with auth and clear buttons, not as a long single-column block.
+
 ## File Structure
 
 - Create `electron/services/flow-account-router.mjs`
@@ -42,9 +54,12 @@
 - Modify `youtube-workflow.mjs`
   - Persist `flowAccountSlotId` in `scene-media-manifest.json` and reuse only if the asset exists and the normal output/aspect checks pass.
 - Modify `electron/services/youtube-job-service.mjs`
+  - Forward A/B routing fields in `buildDesktopJobRequest`.
   - Build a flow account router from normalized job options and app paths.
 - Modify `electron/main.mjs`
-  - Create paths for Flow account slots and expose slot-aware auth where needed.
+  - Create paths for Flow account slots and expose slot-aware auth/clear handlers using existing persistent Chrome helpers.
+- Modify `electron/services/auth-service.mjs`
+  - Add Flow slot auth status keys for `flow-profile-flow-a` and `flow-profile-flow-b`.
 - Modify `youtube-job-schema.mjs`
   - Add normalized options for multi-account Flow pacing.
 - Modify `electron/renderer/index.html` and `electron/renderer/app.js`
@@ -386,11 +401,12 @@ Expected: PASS.
 
 ---
 
-### Task 3: Normalize Job Options For A/B Flow Routing
+### Task 3: Normalize And Forward Job Options For A/B Flow Routing
 
 **Files:**
 - Modify: `youtube-job-schema.mjs`
 - Modify: `scripts/check-youtube-job-schema.mjs`
+- Modify: `electron/services/youtube-job-service.mjs`
 
 - [ ] **Step 1: Add schema assertions**
 
@@ -436,6 +452,31 @@ const singleSlotJob = normalizeYouTubeJobRequest({
 assert.equal(singleSlotJob.options.flowAccountRoutingEnabled, false);
 ```
 
+Also add this desktop mapper assertion in the same file, or in a new focused contract if `check-youtube-job-schema.mjs` should remain schema-only:
+
+```js
+import { buildDesktopJobRequest } from "../electron/services/youtube-job-service.mjs";
+
+const desktopFlowAccountJob = buildDesktopJobRequest({
+  sourceType: "script",
+  sourceValue: "Longform Flow A/B routing mapper test.",
+  videoFormat: "longform",
+  customDurationSeconds: 600,
+  flowAccountRoutingEnabled: true,
+  flowAccountBatchSize: 30,
+  flowAccountMinSubmitGapMs: 60_000,
+  flowAccountFailureCooldownMs: 30 * 60_000,
+  flowAccountSlots: [
+    { id: "flow-a", label: "Flow A" },
+    { id: "flow-b", label: "Flow B" },
+  ],
+});
+assert.equal(desktopFlowAccountJob.options.flowAccountRoutingEnabled, true);
+assert.equal(desktopFlowAccountJob.options.flowAccountBatchSize, 30);
+assert.equal(desktopFlowAccountJob.options.flowAccountSlots[0].id, "flow-a");
+assert.equal(desktopFlowAccountJob.options.flowAccountSlots[1].id, "flow-b");
+```
+
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run:
@@ -466,7 +507,7 @@ flowAccountSlots: [
 Add below existing helper functions:
 
 ```js
-function normalizeFlowAccountSlots(input = []) {
+function normalizeJobFlowSlots(input = []) {
   const source = Array.isArray(input) ? input : [];
   return source
     .slice(0, 4)
@@ -487,7 +528,7 @@ function normalizeFlowAccountSlots(input = []) {
 Add after Flow output mode validation:
 
 ```js
-options.flowAccountSlots = normalizeFlowAccountSlots(options.flowAccountSlots);
+options.flowAccountSlots = normalizeJobFlowSlots(options.flowAccountSlots);
 options.flowAccountRoutingEnabled = options.videoFormat === "longform"
   && Boolean(options.flowAccountRoutingEnabled)
   && options.flowAccountSlots.length >= 2;
@@ -496,7 +537,21 @@ options.flowAccountMinSubmitGapMs = Math.max(30_000, Math.min(10 * 60_000, Math.
 options.flowAccountFailureCooldownMs = Math.max(5 * 60_000, Math.min(6 * 60 * 60_000, Math.round(Number(options.flowAccountFailureCooldownMs || 30 * 60_000))));
 ```
 
-- [ ] **Step 6: Run the schema test**
+- [ ] **Step 6: Forward options through `buildDesktopJobRequest`**
+
+In `electron/services/youtube-job-service.mjs`, add these fields to the `options` object inside `buildDesktopJobRequest(input)`:
+
+```js
+flowAccountRoutingEnabled: Boolean(input.flowAccountRoutingEnabled),
+flowAccountBatchSize: input.flowAccountBatchSize,
+flowAccountMinSubmitGapMs: input.flowAccountMinSubmitGapMs,
+flowAccountFailureCooldownMs: input.flowAccountFailureCooldownMs,
+flowAccountSlots: input.flowAccountSlots,
+```
+
+This is required because desktop UI input is not passed directly into `normalizeYouTubeJobRequest`; it is first rebuilt by `buildDesktopJobRequest`.
+
+- [ ] **Step 7: Run the schema test**
 
 Run:
 
@@ -706,6 +761,7 @@ Expected: PASS.
 **Files:**
 - Modify: `electron/renderer/index.html`
 - Modify: `electron/renderer/app.js`
+- Modify: `electron/renderer/styles.css`
 - Modify: `scripts/check-longform-ui-workflow-guards.mjs`
 
 - [ ] **Step 1: Add failing UI assertions**
@@ -717,6 +773,11 @@ assert.match(html, /id="flowAccountRoutingEnabled"/, "UI should expose Flow acco
 assert.match(html, /id="flowAccountBatchSize"[^>]+value="30"/, "UI should expose default 30-scene account batch size");
 assert.match(html, /id="flowAccountSlotALabel"/, "UI should expose account A label");
 assert.match(html, /id="flowAccountSlotBLabel"/, "UI should expose account B label");
+assert.match(html, /id="authFlowAccountA"/, "UI should expose Flow A auth button");
+assert.match(html, /id="clearFlowAccountA"/, "UI should expose Flow A clear button");
+assert.match(html, /id="authFlowAccountB"/, "UI should expose Flow B auth button");
+assert.match(html, /id="clearFlowAccountB"/, "UI should expose Flow B clear button");
+assert.match(html, /flow-account-slot-grid/, "UI should use a compact two-column account grid");
 assert.match(renderer, /flowAccountRoutingEnabled:\s*Boolean\(flowAccountRoutingEnabled\?\.checked\)/, "job payload should include Flow account routing toggle");
 assert.match(renderer, /flowAccountBatchSize:\s*Math\.max\(1,\s*Math\.min\(60/, "job payload should clamp Flow account batch size");
 assert.match(renderer, /flowAccountSlots:\s*\[/, "job payload should include Flow account slots");
@@ -747,6 +808,81 @@ Inside `#longformControls` in `electron/renderer/index.html`, add:
 <input id="flowAccountSlotALabel" type="text" value="Flow A">
 <label for="flowAccountSlotBLabel">Flow B 계정 라벨</label>
 <input id="flowAccountSlotBLabel" type="text" value="Flow B">
+```
+
+- [ ] **Step 3b: Replace the simple HTML with the reviewed two-column account UI**
+
+The simple snippet in Step 3 is superseded by this reviewed version. Implement this version instead:
+
+```html
+<label class="checkbox-row flow-account-routing-toggle" for="flowAccountRoutingEnabled">
+  <input id="flowAccountRoutingEnabled" type="checkbox">
+  <span>Use Flow A/B account batch routing</span>
+</label>
+<label class="flow-account-batch-size" for="flowAccountBatchSize">Scenes per account batch</label>
+<input id="flowAccountBatchSize" class="flow-account-batch-size" type="number" min="1" max="60" value="30">
+
+<div class="flow-account-slot-grid">
+  <section class="flow-account-slot">
+    <strong>Flow A</strong>
+    <label for="flowAccountSlotALabel">Label</label>
+    <input id="flowAccountSlotALabel" type="text" value="Flow A">
+    <div class="flow-account-actions">
+      <button id="authFlowAccountA" type="button" class="secondary-button">Login</button>
+      <button id="clearFlowAccountA" type="button" class="secondary-button danger-button">Clear</button>
+    </div>
+  </section>
+  <section class="flow-account-slot">
+    <strong>Flow B</strong>
+    <label for="flowAccountSlotBLabel">Label</label>
+    <input id="flowAccountSlotBLabel" type="text" value="Flow B">
+    <div class="flow-account-actions">
+      <button id="authFlowAccountB" type="button" class="secondary-button">Login</button>
+      <button id="clearFlowAccountB" type="button" class="secondary-button danger-button">Clear</button>
+    </div>
+  </section>
+</div>
+```
+
+Add the matching layout CSS to `electron/renderer/styles.css`:
+
+```css
+.flow-account-routing-toggle,
+.flow-account-batch-size,
+.flow-account-slot-grid {
+  grid-column: 1 / -1;
+}
+
+.flow-account-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.flow-account-slot {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #d9d3c5;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.flow-account-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.danger-button {
+  border-color: #f3b3b3;
+  color: #9f1d1d;
+}
+
+@media (max-width: 760px) {
+  .flow-account-slot-grid {
+    grid-template-columns: 1fr;
+  }
+}
 ```
 
 - [ ] **Step 4: Wire renderer elements**
@@ -813,6 +949,8 @@ Expected: PASS.
 - Modify: `electron/main.mjs`
 - Modify: `electron/preload.mjs`
 - Modify: `electron/renderer/app.js`
+- Modify: `electron/renderer/index.html`
+- Modify: `electron/services/auth-service.mjs`
 - Modify: `scripts/check-desktop-recovery-actions.mjs`
 
 - [ ] **Step 1: Add recovery/auth contract assertions**
@@ -821,8 +959,13 @@ Add to `scripts/check-desktop-recovery-actions.mjs`:
 
 ```js
 assert.match(main, /youtube:authenticateFlowAccountSlot/, "main should expose slot-aware Flow authentication");
+assert.match(main, /youtube:clearFlowAccountSlot/, "main should expose slot-aware Flow session clearing");
 assert.match(preload, /youtubeAuthenticateFlowAccountSlot/, "preload should expose slot-aware Flow authentication");
+assert.match(preload, /youtubeClearFlowAccountSlot/, "preload should expose slot-aware Flow session clearing");
 assert.match(app, /authenticateFlowAccountSlot/, "renderer should call slot-aware Flow authentication");
+assert.match(app, /clearFlowAccountSlot/, "renderer should call slot-aware Flow session clearing");
+assert.match(main, /openPersistentChrome/, "slot-aware Flow auth should reuse the existing persistent Chrome launcher");
+assert.doesNotMatch(main, /authenticateGoogleFlow/, "main must not call a nonexistent authenticateGoogleFlow helper");
 assert.match(main, /flowAccountRouter/, "failed scene retry should reuse the same Flow account router");
 assert.match(main, /flowAccountSlotId/, "recovery events should expose Flow account slot id");
 ```
@@ -843,50 +986,176 @@ In `electron/preload.mjs`, expose:
 
 ```js
 youtubeAuthenticateFlowAccountSlot: (slotId) => ipcRenderer.invoke("youtube:authenticateFlowAccountSlot", slotId),
+youtubeClearFlowAccountSlot: (slotId) => ipcRenderer.invoke("youtube:clearFlowAccountSlot", slotId),
 ```
 
-- [ ] **Step 4: Add main IPC handler**
+- [ ] **Step 4: Add Flow slot auth status**
+
+In `electron/services/auth-service.mjs`, update `getAuthStatus(config = {})`:
+
+```js
+export function getAuthStatus(config = {}) {
+  return {
+    chatgpt: config.auth?.chatgpt || { status: "unknown" },
+    gemini: config.auth?.gemini || { status: "unknown" },
+    googleFlow: config.auth?.googleFlow || { status: "unknown" },
+    flowAccountA: config.auth?.["flow-profile-flow-a"] || { status: "unknown" },
+    flowAccountB: config.auth?.["flow-profile-flow-b"] || { status: "unknown" },
+    youtube: config.auth?.youtube || { status: "unknown" },
+    notebooklm: config.auth?.notebooklm || { status: "unknown" },
+    googleWorkspace: config.auth?.googleWorkspace || { status: "unknown" },
+  };
+}
+```
+
+- [ ] **Step 5: Add main IPC handlers**
+
+In `electron/main.mjs`, add imports:
+
+```js
+import { rm } from "node:fs/promises";
+import { claimBrowserProfile, findChromeExecutable, writeBrowserProfileLock } from "./services/browser-profile-service.mjs";
+import { openPersistentChrome } from "./services/auth-service.mjs";
+```
+
+If `rm`, `findChromeExecutable`, or other imports already exist in `electron/main.mjs`, extend the existing import lines instead of duplicating them.
+
+Add this helper near other local helper functions:
+
+```js
+function normalizeFlowAccountSlotId(slotId = "default") {
+  return String(slotId || "default")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || "default";
+}
+
+function resolveFlowAccountSlotProfile(slotId = "default") {
+  const cleanSlotId = normalizeFlowAccountSlotId(slotId);
+  const target = cleanSlotId === "default" ? "flow-profile" : `flow-profile-${cleanSlotId}`;
+  return {
+    cleanSlotId,
+    target,
+    profileDir: cleanSlotId === "default"
+      ? paths.flowProfileDir
+      : join(paths.userData, "browser-profiles", target),
+  };
+}
+```
 
 In `electron/main.mjs`, add:
 
 ```js
 ipcMain.handle("youtube:authenticateFlowAccountSlot", async (_event, slotId = "default") => {
-  const cleanSlotId = String(slotId || "default").toLowerCase().replace(/[^a-z0-9_-]+/g, "-") || "default";
-  const profileDir = cleanSlotId === "default"
-    ? paths.flowProfileDir
-    : join(paths.userData, "browser-profiles", `flow-profile-${cleanSlotId}`);
-  return authenticateGoogleFlow({ profileDir, chromePath: findChromeExecutable() });
+  const { cleanSlotId, target, profileDir } = resolveFlowAccountSlotProfile(slotId);
+  const config = await loadConfig(paths.configPath);
+  const chromePath = config.chromePath || findChromeExecutable();
+  if (!chromePath) throw new Error("Chrome executable was not found. Set Chrome path in Settings.");
+
+  const lockPath = await claimBrowserProfile(profileDir);
+  const launch = openPersistentChrome({
+    chromePath,
+    profileDir,
+    url: "https://labs.google/fx/ko/tools/flow",
+  });
+  await writeBrowserProfileLock(lockPath, launch.pid);
+
+  const result = {
+    ...launch,
+    target,
+    slotId: cleanSlotId,
+    label: cleanSlotId === "default" ? "Google Flow" : `Google Flow ${cleanSlotId}`,
+    lockPath,
+    status: "auth-window-opened",
+  };
+  await saveConfig(paths.configPath, {
+    ...config,
+    auth: {
+      ...(config.auth || {}),
+      [target]: {
+        ...result,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  });
+  return result;
+});
+
+ipcMain.handle("youtube:clearFlowAccountSlot", async (_event, slotId = "default") => {
+  const { cleanSlotId, target, profileDir } = resolveFlowAccountSlotProfile(slotId);
+  const profilesRoot = join(paths.userData, "browser-profiles");
+  if (!profileDir.toLowerCase().startsWith(profilesRoot.toLowerCase())) {
+    throw new Error(`Refusing to clear Flow profile outside browser-profiles: ${profileDir}`);
+  }
+  await rm(profileDir, { recursive: true, force: true });
+  const config = await loadConfig(paths.configPath);
+  const nextAuth = { ...(config.auth || {}) };
+  delete nextAuth[target];
+  await saveConfig(paths.configPath, {
+    ...config,
+    auth: {
+      ...nextAuth,
+      [target]: {
+        ok: true,
+        target,
+        slotId: cleanSlotId,
+        status: "cleared",
+        clearedPath: profileDir,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  });
+  return { ok: true, target, slotId: cleanSlotId, status: "cleared", clearedPath: profileDir };
 });
 ```
 
-Use the existing authentication helper names already present in `electron/main.mjs`; if the project uses a different helper than `authenticateGoogleFlow`, call that existing helper with the slot profile directory.
+- [ ] **Step 6: Add renderer buttons**
 
-- [ ] **Step 5: Add renderer buttons**
-
-In `electron/renderer/index.html`, add buttons near the A/B labels:
+In `electron/renderer/index.html`, add buttons near the A/B labels in the two-column Flow A / Flow B UI:
 
 ```html
-<button id="authFlowAccountA" type="button">Flow A 로그인</button>
-<button id="authFlowAccountB" type="button">Flow B 로그인</button>
+<button id="authFlowAccountA" type="button" class="secondary-button">Flow A Login</button>
+<button id="clearFlowAccountA" type="button" class="secondary-button danger-button">Clear Flow A</button>
+<button id="authFlowAccountB" type="button" class="secondary-button">Flow B Login</button>
+<button id="clearFlowAccountB" type="button" class="secondary-button danger-button">Clear Flow B</button>
 ```
 
 In `electron/renderer/app.js`, add:
 
 ```js
+async function authenticateFlowAccountSlot(slotId, label) {
+  appendLog(`Authenticating ${label} account`);
+  const result = await window.hermes.youtubeAuthenticateFlowAccountSlot(slotId);
+  appendLog(`${label} authentication result`, result);
+  await refreshAuthStatus();
+}
+
+async function clearFlowAccountSlot(slotId, label) {
+  appendLog(`Clearing ${label} session`);
+  const result = await window.hermes.youtubeClearFlowAccountSlot(slotId);
+  appendLog(`${label} clear result`, result);
+  await refreshAuthStatus();
+}
+
 document.querySelector("#authFlowAccountA")?.addEventListener("click", async () => {
-  appendLog("Authenticating Flow A account");
-  const result = await window.hermes.youtubeAuthenticateFlowAccountSlot("flow-a");
-  appendLog("Flow A authentication result", result);
+  await authenticateFlowAccountSlot("flow-a", "Flow A");
 });
 
 document.querySelector("#authFlowAccountB")?.addEventListener("click", async () => {
-  appendLog("Authenticating Flow B account");
-  const result = await window.hermes.youtubeAuthenticateFlowAccountSlot("flow-b");
-  appendLog("Flow B authentication result", result);
+  await authenticateFlowAccountSlot("flow-b", "Flow B");
+});
+
+document.querySelector("#clearFlowAccountA")?.addEventListener("click", async () => {
+  await clearFlowAccountSlot("flow-a", "Flow A");
+});
+
+document.querySelector("#clearFlowAccountB")?.addEventListener("click", async () => {
+  await clearFlowAccountSlot("flow-b", "Flow B");
 });
 ```
 
-- [ ] **Step 6: Ensure retry creates router**
+- [ ] **Step 7: Ensure retry creates router**
 
 In `electron/main.mjs` retry handler, after loading job/config:
 
@@ -900,7 +1169,7 @@ const flowAccountRouter = buildFlowAccountRouter({
 
 Pass `flowAccountRouter` into retry `generateYouTubeWorkflowAssets`.
 
-- [ ] **Step 7: Run recovery contract**
+- [ ] **Step 8: Run recovery contract**
 
 Run:
 

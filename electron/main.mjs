@@ -1,16 +1,16 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ffmpegPath from "ffmpeg-static";
-import { changeAuthAccount, clearAuthSession, getAuthStatus, startAuth } from "./services/auth-service.mjs";
+import { changeAuthAccount, clearAuthSession, getAuthStatus, openPersistentChrome, startAuth } from "./services/auth-service.mjs";
 import { loadConfig, saveConfig } from "./services/config-store.mjs";
 import { checkOllamaHealth, normalizeOllamaConfig } from "./services/ollama-provider.mjs";
 import { listJobs, readJob, upsertJob } from "./services/job-store.mjs";
 import { getRuntimePaths } from "./services/path-resolver.mjs";
-import { findChromeExecutable } from "./services/browser-profile-service.mjs";
+import { claimBrowserProfile, findChromeExecutable, writeBrowserProfileLock } from "./services/browser-profile-service.mjs";
 import { listStylePresets } from "./services/style-presets.mjs";
 import { listVisibleVoicePresets } from "./services/voice-presets.mjs";
 import { getRecentWorkflowEvents } from "./services/workflow-history-service.mjs";
@@ -30,6 +30,7 @@ import { mirrorWorkflowEventToDb } from "../workflow-db-events.mjs";
 import { createFailureProgressEvent } from "./services/job-progress-events.mjs";
 import { stopAllProviders } from "./services/external-provider-registry.mjs";
 import { createFlowRequestPacer } from "./services/flow-request-pacer.mjs";
+import { buildFlowAccountRouter } from "./services/flow-account-router.mjs";
 import { generateYouTubeWorkflowAssets, renderFinalYouTubeVideo } from "../youtube-workflow.mjs";
 import { createDefaultYouTubeStages } from "../youtube-workflow-stages.mjs";
 
@@ -93,6 +94,26 @@ function sanitizeFailurePayload(value) {
   ]));
 }
 
+function normalizeFlowAccountSlotId(slotId = "default") {
+  return String(slotId || "default")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    || "default";
+}
+
+function resolveFlowAccountSlotProfile(slotId = "default") {
+  const cleanSlotId = normalizeFlowAccountSlotId(slotId);
+  const target = cleanSlotId === "default" ? "flow-profile" : `flow-profile-${cleanSlotId}`;
+  return {
+    cleanSlotId,
+    target,
+    profileDir: cleanSlotId === "default"
+      ? paths.flowProfileDir
+      : join(paths.userData, "browser-profiles", target),
+  };
+}
+
 async function readJsonFile(path) {
   return JSON.parse(await readFile(path, "utf8"));
 }
@@ -113,6 +134,11 @@ async function readJobRequestFromJobDir(jobId) {
 function createRecoveryWorkflowContext({ job, jobDir, config }) {
   const chromePath = config.chromePath;
   const flowPacer = createFlowRequestPacer({ userData: paths.userData });
+  const flowAccountRouter = buildFlowAccountRouter({
+    userData: paths.userData,
+    flowProfileRoot: join(paths.userData, "browser-profiles"),
+    options: job.options,
+  });
   const emitWorkflow = (event = {}) => {
     if (event.type === "workflow-progress" || event.type === "workflow-warning") {
       sendJobEvent({
@@ -134,6 +160,7 @@ function createRecoveryWorkflowContext({ job, jobDir, config }) {
     chromePath,
     ffmpegBin: FFMPEG_BIN,
     flowPacer,
+    flowAccountRouter,
     enableLiveMcp: Boolean(job.options?.enableLiveMcp),
     emit: emitWorkflow,
     onFlowProgress: ({ message, details }) => sendJobEvent({
@@ -142,10 +169,14 @@ function createRecoveryWorkflowContext({ job, jobDir, config }) {
       phase: "flow-media",
       status: "running",
       message,
-      details: { ...(details || {}) },
+      details: {
+        ...(details || {}),
+        flowAccountSlotId: details?.flowAccountSlotId || "",
+        flowAccountSlotLabel: details?.flowAccountSlotLabel || "",
+      },
     }),
   });
-  return { stages, emitWorkflow, chromePath, flowPacer };
+  return { stages, emitWorkflow, chromePath, flowPacer, flowAccountRouter };
 }
 
 async function loadExistingAssets(jobDir) {
@@ -416,6 +447,68 @@ ipcMain.handle("auth:clearSession", async (_event, target) => {
   return result;
 });
 
+ipcMain.handle("youtube:authenticateFlowAccountSlot", async (_event, slotId = "default") => {
+  const { cleanSlotId, target, profileDir } = resolveFlowAccountSlotProfile(slotId);
+  const config = await loadConfig(paths.configPath);
+  const chromePath = config.chromePath || findChromeExecutable();
+  if (!chromePath) throw new Error("Chrome executable was not found. Set Chrome path in Settings.");
+
+  const lockPath = await claimBrowserProfile(profileDir);
+  const launch = openPersistentChrome({
+    chromePath,
+    profileDir,
+    url: "https://labs.google/fx/ko/tools/flow",
+  });
+  await writeBrowserProfileLock(lockPath, launch.pid);
+
+  const result = {
+    ...launch,
+    target,
+    slotId: cleanSlotId,
+    label: cleanSlotId === "default" ? "Google Flow" : `Google Flow ${cleanSlotId}`,
+    lockPath,
+    status: "auth-window-opened",
+  };
+  await saveConfig(paths.configPath, {
+    ...config,
+    auth: {
+      ...(config.auth || {}),
+      [target]: {
+        ...result,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  });
+  return result;
+});
+
+ipcMain.handle("youtube:clearFlowAccountSlot", async (_event, slotId = "default") => {
+  const { cleanSlotId, target, profileDir } = resolveFlowAccountSlotProfile(slotId);
+  const profilesRoot = join(paths.userData, "browser-profiles");
+  if (!profileDir.toLowerCase().startsWith(profilesRoot.toLowerCase())) {
+    throw new Error(`Refusing to clear Flow profile outside browser-profiles: ${profileDir}`);
+  }
+  await rm(profileDir, { recursive: true, force: true });
+  const config = await loadConfig(paths.configPath);
+  const nextAuth = { ...(config.auth || {}) };
+  delete nextAuth[target];
+  await saveConfig(paths.configPath, {
+    ...config,
+    auth: {
+      ...nextAuth,
+      [target]: {
+        ok: true,
+        target,
+        slotId: cleanSlotId,
+        status: "cleared",
+        clearedPath: profileDir,
+        updatedAt: new Date().toISOString(),
+      },
+    },
+  });
+  return { ok: true, target, slotId: cleanSlotId, status: "cleared", clearedPath: profileDir };
+});
+
 ipcMain.handle("app:selectDirectory", async () => {
   const result = await dialog.showOpenDialog(mainWindow, {
     properties: ["openDirectory"],
@@ -541,7 +634,7 @@ ipcMain.handle("youtube:retryFailedScenes", async (_event, jobId) => {
     details: { jobDir },
   });
   const config = await loadConfig(paths.configPath);
-  const { stages, emitWorkflow, chromePath } = createRecoveryWorkflowContext({ job, jobDir, config });
+  const { stages, emitWorkflow, chromePath, flowAccountRouter } = createRecoveryWorkflowContext({ job, jobDir, config });
   const draft = existsSync(join(jobDir, "draft.json")) ? await readJsonFile(join(jobDir, "draft.json")) : undefined;
   const assets = await generateYouTubeWorkflowAssets(job, {
     ...stages,
@@ -551,6 +644,7 @@ ipcMain.handle("youtube:retryFailedScenes", async (_event, jobId) => {
     outputDir: OUTPUT_DIR,
     chromePath,
     ffmpegBin: FFMPEG_BIN,
+    flowAccountRouter,
     draft,
     emit: emitWorkflow,
   });

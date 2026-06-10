@@ -610,6 +610,37 @@ output {
   font-size: 12px;
 }
 
+.flow-account-routing-toggle,
+.flow-account-batch-size,
+.flow-account-slot-grid {
+  grid-column: 1 / -1;
+}
+
+.flow-account-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.flow-account-slot {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid #d9d3c5;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.flow-account-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.danger-button {
+  border-color: #f3b3b3;
+  color: #9f1d1d;
+}
+
 .jobs-panel {
   grid-column: 2;
   grid-row: 4;
@@ -947,6 +978,10 @@ output {
 
   .content-grid,
   .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-account-slot-grid {
     grid-template-columns: 1fr;
   }
 

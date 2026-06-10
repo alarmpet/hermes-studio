@@ -58,10 +58,22 @@ assert.match(html, /id="customDurationSeconds"[^>]+max="1200"/, "UI should allow
 assert.match(html, /id="hybridIntroVideoSceneCount"[^>]+max="10"/, "UI should allow 10 opening video scenes");
 assert.match(html, /id="longformChapteredRenderEnabled"/, "UI should expose longform chaptered render toggle");
 assert.match(html, /id="chapterTargetSeconds"[^>]+min="60"[^>]+max="120"/, "UI should expose 60-120 second chapter target control");
+assert.match(html, /id="flowAccountRoutingEnabled"/, "UI should expose Flow account batch routing toggle");
+assert.match(html, /id="flowAccountBatchSize"[^>]+value="30"/, "UI should expose default 30-scene account batch size");
+assert.match(html, /id="flowAccountSlotALabel"/, "UI should expose account A label");
+assert.match(html, /id="flowAccountSlotBLabel"/, "UI should expose account B label");
+assert.match(html, /id="authFlowAccountA"/, "UI should expose Flow A auth button");
+assert.match(html, /id="clearFlowAccountA"/, "UI should expose Flow A clear button");
+assert.match(html, /id="authFlowAccountB"/, "UI should expose Flow B auth button");
+assert.match(html, /id="clearFlowAccountB"/, "UI should expose Flow B clear button");
+assert.match(html, /flow-account-slot-grid/, "UI should use a compact two-column account grid");
 assert.match(renderer, /Math\.min\(1200/, "renderer should clamp custom duration at 1200 seconds");
 assert.match(renderer, /Math\.min\(10/, "renderer should clamp hybrid opening video count at 10");
 assert.match(renderer, /longformChapteredRenderEnabled:\s*getVideoFormat\(\)\s*===\s*"longform"/, "job payload should only enable chaptered render for longform jobs");
 assert.match(renderer, /chapterTargetSeconds:\s*getChapterTargetSeconds\(\)/, "job payload should include chapter target seconds");
+assert.match(renderer, /flowAccountRoutingEnabled:\s*Boolean\(flowAccountRoutingEnabled\?\.checked\)/, "job payload should include Flow account routing toggle");
+assert.match(renderer, /flowAccountBatchSize:\s*Math\.max\(1,\s*Math\.min\(60/, "job payload should clamp Flow account batch size");
+assert.match(renderer, /flowAccountSlots:\s*\[/, "job payload should include Flow account slots");
 assert.match(directScript, /Math\.min\(10/, "direct script hook warning should use the same 10-scene hybrid cap");
 
 const qaDir = await mkdtemp(resolve(tmpdir(), "hermes-longform-qa-"));

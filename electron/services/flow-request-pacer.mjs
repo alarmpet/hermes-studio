@@ -6,9 +6,9 @@ export const FLOW_GLOBAL_PACING_FILE = "flow-global-pacing.json";
 const DEFAULT_MIN_SUBMIT_GAP_MS = 60_000;
 const DEFAULT_FAILURE_COOLDOWN_MS = 90_000;
 
-export function flowGlobalPacingPath({ userData } = {}) {
+export function flowGlobalPacingPath({ userData, stateFileName = FLOW_GLOBAL_PACING_FILE } = {}) {
   if (!userData) throw new Error("userData is required for Flow global pacing state.");
-  return join(userData, FLOW_GLOBAL_PACING_FILE);
+  return join(userData, stateFileName);
 }
 
 async function readJson(path) {
@@ -31,15 +31,18 @@ function iso(ms) {
 
 export function createFlowRequestPacer({
   userData,
+  stateFileName = FLOW_GLOBAL_PACING_FILE,
+  accountSlotId = "default",
   minSubmitGapMs = DEFAULT_MIN_SUBMIT_GAP_MS,
   failureCooldownMs = DEFAULT_FAILURE_COOLDOWN_MS,
 } = {}) {
-  const globalPath = flowGlobalPacingPath({ userData });
+  const globalPath = flowGlobalPacingPath({ userData, stateFileName });
 
   const writeState = async (state, jobDir = "") => {
-    const next = { ...state, updatedAt: iso(state.now ?? Date.now()) };
+    const next = { accountSlotId, ...state, updatedAt: iso(state.now ?? Date.now()) };
     await writeJson(globalPath, next);
-    if (jobDir) await writeJson(join(jobDir, "flow-request-pacing.json"), next);
+    if (jobDir) await writeJson(join(jobDir, `flow-request-pacing-${accountSlotId}.json`), next);
+    if (jobDir && accountSlotId === "default") await writeJson(join(jobDir, "flow-request-pacing.json"), next);
     return next;
   };
 
@@ -62,10 +65,11 @@ export function createFlowRequestPacer({
       const nextAllowedAtMs = Math.max(now, Number(state.lastSubmitAtMs || 0) + minSubmitGapMs);
       return writeState({
         ...state,
-        source: "pre-submit",
+        accountSlotId,
         jobId,
         sceneOrder,
         outputMode,
+        source: "pre-submit",
         now,
         previousSubmitAtMs: state.lastSubmitAtMs ?? null,
         nextAllowedAtMs,
@@ -74,10 +78,11 @@ export function createFlowRequestPacer({
     },
     async recordSubmit({ jobId = "", sceneOrder = 0, outputMode = "", jobDir = "", now = Date.now() } = {}) {
       return writeState({
-        source: "post-submit",
+        accountSlotId,
         jobId,
         sceneOrder,
         outputMode,
+        source: "post-submit",
         now,
         lastSubmitAtMs: now,
         lastSubmitAt: iso(now),
@@ -89,11 +94,12 @@ export function createFlowRequestPacer({
       const state = await readJson(globalPath);
       return writeState({
         ...state,
-        source: "rate-limit-detected",
-        failureCode: "FLOW_RATE_LIMITED",
+        accountSlotId,
         jobId,
         sceneOrder,
         outputMode,
+        source: "rate-limit-detected",
+        failureCode: "FLOW_RATE_LIMITED",
         now,
         failureCount: Number(state.failureCount || 0) + 1,
         nextAllowedAtMs: now + failureCooldownMs,

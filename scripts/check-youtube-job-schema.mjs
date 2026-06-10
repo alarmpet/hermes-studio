@@ -8,6 +8,7 @@ import {
   SUBTITLE_STYLE_PRESETS,
   VOICE_PRESETS,
 } from "../youtube-job-schema.mjs";
+import { buildDesktopJobRequest } from "../electron/services/youtube-job-service.mjs";
 
 assert.ok(SCRIPT_LENGTH_PRESETS.short.sceneCount >= 3, "short preset should create multiple scenes");
 assert.ok(SCRIPT_LENGTH_PRESETS.standard.targetSeconds >= 60, "standard preset should support normal shorts length");
@@ -155,6 +156,63 @@ assert.equal(normalizeYouTubeJobRequest({
   sourceValue: "longform explicit image",
   options: { videoFormat: "longform", customDurationSeconds: 600, flowOutputMode: "image" },
 }).options.flowOutputMode, "image");
+
+const flowAccountJob = normalizeYouTubeJobRequest({
+  sourceType: "script",
+  sourceValue: "Longform Flow account routing schema test.",
+  options: {
+    videoFormat: "longform",
+    scriptLengthMode: "custom",
+    customDurationSeconds: 600,
+    flowAccountRoutingEnabled: true,
+    flowAccountBatchSize: 30,
+    flowAccountMinSubmitGapMs: 60_000,
+    flowAccountFailureCooldownMs: 30 * 60_000,
+    flowAccountSlots: [
+      { id: "flow-a", label: "Flow A" },
+      { id: "flow-b", label: "Flow B" },
+    ],
+  },
+});
+assert.equal(flowAccountJob.options.flowAccountRoutingEnabled, true);
+assert.equal(flowAccountJob.options.flowAccountBatchSize, 30);
+assert.equal(flowAccountJob.options.flowAccountMinSubmitGapMs, 60_000);
+assert.equal(flowAccountJob.options.flowAccountFailureCooldownMs, 30 * 60_000);
+assert.equal(flowAccountJob.options.flowAccountSlots.length, 2);
+assert.equal(flowAccountJob.options.flowAccountSlots[0].id, "flow-a");
+assert.equal(flowAccountJob.options.flowAccountSlots[1].id, "flow-b");
+
+const singleSlotJob = normalizeYouTubeJobRequest({
+  sourceType: "script",
+  sourceValue: "Single Flow account should not enable routing.",
+  options: {
+    videoFormat: "longform",
+    scriptLengthMode: "custom",
+    customDurationSeconds: 600,
+    flowAccountRoutingEnabled: true,
+    flowAccountSlots: [{ id: "flow-a", label: "Flow A" }],
+  },
+});
+assert.equal(singleSlotJob.options.flowAccountRoutingEnabled, false);
+
+const desktopFlowAccountJob = buildDesktopJobRequest({
+  sourceType: "script",
+  sourceValue: "Longform Flow A/B routing mapper test.",
+  videoFormat: "longform",
+  customDurationSeconds: 600,
+  flowAccountRoutingEnabled: true,
+  flowAccountBatchSize: 30,
+  flowAccountMinSubmitGapMs: 60_000,
+  flowAccountFailureCooldownMs: 30 * 60_000,
+  flowAccountSlots: [
+    { id: "flow-a", label: "Flow A" },
+    { id: "flow-b", label: "Flow B" },
+  ],
+});
+assert.equal(desktopFlowAccountJob.options.flowAccountRoutingEnabled, true);
+assert.equal(desktopFlowAccountJob.options.flowAccountBatchSize, 30);
+assert.equal(desktopFlowAccountJob.options.flowAccountSlots[0].id, "flow-a");
+assert.equal(desktopFlowAccountJob.options.flowAccountSlots[1].id, "flow-b");
 
 const chapteredLongformJob = normalizeYouTubeJobRequest({
   sourceType: "script",

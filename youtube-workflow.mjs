@@ -524,6 +524,8 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
           status: "completed",
           outputMode,
           sceneOutputMode: media.sceneOutputMode || outputMode,
+          flowAccountSlotId: media.flowAccountSlotId || "",
+          flowAccountSlotLabel: media.flowAccountSlotLabel || "",
           completedAt: new Date().toISOString(),
         });
         await writeSceneMediaManifest(sceneMediaManifestPath, sceneMediaManifest);
@@ -539,6 +541,8 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
           error: error.message,
           failureCode: error.failureCode || error.details?.failureCode || "",
           actionRequired: Boolean(error.actionRequired || error.details?.actionRequired),
+          flowAccountSlotId: error.details?.flowAccountSlotId || "",
+          flowAccountSlotLabel: error.details?.flowAccountSlotLabel || "",
           retryAfterMs: error.retryAfterMs ?? error.details?.retryAfterMs ?? null,
           nextAllowedAt: error.nextAllowedAt || error.details?.nextAllowedAt || "",
           failureDetails: error.details || null,
@@ -555,6 +559,8 @@ export async function generateYouTubeWorkflowAssets(job, context = {}) {
             sceneOrder: scene.order,
             sceneOutputMode: outputMode,
             error: error.message,
+            flowAccountSlotId: error.details?.flowAccountSlotId || "",
+            flowAccountSlotLabel: error.details?.flowAccountSlotLabel || "",
             manifestPath: sceneMediaManifestPath,
           },
         });

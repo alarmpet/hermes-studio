@@ -10,6 +10,7 @@ import { ingestCharacterSheet } from "./character-sheet-ingest.mjs";
 import { maybeRunWebwrightDiagnostics } from "./webwright-diagnostics-service.mjs";
 import { createThumbnailForJob } from "../../pipeline/youtube-thumbnail.mjs";
 import { createFlowRequestPacer } from "./flow-request-pacer.mjs";
+import { buildFlowAccountRouter } from "./flow-account-router.mjs";
 
 export function buildDesktopJobRequest(input = {}) {
   return normalizeYouTubeJobRequest({
@@ -48,6 +49,11 @@ export function buildDesktopJobRequest(input = {}) {
       thumbnailMode: input.thumbnailMode || "auto",
       thumbnailOverlay: input.thumbnailOverlay || {},
       flowOutputMode: input.flowOutputMode || "video",
+      flowAccountRoutingEnabled: Boolean(input.flowAccountRoutingEnabled),
+      flowAccountBatchSize: input.flowAccountBatchSize,
+      flowAccountMinSubmitGapMs: input.flowAccountMinSubmitGapMs,
+      flowAccountFailureCooldownMs: input.flowAccountFailureCooldownMs,
+      flowAccountSlots: input.flowAccountSlots,
       hybridIntroVideoSceneCount: input.hybridIntroVideoSceneCount,
       renderEffectPreset: input.renderEffectPreset || "cinematic",
       transitionPreset: input.transitionPreset || "scene-fade",
@@ -82,6 +88,11 @@ export async function createYouTubeJob(input, context = {}) {
   const chromePath = context.chromePath || findChromeExecutable();
   const nodeBin = findNodeExecutable();
   const flowPacer = context.flowPacer || (context.paths?.userData ? createFlowRequestPacer({ userData: context.paths.userData }) : null);
+  const flowAccountRouter = context.flowAccountRouter || (context.paths?.userData ? buildFlowAccountRouter({
+    userData: context.paths.userData,
+    flowProfileRoot: join(context.paths.userData, "browser-profiles"),
+    options: job.options,
+  }) : null);
   await mkdir(jobDir, { recursive: true });
   job.options.characterSheet = await ingestCharacterSheet({
     jobDir,
@@ -122,6 +133,7 @@ export async function createYouTubeJob(input, context = {}) {
     chromePath,
     ffmpegBin: context.ffmpegBin,
     flowPacer,
+    flowAccountRouter,
     enableLiveMcp: Boolean(job.options.enableLiveMcp),
     emit: emitWorkflow,
     onFlowProgress: ({ message, details }) => progress({
@@ -140,6 +152,7 @@ export async function createYouTubeJob(input, context = {}) {
     chromePath,
     nodeBin,
     flowPacer,
+    flowAccountRouter,
     renderScriptPath: context.paths?.renderScriptPath,
     finalName: `desktop-${job.options.mockMediaMode ? "mock" : "flow"}-${Date.now()}.mp4`,
   });

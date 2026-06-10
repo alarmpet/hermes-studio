@@ -66,7 +66,17 @@ export function classifyFlowGenerationFailureText(text = "") {
   return null;
 }
 
-async function writeFlowFailureDiagnostics({ page, jobDir, sceneOrder, outputMode, failure, state, source, screenshotName = "flow_screen" }) {
+async function writeFlowFailureDiagnostics({
+  page,
+  jobDir,
+  sceneOrder,
+  outputMode,
+  accountSlotId = "default",
+  failure,
+  state,
+  source,
+  screenshotName = "flow_screen",
+}) {
   const screenshotPath = join(jobDir, `scene_${sceneOrder}_${screenshotName}.png`);
   await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
   await writeFile(join(jobDir, `scene_${sceneOrder}_flow_status.json`), JSON.stringify({
@@ -77,6 +87,7 @@ async function writeFlowFailureDiagnostics({ page, jobDir, sceneOrder, outputMod
     retryable: Boolean(failure?.retryable),
     source,
     outputMode,
+    accountSlotId,
     userMessage: failure?.userMessage || "",
     lastText: state?.text || state?.textTail || "",
     screenshotPath,
@@ -853,7 +864,7 @@ async function probeFlowSubmitState(page) {
   };
 }
 
-async function verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode = "video", onProgress) {
+async function verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode = "video", onProgress, accountSlotId = "default") {
   let lastState = null;
   for (let i = 0; i < 20; i += 1) {
     await delay(1000);
@@ -865,6 +876,7 @@ async function verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode 
         jobDir,
         sceneOrder,
         outputMode,
+        accountSlotId,
         failure: lastState.failureClassification,
         state: lastState,
         source: "submit-start",
@@ -937,7 +949,15 @@ async function verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode 
   throw error;
 }
 
-async function retryFlowSubmitAfterIdle({ page, prompt, jobDir, sceneOrder, outputMode = "video", onProgress }) {
+async function retryFlowSubmitAfterIdle({
+  page,
+  prompt,
+  jobDir,
+  sceneOrder,
+  outputMode = "video",
+  onProgress,
+  accountSlotId = "default",
+}) {
   const attempts = [];
   let lastError = null;
   for (let submitAttempt = 2; submitAttempt <= 3; submitAttempt += 1) {
@@ -947,6 +967,7 @@ async function retryFlowSubmitAfterIdle({ page, prompt, jobDir, sceneOrder, outp
         eventType: "flow-submit-idle-self-heal",
         sceneOrder,
         outputMode,
+        accountSlotId,
         submitAttempt,
       },
     });
@@ -956,7 +977,7 @@ async function retryFlowSubmitAfterIdle({ page, prompt, jobDir, sceneOrder, outp
     let retry = null;
     try {
       retry = await submitPromptToFlowAgain(page, prompt, { jobDir, sceneOrder });
-      const retryState = await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress);
+      const retryState = await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress, accountSlotId);
       attempts.push({ submitAttempt, ok: true, retry: serializeFlowSubmitAttempt(retry), state: retryState });
       await writeFile(join(jobDir, `scene_${sceneOrder}_flow_submit_retry_state.json`), JSON.stringify({
         ok: true,
@@ -1165,6 +1186,7 @@ export async function generateGoogleFlowVideoFromPrompt({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   onProgress,
   flowPacer,
+  flowAccountSlotId = "default",
   jobId = "",
 }) {
   assertRuntime({ chromePath, profileDir, jobDir });
@@ -1348,7 +1370,7 @@ export async function generateGoogleFlowVideoFromPrompt({
         deadline: new Date(deadline).toISOString(),
         updatedAt: new Date().toISOString(),
       }, null, 2), "utf8");
-      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress);
+      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress, flowAccountSlotId);
       onProgress?.({
         message: `장면 ${sceneOrder} Flow 정책 경고를 안전 프롬프트로 복구했습니다.`,
         details: {
@@ -1412,7 +1434,7 @@ export async function generateGoogleFlowVideoFromPrompt({
       }, null, 2), "utf8");
 
       // Verify submission started
-      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress);
+      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress, flowAccountSlotId);
 
       onProgress?.({
         message: `장면 ${sceneOrder} Google Flow 비정상 활동 상태를 새로고침 후 복구했습니다.`,
@@ -1474,7 +1496,7 @@ export async function generateGoogleFlowVideoFromPrompt({
         updatedAt: new Date().toISOString(),
       }, null, 2), "utf8");
 
-      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress);
+      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress, flowAccountSlotId);
 
       onProgress?.({
         message: `장면 ${sceneOrder} Google Flow 생성 실패 상태를 재시도로 복구했습니다.`,
@@ -1489,23 +1511,24 @@ export async function generateGoogleFlowVideoFromPrompt({
     };
 
     await ensureFlowGeneratorMenuClosedBeforeSubmit({ page, jobDir, sceneOrder });
-    await flowPacer?.beforeSubmit?.({ jobId, sceneOrder, outputMode, jobDir });
+    await flowPacer?.beforeSubmit?.({ jobId, sceneOrder, outputMode, jobDir, accountSlotId: flowAccountSlotId });
     onProgress?.({ message: `장면 ${sceneOrder} 프롬프트를 입력하는 중입니다.` });
     const submitted = await submitPromptToFlowAgain(page, activePrompt, { jobDir, sceneOrder });
-    await flowPacer?.recordSubmit?.({ jobId, sceneOrder, outputMode, jobDir });
+    await flowPacer?.recordSubmit?.({ jobId, sceneOrder, outputMode, jobDir, accountSlotId: flowAccountSlotId });
     onProgress?.({ message: `장면 ${sceneOrder} Google Flow 생성 버튼을 클릭하는 중입니다.` });
     await delay(500);
     await page.screenshot({ path: join(jobDir, `scene_${sceneOrder}_flow_submitted.png`), fullPage: true }).catch(() => {});
     onProgress?.({ message: `장면 ${sceneOrder} Google Flow 생성 시작 여부를 확인하는 중입니다.` });
     await writeFile(join(jobDir, `scene_${sceneOrder}_flow_click_state.json`), JSON.stringify({
       ...serializeFlowSubmitAttempt(submitted),
+      accountSlotId: flowAccountSlotId,
       updatedAt: new Date().toISOString(),
     }, null, 2), "utf8");
     try {
-      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress);
+      await verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode, onProgress, flowAccountSlotId);
     } catch (error) {
       if (error?.failureCode === "FLOW_RATE_LIMITED") {
-        await flowPacer?.recordFlowRateLimit?.({ jobId, sceneOrder, outputMode, jobDir });
+        await flowPacer?.recordFlowRateLimit?.({ jobId, sceneOrder, outputMode, jobDir, accountSlotId: flowAccountSlotId });
         throw error;
       }
       if ([
@@ -1515,7 +1538,15 @@ export async function generateGoogleFlowVideoFromPrompt({
       ].includes(error?.failureCode)) {
         const retryState = outputMode === "image"
           ? await retryFlowImageSubmitAfterIdle({ page, prompt: activePrompt, jobDir, sceneOrder, onProgress })
-          : await retryFlowSubmitAfterIdle({ page, prompt: activePrompt, jobDir, sceneOrder, outputMode, onProgress });
+          : await retryFlowSubmitAfterIdle({
+            page,
+            prompt: activePrompt,
+            jobDir,
+            sceneOrder,
+            outputMode,
+            onProgress,
+            accountSlotId: flowAccountSlotId,
+          });
         if (retryState.ok) {
           await writeFile(join(jobDir, `scene_${sceneOrder}_flow_submit_state.json`), JSON.stringify({
             ok: true,
@@ -1571,6 +1602,7 @@ export async function generateGoogleFlowVideoFromPrompt({
           jobDir,
           sceneOrder,
           outputMode,
+          accountSlotId: flowAccountSlotId,
           failure: flowFailure,
           state: last,
           source: "wait-loop",
@@ -1601,7 +1633,7 @@ export async function generateGoogleFlowVideoFromPrompt({
           screenshotPath,
         };
         if (flowFailure.code === "FLOW_RATE_LIMITED") {
-          await flowPacer?.recordFlowRateLimit?.({ jobId, sceneOrder, outputMode, jobDir });
+          await flowPacer?.recordFlowRateLimit?.({ jobId, sceneOrder, outputMode, jobDir, accountSlotId: flowAccountSlotId });
         }
         throw error;
       }
@@ -1655,6 +1687,7 @@ export async function generateGoogleFlowVideoFromPrompt({
           jobDir,
           sceneOrder,
           outputMode,
+          accountSlotId: flowAccountSlotId,
           failure: flowFailure,
           state: last,
           source: "no-new-media-final",
@@ -1685,7 +1718,7 @@ export async function generateGoogleFlowVideoFromPrompt({
           screenshotPath,
         };
         if (flowFailure.code === "FLOW_RATE_LIMITED") {
-          await flowPacer?.recordFlowRateLimit?.({ jobId, sceneOrder, outputMode, jobDir });
+          await flowPacer?.recordFlowRateLimit?.({ jobId, sceneOrder, outputMode, jobDir, accountSlotId: flowAccountSlotId });
         }
         throw error;
       }
@@ -1693,6 +1726,7 @@ export async function generateGoogleFlowVideoFromPrompt({
         ok: false,
         reason: outputMode === "image" ? "no-new-image-url" : "no-new-video-url",
         outputMode,
+        accountSlotId: flowAccountSlotId,
         lastText: last?.text || "",
         screenshotPath,
         updatedAt: new Date().toISOString(),

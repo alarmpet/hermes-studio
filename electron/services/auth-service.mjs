@@ -20,6 +20,8 @@ export function getAuthStatus(config = {}) {
     chatgpt: config.auth?.chatgpt || { status: "unknown" },
     gemini: config.auth?.gemini || { status: "unknown" },
     googleFlow: config.auth?.googleFlow || { status: "unknown" },
+    flowAccountA: config.auth?.["flow-profile-flow-a"] || { status: "unknown" },
+    flowAccountB: config.auth?.["flow-profile-flow-b"] || { status: "unknown" },
     youtube: config.auth?.youtube || { status: "unknown" },
     notebooklm: config.auth?.notebooklm || { status: "unknown" },
     googleWorkspace: config.auth?.googleWorkspace || { status: "unknown" },

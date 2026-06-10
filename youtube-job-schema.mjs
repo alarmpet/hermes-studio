@@ -68,6 +68,14 @@ export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
   useChatGptThumbnail: true,
   sendIntermediateMedia: false,
   flowOutputMode: "hybrid",
+  flowAccountRoutingEnabled: false,
+  flowAccountBatchSize: 30,
+  flowAccountMinSubmitGapMs: 60_000,
+  flowAccountFailureCooldownMs: 30 * 60_000,
+  flowAccountSlots: [
+    { id: "flow-a", label: "Flow A", enabled: true },
+    { id: "flow-b", label: "Flow B", enabled: true },
+  ],
   hybridIntroVideoSceneCount: 1,
   renderEffectPreset: "cinematic",
   transitionPreset: "scene-fade",
@@ -263,6 +271,13 @@ export function normalizeYouTubeJobRequest(input = {}) {
   if (!["video", "image", "hybrid", "auto"].includes(options.flowOutputMode)) {
     throw new Error(`Unknown flowOutputMode: ${options.flowOutputMode}`);
   }
+  options.flowAccountSlots = normalizeJobFlowSlots(options.flowAccountSlots);
+  options.flowAccountRoutingEnabled = options.videoFormat === "longform"
+    && Boolean(options.flowAccountRoutingEnabled)
+    && options.flowAccountSlots.length >= 2;
+  options.flowAccountBatchSize = Math.max(1, Math.min(60, Math.round(Number(options.flowAccountBatchSize || 30))));
+  options.flowAccountMinSubmitGapMs = Math.max(30_000, Math.min(10 * 60_000, Math.round(Number(options.flowAccountMinSubmitGapMs || 60_000))));
+  options.flowAccountFailureCooldownMs = Math.max(5 * 60_000, Math.min(6 * 60 * 60_000, Math.round(Number(options.flowAccountFailureCooldownMs || 30 * 60_000))));
   options.autoLandscapeLongform = Boolean(options.autoLandscapeLongform);
   const longformLikeDuration = Number(options.customDurationSeconds || options.longformTargetSeconds || 0) >= 180;
   if (options.autoLandscapeLongform && (options.videoFormat === "longform" || longformLikeDuration)) {
@@ -389,6 +404,21 @@ function normalizeCharacterSheet(value = {}) {
       ? value.referenceImagePaths.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 4)
       : [],
   };
+}
+
+function normalizeJobFlowSlots(input = []) {
+  const source = Array.isArray(input) ? input : [];
+  return source
+    .slice(0, 4)
+    .map((slot, index) => ({
+      id: String(slot.id || `flow-${String.fromCharCode(97 + index)}`)
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "") || `flow-${String.fromCharCode(97 + index)}`,
+      label: String(slot.label || `Flow ${index + 1}`).trim() || `Flow ${index + 1}`,
+      enabled: slot.enabled !== false,
+    }))
+    .filter((slot) => slot.enabled);
 }
 
 function normalizeThumbnailOverlay(input = {}) {

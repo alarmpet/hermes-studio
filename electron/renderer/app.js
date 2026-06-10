@@ -83,6 +83,10 @@ const introVideoClipCount = document.querySelector("#introVideoClipCount");
 const bodyImageSeconds = document.querySelector("#bodyImageSeconds");
 const longformChapteredRenderEnabled = document.querySelector("#longformChapteredRenderEnabled");
 const chapterTargetSeconds = document.querySelector("#chapterTargetSeconds");
+const flowAccountRoutingEnabled = document.querySelector("#flowAccountRoutingEnabled");
+const flowAccountBatchSize = document.querySelector("#flowAccountBatchSize");
+const flowAccountSlotALabel = document.querySelector("#flowAccountSlotALabel");
+const flowAccountSlotBLabel = document.querySelector("#flowAccountSlotBLabel");
 const hybridFlowPreview = document.querySelector("#hybridFlowPreview");
 const ollamaAssistEnabled = document.querySelector("#ollamaAssistEnabled");
 const ollamaBaseUrl = document.querySelector("#ollamaBaseUrl");
@@ -312,6 +316,14 @@ function readJobInput() {
     scriptStructure: getSourceType() === "script" ? "direct-script" : "hpsl",
     sceneStrategy: "sentence-proportional",
     flowOutputMode: getFlowOutputMode(),
+    flowAccountRoutingEnabled: Boolean(flowAccountRoutingEnabled?.checked),
+    flowAccountBatchSize: Math.max(1, Math.min(60, Math.round(Number(flowAccountBatchSize?.value || 30)))),
+    flowAccountMinSubmitGapMs: 60_000,
+    flowAccountFailureCooldownMs: 30 * 60_000,
+    flowAccountSlots: [
+      { id: "flow-a", label: flowAccountSlotALabel?.value?.trim() || "Flow A", enabled: true },
+      { id: "flow-b", label: flowAccountSlotBLabel?.value?.trim() || "Flow B", enabled: true },
+    ],
     hybridIntroVideoSceneCount: getHybridIntroVideoSceneCount(),
     renderEffectPreset: renderEffectPreset?.value || "cinematic",
     motionIntensity: motionIntensity?.value || "light",
@@ -545,7 +557,15 @@ for (const input of document.querySelectorAll("input[name='videoFormat']")) {
 
 autoLandscapeLongform?.addEventListener("change", updateAspectRatioHint);
 
-for (const selector of ["#longformTargetSeconds", "#introVideoClipCount", "#bodyImageSeconds", "#chapterTargetSeconds", "#longformChapteredRenderEnabled"]) {
+for (const selector of [
+  "#longformTargetSeconds",
+  "#introVideoClipCount",
+  "#bodyImageSeconds",
+  "#chapterTargetSeconds",
+  "#longformChapteredRenderEnabled",
+  "#flowAccountRoutingEnabled",
+  "#flowAccountBatchSize",
+]) {
   document.querySelector(selector)?.addEventListener("input", () => {
     if (getVideoFormat() === "longform") {
       document.querySelector("#customDurationSeconds").value = String(getLongformTargetSeconds());
@@ -553,6 +573,22 @@ for (const selector of ["#longformTargetSeconds", "#introVideoClipCount", "#body
     updateDurationPreview();
     updateHybridFlowControls();
   });
+}
+
+async function authenticateFlowAccountSlot(slotId, label) {
+  appendLog(`Authenticating ${label} account`);
+  const result = await window.hermes.youtubeAuthenticateFlowAccountSlot(slotId);
+  appendLog(`${label} authentication result`, result);
+  await renderAuthStatus();
+}
+
+async function clearFlowAccountSlot(slotId, label) {
+  const confirmed = window.confirm(`Clear saved ${label} Flow session on this computer?`);
+  if (!confirmed) return;
+  appendLog(`Clearing ${label} session`);
+  const result = await window.hermes.youtubeClearFlowAccountSlot(slotId);
+  appendLog(`${label} clear result`, result);
+  await renderAuthStatus();
 }
 
 async function populateVoicePresets() {
@@ -1350,6 +1386,38 @@ for (const target of ["chatgpt", "gemini", "googleFlow", "youtube", "notebooklm"
     }
   });
 }
+
+document.querySelector("#authFlowAccountA")?.addEventListener("click", async () => {
+  try {
+    await authenticateFlowAccountSlot("flow-a", "Flow A");
+  } catch (error) {
+    appendLog("Flow A authentication failed", error?.message || String(error));
+  }
+});
+
+document.querySelector("#authFlowAccountB")?.addEventListener("click", async () => {
+  try {
+    await authenticateFlowAccountSlot("flow-b", "Flow B");
+  } catch (error) {
+    appendLog("Flow B authentication failed", error?.message || String(error));
+  }
+});
+
+document.querySelector("#clearFlowAccountA")?.addEventListener("click", async () => {
+  try {
+    await clearFlowAccountSlot("flow-a", "Flow A");
+  } catch (error) {
+    appendLog("Flow A session clear failed", error?.message || String(error));
+  }
+});
+
+document.querySelector("#clearFlowAccountB")?.addEventListener("click", async () => {
+  try {
+    await clearFlowAccountSlot("flow-b", "Flow B");
+  } catch (error) {
+    appendLog("Flow B session clear failed", error?.message || String(error));
+  }
+});
 
 webwrightDiagnosticsEnabled?.addEventListener("change", async () => {
   const current = await window.hermes.configGet?.().catch(() => ({}));

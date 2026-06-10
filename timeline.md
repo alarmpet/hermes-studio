@@ -414,3 +414,10 @@
 - Repaired the job manifest for completed scenes 1-31, created local stickmanplus fallback motion clips for missing scenes 32-49 because Flow remained rate-limited, and rendered `final-youtube-napoleon-recovered.mp4`.
 - Final QA passed: 49 scenes, final duration 318.57s, subtitle end 318.32s, subtitle drift 0.25s, black-span QA ok, no failure codes.
 - Verification: `node scripts/check-longform-scene-resume-contract.mjs`, `node scripts/check-longform-aspect-aware-video-normalization.mjs`, `npm.cmd run check:flow-output-mode`, `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781029420405"`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
+
+## 2026-06-10 - Feature - Flow account batch pacing
+
+- Added authorized Flow account slot routing so longform jobs can assign scenes 1-30 to Flow A and scenes 31-60 to Flow B with separate Chrome profiles and separate pacing files.
+- Added per-slot Flow pacing metadata, scene manifest slot tracking, recovery/retry slot reuse, and slot-aware authentication/clear handlers.
+- Added desktop controls for enabling A/B routing, batch size, and Flow A/B account authentication.
+- Verification: `node scripts/check-flow-account-router-contract.mjs`, `node scripts/check-flow-request-pacer-contract.mjs`, `node scripts/check-youtube-job-schema.mjs`, `node scripts/check-longform-ui-workflow-guards.mjs`, `node scripts/check-desktop-recovery-actions.mjs`, `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
