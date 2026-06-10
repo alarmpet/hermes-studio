@@ -317,6 +317,106 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
       },
     });
   } catch (error) {
+    const videoToImageFallbackCodes = new Set([
+      "FLOW_GENERATION_CANCELLED",
+      "FLOW_GENERATION_STALLED",
+      "FLOW_VIDEO_CREDIT_CONFIRMATION_REJECTED",
+    ]);
+    const genericVideoNoMediaFailure = /no-new-video-url|Flow did not expose a new video URL/i.test(error?.message || "");
+    if (outputMode === "video" && (videoToImageFallbackCodes.has(error.failureCode) || genericVideoNoMediaFailure)) {
+      context.emit?.({
+        type: "workflow-warning",
+        status: "recovered",
+        jobId: job?.id || context.job?.id || "",
+        phase: "flow-video-cancelled-image-fallback",
+        message: `Scene ${scene.order} Flow video generation did not expose media; retrying as Flow image.`,
+        details: {
+          sceneOrder: scene.order,
+          flowOutputMode: jobFlowOutputMode,
+          sceneOutputMode: "image",
+          originalSceneOutputMode: "video",
+          fallbackReason: error.failureCode || "FLOW_VIDEO_NO_MEDIA",
+          flowAccountSlotId: flowSceneContext.slot.id,
+          flowAccountSlotLabel: flowSceneContext.slot.label,
+        },
+      });
+      const imageMedia = await generateGoogleFlowVideoFromPrompt({
+        prompt: `${prompt}\n\nOutput mode: image. Generate one clean 16:9 still illustration for motion rendering.`,
+        jobDir,
+        sceneOrder: scene.order,
+        chromePath: context.chromePath,
+        profileDir: flowSceneContext.profileDir,
+        outputMode: "image",
+        aspectRatio: job?.options?.aspectRatio || "9:16",
+        timeoutMs: context.flowTimeoutMs,
+        safeFallbackPrompt: fallback.prompt,
+        ingredientImagePaths: job?.options?.characterSheet?.referenceImagePaths || [],
+        flowPacer: flowSceneContext.flowPacer,
+        flowAccountSlotId: flowSceneContext.slot.id,
+        jobId: job?.id || context.job?.id || "",
+        onProgress: ({ message, details } = {}) => {
+          const enrichedDetails = {
+            ...details,
+            flowOutputMode: jobFlowOutputMode,
+            sceneOutputMode: "image",
+            originalSceneOutputMode: "video",
+            hybridIntroVideoSceneCount,
+            sceneOrder: scene.order,
+            flowAccountSlotId: flowSceneContext.slot.id,
+            flowAccountSlotLabel: flowSceneContext.slot.label,
+          };
+          context.emit?.({
+            type: details?.actionRequired === true ? "workflow-warning" : "workflow-progress",
+            status: details?.actionRequired === true ? "failed" : undefined,
+            jobId: job?.id || context.job?.id || "",
+            phase: details?.eventType || "flow-progress",
+            message,
+            details: enrichedDetails,
+          });
+          context.onFlowProgress?.({ message, details: enrichedDetails });
+        },
+      });
+      const renderPath = join(jobDir, `scene_${scene.order}.mp4`);
+      const motion = chooseSceneMotionPreset({
+        renderEffectPreset: job?.options?.renderEffectPreset || "cinematic",
+        motionIntensity: job?.options?.motionIntensity || "light",
+        order: scene.order,
+        section: scene.section,
+        visualCategory: scene.visual_category,
+        jobId: job?.id || "",
+      });
+      const rendered = await renderImageSceneClip({
+        ffmpegBin: mediaContext.ffmpegBin,
+        imagePath: imageMedia.path,
+        outputPath: renderPath,
+        durationSeconds: scene.duration_seconds || 8,
+        motionPreset: motion.name,
+        motionStrength: job?.options?.motionIntensity || "light",
+        jobDir,
+        aspectRatio: job?.options?.aspectRatio || "9:16",
+      });
+      return {
+        path: renderPath,
+        originalPath: imageMedia.path,
+        bytes: imageMedia.bytes,
+        contentType: "video/mp4",
+        sourceContentType: imageMedia.contentType,
+        flowOutputMode: "image",
+        sceneOutputMode: "image",
+        originalSceneOutputMode: "video",
+        fallbackReason: error.failureCode || "FLOW_VIDEO_NO_MEDIA",
+        flowAccountSlotId: flowSceneContext.slot.id,
+        flowAccountSlotLabel: flowSceneContext.slot.label,
+        motionPreset: rendered.motionPreset,
+        motionAxis: motion.axis,
+        motionDirection: motion.direction,
+        motionEnergy: motion.energy,
+        motionZoomType: motion.zoomType,
+        aspectRatio: rendered.aspectRatio,
+        normalizedWidth: rendered.normalizedWidth,
+        normalizedHeight: rendered.normalizedHeight,
+      };
+    }
     error.details = {
       ...(error.details || {}),
       flowAccountSlotId: flowSceneContext.slot.id,

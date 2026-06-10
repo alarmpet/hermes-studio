@@ -5,6 +5,7 @@ import ffmpegPath from "ffmpeg-static";
 import { findChromeExecutable } from "../electron/services/browser-profile-service.mjs";
 import { createDefaultYouTubeStages } from "../youtube-workflow-stages.mjs";
 import { generateYouTubeWorkflowAssets, renderFinalYouTubeVideo } from "../youtube-workflow.mjs";
+import { buildFlowAccountRouter } from "../electron/services/flow-account-router.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const jobDir = resolve(process.argv[2] || "");
@@ -62,6 +63,7 @@ const baseContext = {
   paths,
   ffmpegBin: ffmpegPath,
   chromePath: findChromeExecutable(),
+  flowAccountRouter: buildFlowAccountRouter({ userData, options: job.options || {} }),
   renderScriptPath: paths.renderScriptPath,
   finalName: `desktop-resume-flow-${Date.now()}.mp4`,
   emit,

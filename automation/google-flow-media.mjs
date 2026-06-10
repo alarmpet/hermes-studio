@@ -14,14 +14,73 @@ import { maximizeChromiumWindow } from "./chromium-window-bounds.mjs";
 export const GOOGLE_FLOW_URL = "https://labs.google/fx/ko/tools/flow";
 
 const DEFAULT_TIMEOUT_MS = 10 * 60 * 1000;
+const ACTIVE_NO_PROGRESS_STALL_MS = Math.max(30_000, Number(process.env.HERMES_FLOW_ACTIVE_NO_PROGRESS_STALL_MS || 120_000));
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function dismissFlowCookieConsent(page) {
+  const clicked = await page.evaluate(() => {
+    const visible = (el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return !el.disabled
+        && el.getAttribute("aria-disabled") !== "true"
+        && style.visibility !== "hidden"
+        && style.display !== "none"
+        && rect.width > 20
+        && rect.height > 20;
+    };
+    const textOf = (el) => [
+      el.innerText,
+      el.textContent,
+      el.getAttribute("aria-label"),
+      el.getAttribute("title"),
+    ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const candidates = Array.from(document.querySelectorAll("button,[role='button']"))
+      .filter(visible)
+      .map((el) => ({ el, text: textOf(el), rect: el.getBoundingClientRect() }))
+      .filter((item) => /(동의함|나중에|모두\s*동의|accept(?:\s+all)?|agree|i\s*agree|reject\s+all|decline)/i.test(item.text))
+      .sort((a, b) => {
+        const aConsent = /(동의함|accept|agree)/i.test(a.text) ? 0 : 1;
+        const bConsent = /(동의함|accept|agree)/i.test(b.text) ? 0 : 1;
+        const aBottom = a.rect.y > window.innerHeight * 0.7 ? 0 : 1;
+        const bBottom = b.rect.y > window.innerHeight * 0.7 ? 0 : 1;
+        return aConsent - bConsent || aBottom - bBottom || b.rect.x - a.rect.x;
+      });
+    const target = candidates[0];
+    if (!target) return null;
+    target.el.click();
+    return { text: target.text, x: Math.round(target.rect.x), y: Math.round(target.rect.y) };
+  }).catch(() => null);
+  if (clicked) await delay(700);
+  return { clicked: Boolean(clicked), ...clicked };
+}
+
 export function classifyFlowGenerationFailureText(text = "") {
   const value = String(text || "");
   if (!value.trim()) return null;
+
+  if (/I've\s+cancelled\s+that\s+generation|I\s+have\s+cancelled\s+that\s+generation|generation\s+(?:was\s+)?cancel(?:led|ed)|try\s+again\?|before\s+we\s+try\s+again/i.test(value)) {
+    return {
+      code: "FLOW_GENERATION_CANCELLED",
+      reason: "flow-generation-cancelled",
+      retryable: true,
+      actionRequired: false,
+      userMessage: "Google Flow cancelled generation before exposing media.",
+    };
+  }
+
+  if (/\uc0dd\uc131\uc774\s*\uc911\ub2e8\ub418\uc5c8\uc2b5\ub2c8\ub2e4|\uc0dd\uc131\uc774\s*\ucde8\uc18c\ub418\uc5c8\uc2b5\ub2c8\ub2e4|generation\s+stalled|generation\s+stopped\s+without\s+media/i.test(value)) {
+    return {
+      code: "FLOW_GENERATION_STALLED",
+      reason: "flow-generation-stalled",
+      retryable: true,
+      actionRequired: false,
+      userMessage: "Google Flow returned to an idle or stalled state before exposing media.",
+    };
+  }
 
   if (/비정상적인\s*활동|unusual\s+activity|suspicious\s+activity|abnormal\s+activity|automated\s+traffic|temporarily\s+unavailable|고객센터|鍮꾩젙|媛먯|怨좉컼|쇳꽣/i.test(value)) {
     return {
@@ -992,11 +1051,115 @@ async function approveFlowGenerationConfirmation(page) {
   return { approved: false, reason: "approval-button-still-visible", state };
 }
 
+async function rejectFlowVideoCreditConfirmation(page) {
+  const state = await page.evaluate(() => {
+    const bodyText = document.body?.innerText || "";
+    const visible = (el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return !el.disabled
+        && el.getAttribute("aria-disabled") !== "true"
+        && style.visibility !== "hidden"
+        && style.display !== "none"
+        && rect.width > 8
+        && rect.height > 8;
+    };
+    const textOf = (el) => [
+      el.innerText,
+      el.textContent,
+      el.getAttribute("aria-label"),
+      el.getAttribute("title"),
+    ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const open = /(\ud06c\ub808\ub527|credit).*(15|15\uac1c).*(\ub3d9\uc601\uc0c1|video)|(\ub3d9\uc601\uc0c1|video).*(\uc0dd\uc131|generation).*(\ud06c\ub808\ub527|credit)/i.test(bodyText);
+    if (!open) return { open: false, rejected: false, reason: "no-video-credit-confirmation" };
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const candidates = Array.from(document.querySelectorAll("button,[role='button']"))
+      .filter(visible)
+      .map((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          el,
+          text: textOf(el),
+          x: Math.round(rect.x + rect.width / 2),
+          y: Math.round(rect.y + rect.height / 2),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          inRightPanel: viewportWidth ? rect.x + rect.width / 2 > viewportWidth * 0.55 : true,
+          lowerPanel: viewportHeight ? rect.y + rect.height / 2 > viewportHeight * 0.55 : true,
+        };
+      })
+      .filter((item) => /(\uac70\ubd80|reject|decline|cancel)/i.test(item.text))
+      .sort((a, b) => {
+        const panelScore = (b.inRightPanel ? 1 : 0) - (a.inRightPanel ? 1 : 0);
+        const lowerScore = (b.lowerPanel ? 1 : 0) - (a.lowerPanel ? 1 : 0);
+        return panelScore || lowerScore || a.x - b.x || b.y - a.y;
+      });
+    const target = candidates[0];
+    if (!target) {
+      return {
+        open: true,
+        rejected: false,
+        reason: "reject-button-not-found",
+        bodyTail: bodyText.slice(-800),
+        candidates: candidates.slice(0, 5).map(({ el, ...item }) => item),
+      };
+    }
+    target.el.click();
+    const { el, ...targetInfo } = target;
+    return { open: true, rejected: true, target: targetInfo };
+  }).catch((error) => ({ open: false, rejected: false, reason: error?.message || String(error) }));
+  if (state.rejected) await delay(900);
+  return state;
+}
+
 async function verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode = "video", onProgress, accountSlotId = "default") {
   let lastState = null;
   for (let i = 0; i < 20; i += 1) {
     await delay(1000);
     lastState = await probeFlowSubmitState(page);
+    if (outputMode === "video") {
+      const rejection = await rejectFlowVideoCreditConfirmation(page);
+      if (rejection.rejected) {
+        const screenshotPath = join(jobDir, `scene_${sceneOrder}_flow_video_credit_rejected.png`);
+        await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+        await writeFile(join(jobDir, `scene_${sceneOrder}_flow_video_credit_rejected.json`), JSON.stringify({
+          ok: true,
+          outputMode,
+          accountSlotId,
+          rejection,
+          screenshotPath,
+          updatedAt: new Date().toISOString(),
+        }, null, 2), "utf8").catch(() => {});
+        onProgress?.({
+          message: `Scene ${sceneOrder} Flow video credit confirmation was rejected; falling back without spending video credits.`,
+          details: {
+            eventType: "flow-video-credit-rejected",
+            failureCode: "FLOW_VIDEO_CREDIT_CONFIRMATION_REJECTED",
+            sceneOrder,
+            outputMode,
+            accountSlotId,
+            screenshotPath,
+            rejection,
+          },
+        });
+        const error = new Error(`FLOW_VIDEO_CREDIT_CONFIRMATION_REJECTED: Scene ${sceneOrder} video generation requires credits and was rejected. Screenshot: ${screenshotPath}`);
+        error.failureCode = "FLOW_VIDEO_CREDIT_CONFIRMATION_REJECTED";
+        error.actionRequired = false;
+        error.retryable = true;
+        error.screenshotPath = screenshotPath;
+        error.details = {
+          failureCode: "FLOW_VIDEO_CREDIT_CONFIRMATION_REJECTED",
+          actionRequired: false,
+          retryable: true,
+          sceneOrder,
+          outputMode,
+          accountSlotId,
+          screenshotPath,
+        };
+        throw error;
+      }
+    }
     const approval = await approveFlowGenerationConfirmation(page);
     if (approval.approved) {
       await writeFile(join(jobDir, `scene_${sceneOrder}_flow_generation_approval.json`), JSON.stringify({
@@ -1377,6 +1540,7 @@ export async function generateGoogleFlowVideoFromPrompt({
     page.setDefaultTimeout(60000);
     onProgress?.({ message: `장면 ${sceneOrder} Google Flow 프로젝트를 여는 중입니다.` });
     await ensureFlowProject(page);
+    await dismissFlowCookieConsent(page);
     await waitForFlowGeneratorReady(page, jobDir, sceneOrder);
     const retryFlowOutputModeAfterReload = async ({ reason }) => {
       await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_retry.json`), JSON.stringify({
@@ -1388,6 +1552,7 @@ export async function generateGoogleFlowVideoFromPrompt({
       await page.reload({ waitUntil: "domcontentloaded", timeout: 60000 }).catch(() => {});
       await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
       await ensureFlowProject(page);
+      await dismissFlowCookieConsent(page);
       await waitForFlowGeneratorReady(page, jobDir, sceneOrder);
       const retrySwitchResult = await configureFlowOutputMode(page, outputMode, aspectRatio);
       const retryVerification = await verifyFlowOutputMode(page, outputMode, aspectRatio);
@@ -1753,6 +1918,8 @@ export async function generateGoogleFlowVideoFromPrompt({
     let last = null;
     let newMedia = [];
     let nextProgressAt = Date.now();
+    let activeNoProgressSince = null;
+    let noObservableProgressSince = Date.now();
     while (Date.now() < deadline) {
       await delay(5000);
       last = await collectMediaUrls(page);
@@ -1818,6 +1985,100 @@ export async function generateGoogleFlowVideoFromPrompt({
       }
       const currentUrls = outputMode === "image" ? last.images : last.videos;
       newMedia = currentUrls.filter((url) => !beforeUrls.has(url));
+      const textValue = String(last?.text || "");
+      const looksActivelyGenerating = /(\uc0dd\uac01\s*\uc911|\uc911\uc9c0|thinking|stop|generating|creating|processing)/i.test(textValue);
+      if (!newMedia.length && !hasActiveProgress) {
+        noObservableProgressSince ||= Date.now();
+        if (Date.now() - noObservableProgressSince >= ACTIVE_NO_PROGRESS_STALL_MS) {
+          const screenshotPath = await writeFlowFailureDiagnostics({
+            page,
+            jobDir,
+            sceneOrder,
+            outputMode,
+            accountSlotId: flowAccountSlotId,
+            failure: {
+              code: "FLOW_GENERATION_STALLED",
+              reason: "flow-generation-stalled",
+              retryable: true,
+              actionRequired: false,
+              userMessage: "Google Flow did not show progress or media after submit.",
+            },
+            state: last,
+            source: "wait-loop-no-observable-progress",
+            screenshotName: "flow_stalled",
+          });
+          const error = new Error(`Google Flow did not show progress or media after submit. Screenshot: ${screenshotPath}`);
+          error.failureCode = "FLOW_GENERATION_STALLED";
+          error.actionRequired = false;
+          error.retryable = true;
+          error.screenshotPath = screenshotPath;
+          error.details = {
+            failureCode: "FLOW_GENERATION_STALLED",
+            actionRequired: false,
+            retryable: true,
+            sceneOrder,
+            outputMode,
+            screenshotPath,
+            stalledMs: Date.now() - noObservableProgressSince,
+          };
+          onProgress?.({
+            message: error.message,
+            details: {
+              eventType: "flow-generation-stalled",
+              ...error.details,
+            },
+          });
+          throw error;
+        }
+      } else {
+        noObservableProgressSince = null;
+      }
+      if (!newMedia.length && !hasActiveProgress && looksActivelyGenerating) {
+        activeNoProgressSince ||= Date.now();
+        if (Date.now() - activeNoProgressSince >= ACTIVE_NO_PROGRESS_STALL_MS) {
+          const screenshotPath = await writeFlowFailureDiagnostics({
+            page,
+            jobDir,
+            sceneOrder,
+            outputMode,
+            accountSlotId: flowAccountSlotId,
+            failure: {
+              code: "FLOW_GENERATION_STALLED",
+              reason: "flow-generation-stalled",
+              retryable: true,
+              actionRequired: false,
+              userMessage: "Google Flow stayed active without visible progress or media.",
+            },
+            state: last,
+            source: "wait-loop-active-no-progress",
+            screenshotName: "flow_stalled",
+          });
+          const error = new Error(`Google Flow stayed active without visible progress or media. Screenshot: ${screenshotPath}`);
+          error.failureCode = "FLOW_GENERATION_STALLED";
+          error.actionRequired = false;
+          error.retryable = true;
+          error.screenshotPath = screenshotPath;
+          error.details = {
+            failureCode: "FLOW_GENERATION_STALLED",
+            actionRequired: false,
+            retryable: true,
+            sceneOrder,
+            outputMode,
+            screenshotPath,
+            stalledMs: Date.now() - activeNoProgressSince,
+          };
+          onProgress?.({
+            message: error.message,
+            details: {
+              eventType: "flow-generation-stalled",
+              ...error.details,
+            },
+          });
+          throw error;
+        }
+      } else {
+        activeNoProgressSince = null;
+      }
       if (Date.now() >= nextProgressAt) {
         const remainingSeconds = Math.max(0, Math.round((deadline - Date.now()) / 1000));
         onProgress?.({

@@ -438,3 +438,12 @@
 - Switched default Flow image model selection away from daily-limit-prone `Nano Banana Pro` by excluding Pro choices and allowing non-Pro image models.
 - Final QA passed: 38 scenes, all scene clips 1920x1080, final render `desktop-manual-scene38-1781111191696.mp4`, black-span QA ok, no failure codes.
 - Verification: `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `node scripts/check-image-scene-renderer-contract.mjs`, `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781097468679"`.
+
+## 2026-06-11 - Fix - Flow video credit rejection and stalled submit recovery
+
+- Investigated desktop job `youtube-1781113034261`, where Flow stayed in a no-progress/no-media state after submit and a separate Flow confirmation dialog asked to spend 15 credits for video generation.
+- Changed Flow video confirmation handling so 15-credit video dialogs are rejected instead of approved, then routed `FLOW_VIDEO_CREDIT_CONFIRMATION_REJECTED` through the video-to-image fallback path.
+- Added a no-observable-progress stall guard so submitted Flow jobs that show no media and no progress are classified as `FLOW_GENERATION_STALLED` instead of waiting for the full Flow timeout.
+- Added first-run Google Flow cookie-consent dismissal and made the resume script use the same Flow account router as the desktop app.
+- Live verification on `youtube-1781113034261`: scene 1 stalled in video mode, recovered through Flow image generation, and rendered `scene_1.mp4` at 1920x1080 before scene 2 entered the same stalled-video path.
+- Verification: `npm.cmd run check:flow-policy-safety`, `node --check automation/google-flow-media.mjs`, `node --check youtube-workflow-stages.mjs`, `node --check scripts/resume-youtube-job-from-assets.mjs`, `node scripts/check-flow-video-credit-reject-contract.mjs`.
