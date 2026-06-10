@@ -421,3 +421,11 @@
 - Added per-slot Flow pacing metadata, scene manifest slot tracking, recovery/retry slot reuse, and slot-aware authentication/clear handlers.
 - Added desktop controls for enabling A/B routing, batch size, and Flow A/B account authentication.
 - Verification: `node scripts/check-flow-account-router-contract.mjs`, `node scripts/check-flow-request-pacer-contract.mjs`, `node scripts/check-youtube-job-schema.mjs`, `node scripts/check-longform-ui-workflow-guards.mjs`, `node scripts/check-desktop-recovery-actions.mjs`, `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
+
+## 2026-06-10 - Recovery - Napoleon Flow scenes 32-49 final render
+
+- Replaced the temporary local fallback back half of desktop job `youtube-1781029420405` by regenerating scenes 32-49 through Google Flow and rendering `desktop-flow-redo-32-49-1781081875531.mp4`.
+- Added handling for Google Flow's Agent settings panel defaults, including image/video section targeting when Flow no longer exposes a separate bottom generator chip after saving.
+- Added automatic approval for Flow's video-generation credit confirmation dialog so Veo scenes can start after the create click instead of failing as submit-idle.
+- Final QA passed: 49 scenes, final duration 318.57s, generated scenes 32-49 complete, black-span QA ok, no failure codes.
+- Verification: `node --check automation/google-flow-media.mjs`, `node --check automation/google-flow-output-mode.mjs`, `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781029420405"`.

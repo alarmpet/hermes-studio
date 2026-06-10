@@ -864,11 +864,73 @@ async function probeFlowSubmitState(page) {
   };
 }
 
+async function approveFlowGenerationConfirmation(page) {
+  return page.evaluate(() => {
+    const bodyText = document.body?.innerText || "";
+    const confirmationOpen = /(크레딧|credit).*(사용|use)|생성을 시작|start generation/i.test(bodyText)
+      && /(승인|approve|confirm|거부|reject)/i.test(bodyText);
+    if (!confirmationOpen) return { approved: false, reason: "no-generation-confirmation" };
+    const visible = (el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return !el.disabled
+        && el.getAttribute("aria-disabled") !== "true"
+        && style.visibility !== "hidden"
+        && style.display !== "none"
+        && rect.width > 8
+        && rect.height > 8;
+    };
+    const textOf = (el) => [
+      el.innerText,
+      el.textContent,
+      el.getAttribute("aria-label"),
+      el.getAttribute("title"),
+    ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const buttons = Array.from(document.querySelectorAll("button,[role='button']"))
+      .filter(visible)
+      .map((el) => ({ el, text: textOf(el), rect: el.getBoundingClientRect() }))
+      .filter((item) => /승인|approve|confirm|check/i.test(item.text))
+      .filter((item) => !/다시 묻지 않음|don't ask|dont ask/i.test(item.text))
+      .sort((a, b) => (b.rect.x - a.rect.x) || (b.rect.y - a.rect.y));
+    const target = buttons[0];
+    if (!target) return { approved: false, reason: "approval-button-not-found" };
+    target.el.click();
+    return {
+      approved: true,
+      label: target.text,
+      x: Math.round(target.rect.x + target.rect.width / 2),
+      y: Math.round(target.rect.y + target.rect.height / 2),
+    };
+  }).catch((error) => ({ approved: false, reason: error?.message || String(error) }));
+}
+
 async function verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode = "video", onProgress, accountSlotId = "default") {
   let lastState = null;
   for (let i = 0; i < 20; i += 1) {
     await delay(1000);
     lastState = await probeFlowSubmitState(page);
+    const approval = await approveFlowGenerationConfirmation(page);
+    if (approval.approved) {
+      await writeFile(join(jobDir, `scene_${sceneOrder}_flow_generation_approval.json`), JSON.stringify({
+        ok: true,
+        outputMode,
+        accountSlotId,
+        approval,
+        updatedAt: new Date().toISOString(),
+      }, null, 2), "utf8").catch(() => {});
+      onProgress?.({
+        message: `Scene ${sceneOrder} Flow generation approval was accepted.`,
+        details: {
+          eventType: "flow-generation-approved",
+          sceneOrder,
+          outputMode,
+          accountSlotId,
+          approval,
+        },
+      });
+      await delay(2000);
+      continue;
+    }
     const hasProgressOrVideo = lastState.hasProgressPercent || lastState.hasVideo;
     if (lastState.failureClassification && !hasProgressOrVideo) {
       const screenshotPath = await writeFlowFailureDiagnostics({
@@ -1055,6 +1117,18 @@ function modeStateWithSpecificMenuFailure(modeState, outputMode, menuState) {
     failureCode: "FLOW_GENERATOR_MENU_STILL_OPEN",
     reason: `Flow selected ${outputMode}, but the generator settings menu is still open.`,
     menuState,
+  };
+}
+
+function modeStateFromSavedSettingsPanel(modeState, outputMode) {
+  if (modeState.selectedOutputMode !== "unknown" || modeState.generatorMenuOpen) return modeState;
+  return {
+    ...modeState,
+    selectedOutputMode: outputMode,
+    ok: true,
+    settingsPanelApplied: true,
+    saved: true,
+    reason: "Google Flow settings panel was applied and saved; the current Flow UI no longer exposes a separate video/image bottom chip after save.",
   };
 }
 
@@ -1245,14 +1319,7 @@ export async function generateGoogleFlowVideoFromPrompt({
     await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_verification.json`), JSON.stringify(modeVerification, null, 2), "utf8");
     let finalModeSwitchResult = modeSwitchResult;
     let finalModeVerification = modeSwitchResult?.settingsPanelApplied && modeSwitchResult?.saved && modeVerification.selectedOutputMode === "unknown" && !modeVerification.generatorMenuOpen
-      ? {
-          ...modeVerification,
-          selectedOutputMode: outputMode,
-          ok: true,
-          settingsPanelApplied: true,
-          saved: true,
-          reason: "Google Flow Agent settings panel was applied and saved; the current Flow UI does not expose a separate video/image bottom chip after save.",
-        }
+      ? modeStateFromSavedSettingsPanel(modeVerification, outputMode)
       : modeVerification;
     if (!finalModeSwitchResult.ok || !finalModeVerification.ok) {
       const retryResult = await retryFlowOutputModeAfterReload({
@@ -1260,6 +1327,30 @@ export async function generateGoogleFlowVideoFromPrompt({
       });
       finalModeSwitchResult = retryResult.retrySwitchResult;
       finalModeVerification = retryResult.retryVerification;
+    }
+    if (
+      finalModeSwitchResult?.settingsPanelApplied
+      && finalModeSwitchResult?.saved
+      && finalModeVerification.selectedOutputMode === "unknown"
+      && !finalModeVerification.generatorMenuOpen
+    ) {
+      finalModeVerification = modeStateFromSavedSettingsPanel(finalModeVerification, outputMode);
+    }
+    if (
+      finalModeSwitchResult?.settingsPanelApplied
+      && finalModeSwitchResult?.saved
+      && finalModeVerification.generatorMenuOpen
+    ) {
+      const menuState = await attemptCloseFlowGeneratorMenu(page);
+      await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_saved_panel_close_verification.json`), JSON.stringify({
+        requestedOutputMode: outputMode,
+        before: finalModeVerification,
+        menuState,
+        updatedAt: new Date().toISOString(),
+      }, null, 2), "utf8");
+      const closedModeVerification = await verifyFlowOutputMode(page, outputMode, aspectRatio);
+      await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_after_saved_panel_close_verification.json`), JSON.stringify(closedModeVerification, null, 2), "utf8");
+      finalModeVerification = modeStateFromSavedSettingsPanel(closedModeVerification, outputMode);
     }
     const modeSelectionMatches = finalModeVerification.selectedOutputMode === outputMode
       && (outputMode !== "image" || finalModeVerification.selectedImageModel !== "unknown");

@@ -6,6 +6,8 @@ import {
 const LABELS = {
   image: ["이미지", "image"],
   video: ["동영상", "video"],
+  imageSection: ["이미지 생성 기본값", "image generation"],
+  videoSection: ["동영상 생성 기본값", "video generation"],
   imageModel: ["Nano Banana 2", "Nano Banana Pro"],
   imageModelDropdown: ["Imagen 4", "Nano Banana 2", "Nano Banana"],
   videoModel: ["Veo 3.1 - Lite", "Veo"],
@@ -116,6 +118,7 @@ async function configureFlowVideo(page, aspectRatio = "9:16") {
   return configureFlowGenerator(page, {
     requestedOutputMode: "video",
     targetLabels: LABELS.video,
+    sectionLabels: LABELS.videoSection,
     generatorLabels: LABELS.videoModel,
     aspectLabels: aspectRatio === "16:9" ? LABELS.landscapeAspect : LABELS.aspect,
     countLabels: LABELS.count,
@@ -126,6 +129,7 @@ async function configureFlowImage(page, aspectRatio = "9:16") {
   return configureFlowGenerator(page, {
     requestedOutputMode: "image",
     targetLabels: LABELS.image,
+    sectionLabels: LABELS.imageSection,
     modelDropdownLabels: LABELS.imageModelDropdown,
     generatorLabels: LABELS.imageModel,
     modelRequired: true,
@@ -332,8 +336,13 @@ async function configureFlowGenerator(page, config) {
       nextY: next ? Math.round(next.rect.y) : null,
     };
   }, {
-    currentLabels: config.targetLabels || [],
-    otherLabels: config.requestedOutputMode === "video" ? LABELS.image : LABELS.video,
+    currentLabels: config.sectionLabels || config.targetLabels || [],
+    otherLabels: config.requestedOutputMode === "video" ? LABELS.imageSection : LABELS.videoSection,
+  });
+  const isAgentSettingsPanelOpen = () => page.evaluate(() => {
+    const text = document.body?.innerText || "";
+    return /에이전트 설정|Agent settings/i.test(text)
+      && /이미지 생성 기본값|동영상 생성 기본값|image generation|video generation/i.test(text);
   });
   const clickSave = () => clickMatch(["\uc800\uc7a5", "save"], { generatorMenuOnly: true, optional: false, delay: 900 });
 
@@ -356,12 +365,22 @@ async function configureFlowGenerator(page, config) {
 
   const results = [];
   results.push(await openBottomGeneratorChip());
-  const targetResult = await clickMatch(config.targetLabels, { generatorMenuOnly: true });
-  results.push(targetResult);
-  if (!targetResult.ok) {
-    return { ok: false, requestedOutputMode: config.requestedOutputMode, results, summary: await pageSummary() };
+  const agentSettingsPanelOpen = await isAgentSettingsPanelOpen();
+  if (agentSettingsPanelOpen) {
+    results.push({
+      ok: true,
+      optional: false,
+      text: "agent settings panel already open",
+      skippedTargetMode: true,
+    });
+  } else {
+    const targetResult = await clickMatch(config.targetLabels, { generatorMenuOnly: true });
+    results.push(targetResult);
+    if (!targetResult.ok) {
+      return { ok: false, requestedOutputMode: config.requestedOutputMode, results, summary: await pageSummary() };
+    }
+    await delay(600);
   }
-  await delay(600);
   const sectionBounds = await findSectionBounds();
   results.push({ ok: sectionBounds.ok, optional: false, sectionBounds });
   if (!sectionBounds.ok) {
@@ -373,7 +392,7 @@ async function configureFlowGenerator(page, config) {
     maxY: sectionBounds.maxY,
   };
 
-  results.push(await openBottomGeneratorChip());
+  if (!agentSettingsPanelOpen) results.push(await openBottomGeneratorChip());
   if (config.modelDropdownLabels?.length) {
     const dropdownResult = await clickMatch(config.modelDropdownLabels, { ...scoped, requireArrowDropDown: true, optional: false });
     results.push(dropdownResult);
@@ -385,11 +404,11 @@ async function configureFlowGenerator(page, config) {
   results.push(await clickMatch(config.generatorLabels, { ...scoped, optional: !config.modelRequired }));
   await delay(300);
 
-  results.push(await openBottomGeneratorChip());
+  if (!agentSettingsPanelOpen) results.push(await openBottomGeneratorChip());
   results.push(await clickMatch(config.aspectLabels, { ...scoped, optional: true }));
   await delay(300);
 
-  results.push(await openBottomGeneratorChip());
+  if (!agentSettingsPanelOpen) results.push(await openBottomGeneratorChip());
   results.push(await clickMatch(config.countLabels, { ...scoped, exact: true, optional: true }));
   const saveResult = await clickSave();
   results.push({ ...saveResult, saveSettings: true });
