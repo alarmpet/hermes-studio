@@ -21,6 +21,9 @@ assert.equal(disclaimerOnly, null, "Flow's persistent disclaimer and empty-galle
 assert.match(media, /FLOW_GENERATION_CANCELLED/, "Flow cancellation should have a specific failure code");
 assert.match(media, /FLOW_GENERATION_STALLED/, "Flow stalled idle state should have a specific failure code");
 assert.match(stages, /flow-video-cancelled-image-fallback/, "video cancellation should route to an image fallback event");
+assert.match(stages, /function buildFlowImageFallbackPrompt/, "video-to-image fallback should sanitize contradictory output-mode prompt text");
+assert.match(stages, /Output mode:\\s\*video/, "image fallback prompt sanitizer should remove video output-mode text");
+assert.doesNotMatch(stages, /prompt:\s*`\$\{prompt\}\\n\\nOutput mode: image/, "video-to-image fallback must not append image instructions after a video-mode prompt");
 assert.match(stages, /originalSceneOutputMode:\s*"video"/, "image fallback should record original video mode");
 assert.match(stages, /FLOW_GENERATION_STALLED/, "video stalled state should route through the same image fallback");
 assert.match(stages, /Flow did not expose a new video URL/, "generic no-new-video failures should also route to image fallback");

@@ -34,8 +34,23 @@ assert.match(
 );
 assert.match(
   stages,
-  /no-new-image-url|Flow did not expose a new image URL|flow-submit-did-not-start/,
-  "Flow image fallback should target idle/no-media submit failures",
+  /FLOW_GENERATION_FAILED[\s\S]*FLOW_GENERATION_STALLED[\s\S]*FLOW_GENERATION_CANCELLED/,
+  "Flow image fallback should target failed, stalled, and cancelled image generation failures",
+);
+assert.match(
+  stages,
+  /allowLiveImagePlaceholderFallback:\s*true/,
+  "video-to-image fallback should recover through local image-motion rendering if Flow image also fails",
+);
+assert.match(
+  stages,
+  /flowImageProviderExhausted/,
+  "direct Flow image scenes should continue through local image-motion fallback after retryable provider failures",
+);
+assert.match(
+  stages,
+  /context\.allowLiveImagePlaceholderFallback[\s\S]*flowImageProviderExhausted[\s\S]*job\?\.options\?\.mockMediaMode/,
+  "provider-exhausted image fallback should be explicit and separate from mock mode",
 );
 assert.match(
   stages,

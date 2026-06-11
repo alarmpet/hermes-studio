@@ -216,6 +216,20 @@ export async function buildResearchDraft(job, context = {}) {
   return draft;
 }
 
+function buildFlowImageFallbackPrompt(prompt = "") {
+  let text = String(prompt || "").trim();
+  text = text.replace(
+    /Output mode:\s*video\.\s*Generate a short cinematic motion shot with clear subject action\./gi,
+    "Output mode: image. Generate one clean 16:9 still illustration for motion rendering.",
+  );
+  text = text.replace(/short cinematic motion shot/gi, "clean still illustration");
+  text = text.replace(/clear subject action/gi, "clear symbolic staging");
+  if (!/Output mode:\s*image/i.test(text)) {
+    text = `${text}\n\nOutput mode: image. Generate one clean 16:9 still illustration for motion rendering.`;
+  }
+  return text;
+}
+
 export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
   const resolvedFfmpegBin = resolveFfmpegBin(context.ffmpegBin);
   const mediaContext = resolvedFfmpegBin ? { ...context, ffmpegBin: resolvedFfmpegBin } : context;
@@ -340,42 +354,57 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
           flowAccountSlotLabel: flowSceneContext.slot.label,
         },
       });
-      const imageMedia = await generateGoogleFlowVideoFromPrompt({
-        prompt: `${prompt}\n\nOutput mode: image. Generate one clean 16:9 still illustration for motion rendering.`,
-        jobDir,
-        sceneOrder: scene.order,
-        chromePath: context.chromePath,
-        profileDir: flowSceneContext.profileDir,
-        outputMode: "image",
-        aspectRatio: job?.options?.aspectRatio || "9:16",
-        timeoutMs: context.flowTimeoutMs,
-        safeFallbackPrompt: fallback.prompt,
-        ingredientImagePaths: job?.options?.characterSheet?.referenceImagePaths || [],
-        flowPacer: flowSceneContext.flowPacer,
-        flowAccountSlotId: flowSceneContext.slot.id,
-        jobId: job?.id || context.job?.id || "",
-        onProgress: ({ message, details } = {}) => {
-          const enrichedDetails = {
-            ...details,
-            flowOutputMode: jobFlowOutputMode,
-            sceneOutputMode: "image",
-            originalSceneOutputMode: "video",
-            hybridIntroVideoSceneCount,
-            sceneOrder: scene.order,
-            flowAccountSlotId: flowSceneContext.slot.id,
-            flowAccountSlotLabel: flowSceneContext.slot.label,
-          };
-          context.emit?.({
-            type: details?.actionRequired === true ? "workflow-warning" : "workflow-progress",
-            status: details?.actionRequired === true ? "failed" : undefined,
-            jobId: job?.id || context.job?.id || "",
-            phase: details?.eventType || "flow-progress",
-            message,
-            details: enrichedDetails,
-          });
-          context.onFlowProgress?.({ message, details: enrichedDetails });
-        },
-      });
+      const imageFallbackPrompt = buildFlowImageFallbackPrompt(prompt);
+      let imageMedia;
+      try {
+        imageMedia = await generateGoogleFlowVideoFromPrompt({
+          prompt: imageFallbackPrompt,
+          jobDir,
+          sceneOrder: scene.order,
+          chromePath: context.chromePath,
+          profileDir: flowSceneContext.profileDir,
+          outputMode: "image",
+          aspectRatio: job?.options?.aspectRatio || "9:16",
+          timeoutMs: context.flowTimeoutMs,
+          safeFallbackPrompt: imageFallbackPrompt,
+          ingredientImagePaths: job?.options?.characterSheet?.referenceImagePaths || [],
+          flowPacer: flowSceneContext.flowPacer,
+          flowAccountSlotId: flowSceneContext.slot.id,
+          jobId: job?.id || context.job?.id || "",
+          onProgress: ({ message, details } = {}) => {
+            const enrichedDetails = {
+              ...details,
+              flowOutputMode: jobFlowOutputMode,
+              sceneOutputMode: "image",
+              originalSceneOutputMode: "video",
+              hybridIntroVideoSceneCount,
+              sceneOrder: scene.order,
+              flowAccountSlotId: flowSceneContext.slot.id,
+              flowAccountSlotLabel: flowSceneContext.slot.label,
+            };
+            context.emit?.({
+              type: details?.actionRequired === true ? "workflow-warning" : "workflow-progress",
+              status: details?.actionRequired === true ? "failed" : undefined,
+              jobId: job?.id || context.job?.id || "",
+              phase: details?.eventType || "flow-progress",
+              message,
+              details: enrichedDetails,
+            });
+            context.onFlowProgress?.({ message, details: enrichedDetails });
+          },
+        });
+      } catch (imageError) {
+        return handleFlowImageSceneFailure({
+          error: imageError,
+          outputMode: "image",
+          scene,
+          job,
+          jobDir,
+          context: { ...mediaContext, allowLiveImagePlaceholderFallback: true },
+          jobFlowOutputMode,
+          hybridIntroVideoSceneCount,
+        });
+      }
       const renderPath = join(jobDir, `scene_${scene.order}.mp4`);
       const motion = chooseSceneMotionPreset({
         renderEffectPreset: job?.options?.renderEffectPreset || "cinematic",
@@ -586,12 +615,16 @@ async function handleFlowImageSceneFailure({
     throw failure;
   }
   const recoverableImageFailure = outputMode === "image" && (
-    /no-new-image-url|Flow did not expose a new image URL|flow-submit-did-not-start|Google Flow did not start generation/i.test(message)
+    ["FLOW_GENERATION_FAILED", "FLOW_GENERATION_STALLED", "FLOW_GENERATION_CANCELLED"].includes(error?.failureCode)
+    || /FLOW_GENERATION_FAILED|FLOW_GENERATION_STALLED|FLOW_GENERATION_CANCELLED|no-new-image-url|Flow did not expose a new image URL|flow-submit-did-not-start|Google Flow did not start generation/i.test(message)
   );
   if (!recoverableImageFailure) throw error;
+  const flowImageProviderExhausted = ["FLOW_GENERATION_FAILED", "FLOW_GENERATION_STALLED", "FLOW_GENERATION_CANCELLED"].includes(error?.failureCode)
+    || /FLOW_GENERATION_FAILED|FLOW_GENERATION_STALLED|FLOW_GENERATION_CANCELLED/i.test(message);
 
   const allowLiveImagePlaceholderFallback = Boolean(
     context.allowLiveImagePlaceholderFallback
+    || flowImageProviderExhausted
     || job?.options?.mockMediaMode
     || context.job?.options?.mockMediaMode
     || context.mockMediaMode

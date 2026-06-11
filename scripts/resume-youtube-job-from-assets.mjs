@@ -20,10 +20,12 @@ if (!existsSync(draftPath)) throw new Error(`Missing draft.json: ${draftPath}`);
 
 const job = JSON.parse(readFileSync(jobPath, "utf8"));
 const draft = JSON.parse(readFileSync(draftPath, "utf8"));
+const allowLocalFallbackFinal = process.env.HERMES_ALLOW_LOCAL_FALLBACK_FINAL === "1"
+  || job.options?.allowLiveImagePlaceholderFallback === true;
 const placeholderSceneOrders = (draft.scenes || [])
   .map((scene, index) => Number(scene.order || index + 1))
   .filter((order) => existsSync(join(jobDir, `scene_${order}_flow_image_local_fallback.json`)));
-if (placeholderSceneOrders.length) {
+if (placeholderSceneOrders.length && !allowLocalFallbackFinal) {
   throw new Error(`FLOW_IMAGE_LOCAL_PLACEHOLDER: retry image scenes before final render. retryFlowImageScenes=true sceneOrders=${placeholderSceneOrders.join(",")}`);
 }
 const outputDir = resolve(jobDir, "..", "..");

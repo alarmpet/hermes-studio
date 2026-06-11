@@ -447,3 +447,12 @@
 - Added first-run Google Flow cookie-consent dismissal and made the resume script use the same Flow account router as the desktop app.
 - Live verification on `youtube-1781113034261`: scene 1 stalled in video mode, recovered through Flow image generation, and rendered `scene_1.mp4` at 1920x1080 before scene 2 entered the same stalled-video path.
 - Verification: `npm.cmd run check:flow-policy-safety`, `node --check automation/google-flow-media.mjs`, `node --check youtube-workflow-stages.mjs`, `node --check scripts/resume-youtube-job-from-assets.mjs`, `node scripts/check-flow-video-credit-reject-contract.mjs`.
+
+## 2026-06-11 - Fix - Flow image provider failure fallback
+
+- Investigated desktop job `youtube-1781133776221`, where scene 1 failed after video mode stalled, video-to-image fallback retried, and Flow image mode returned a generation failure card before exposing media.
+- Found that the video-to-image fallback prompt still contained `Output mode: video` text before appending `Output mode: image`, creating contradictory Flow instructions.
+- Added an image fallback prompt sanitizer, routed video-to-image inner Flow image failures through the image fallback handler, and treated retryable Flow image provider failures (`FAILED`, `STALLED`, `CANCELLED`) as provider-exhausted conditions that can continue through local image-motion fallback.
+- Added a resume-script opt-in (`HERMES_ALLOW_LOCAL_FALLBACK_FINAL=1`) for recovery runs that intentionally accept local fallback scenes.
+- Live verification on `youtube-1781133776221`: scenes 1-4 completed after Flow repeatedly failed/stalled; scene 3 and 4 were direct image scenes that no longer aborted the job.
+- Verification: `npm.cmd run check:flow-policy-safety`, `node scripts/check-flow-image-no-media-fallback.mjs`, `node scripts/check-flow-cancelled-fallback-contract.mjs`, targeted resume of `youtube-1781133776221`.
