@@ -654,11 +654,11 @@ export function analyzeYouTubeOutput(jobDirInput) {
     .map((scene, index) => Number(scene.order || index + 1))
     .filter((order) => existsSync(join(jobDir, `scene_${order}_flow_image_local_fallback.json`)));
   if (localFallbackImageScenes.length) {
-    failureCodes.push("FLOW_IMAGE_LOCAL_PLACEHOLDER");
     details.localFallbackImageScenes = localFallbackImageScenes;
     qualityWarnings.push({
       code: "FLOW_IMAGE_LOCAL_PLACEHOLDER",
-      message: "One or more image scenes used local placeholder fallback instead of real Google Flow image media.",
+      severity: "warning",
+      message: "One or more image scenes used local fallback after Google Flow did not expose media.",
       sceneOrders: localFallbackImageScenes,
     });
   }

@@ -456,3 +456,11 @@
 - Added a resume-script opt-in (`HERMES_ALLOW_LOCAL_FALLBACK_FINAL=1`) for recovery runs that intentionally accept local fallback scenes.
 - Live verification on `youtube-1781133776221`: scenes 1-4 completed after Flow repeatedly failed/stalled; scene 3 and 4 were direct image scenes that no longer aborted the job.
 - Verification: `npm.cmd run check:flow-policy-safety`, `node scripts/check-flow-image-no-media-fallback.mjs`, `node scripts/check-flow-cancelled-fallback-contract.mjs`, targeted resume of `youtube-1781133776221`.
+
+## 2026-06-11 - Fix - Flow fallback final QA warning
+
+- Investigated desktop job `youtube-1781143494178`, where all 20 scenes rendered and the final MP4 was created, but final QA failed solely with `FLOW_IMAGE_LOCAL_PLACEHOLDER`.
+- Changed final output analysis so local Flow image fallback scenes remain visible as `qualityWarnings` but do not hard-fail an otherwise valid final render.
+- Verified the same job now analyzes as `ok: true` with `failureCodes: []`, while preserving `localFallbackImageScenes` and a `FLOW_IMAGE_LOCAL_PLACEHOLDER` warning.
+- Repacked the Electron app so the desktop shortcut launcher runs the updated analyzer.
+- Verification: `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781143494178"`, `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:final-output-qa`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.

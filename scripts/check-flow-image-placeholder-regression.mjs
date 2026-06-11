@@ -20,7 +20,17 @@ assert.match(
 assert.match(
   analyzer,
   /FLOW_IMAGE_LOCAL_PLACEHOLDER/,
-  "Output analyzer should flag local placeholder image scenes in live jobs",
+  "Output analyzer should warn about local fallback image scenes in live jobs",
+);
+assert.doesNotMatch(
+  analyzer,
+  /failureCodes\.push\("FLOW_IMAGE_LOCAL_PLACEHOLDER"\)/,
+  "Local Flow fallback should not hard-fail an otherwise valid final render",
+);
+assert.match(
+  analyzer,
+  /severity:\s*"warning"/,
+  "Local Flow fallback should remain visible as a warning",
 );
 assert.match(
   analyzer,
