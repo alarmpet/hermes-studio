@@ -1044,17 +1044,29 @@ async function rejectFlowVideoCreditConfirmation(page) {
       el.getAttribute("aria-label"),
       el.getAttribute("title"),
     ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const clickableOf = (el) => el.closest("button,[role='button'],[role='menuitem'],[tabindex]") || el;
     const open = /(\ud06c\ub808\ub527|credit).*(15|15\uac1c).*(\ub3d9\uc601\uc0c1|video)|(\ub3d9\uc601\uc0c1|video).*(\uc0dd\uc131|generation).*(\ud06c\ub808\ub527|credit)/i.test(bodyText);
     if (!open) return { open: false, rejected: false, reason: "no-video-credit-confirmation" };
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-    const candidates = Array.from(document.querySelectorAll("button,[role='button']"))
+    const seen = new Set();
+    const candidates = Array.from(document.querySelectorAll("button,[role='button'],[role='menuitem'],[tabindex],span,div"))
       .filter(visible)
       .map((el) => {
-        const rect = el.getBoundingClientRect();
+        const clickable = clickableOf(el);
+        const key = clickable;
+        if (seen.has(key)) return null;
+        seen.add(key);
+        return { source: el, el: clickable };
+      })
+      .filter(Boolean)
+      .filter(({ el }) => visible(el))
+      .map((el) => {
+        const rect = el.el.getBoundingClientRect();
+        const text = [textOf(el.el), textOf(el.source)].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
         return {
-          el,
-          text: textOf(el),
+          el: el.el,
+          text,
           x: Math.round(rect.x + rect.width / 2),
           y: Math.round(rect.y + rect.height / 2),
           width: Math.round(rect.width),
@@ -1063,11 +1075,13 @@ async function rejectFlowVideoCreditConfirmation(page) {
           lowerPanel: viewportHeight ? rect.y + rect.height / 2 > viewportHeight * 0.55 : true,
         };
       })
-      .filter((item) => /(\uac70\ubd80|reject|decline|cancel)/i.test(item.text))
+      .filter((item) => /(\uac70\ubd80|reject|decline|cancel|dismiss|no\b)/i.test(item.text))
       .sort((a, b) => {
+        const exactScore = /^(check\s*)?(\uac70\ubd80|reject|decline|cancel)$/i.test(b.text) - /^(check\s*)?(\uac70\ubd80|reject|decline|cancel)$/i.test(a.text);
         const panelScore = (b.inRightPanel ? 1 : 0) - (a.inRightPanel ? 1 : 0);
         const lowerScore = (b.lowerPanel ? 1 : 0) - (a.lowerPanel ? 1 : 0);
-        return panelScore || lowerScore || a.x - b.x || b.y - a.y;
+        const approvalPenalty = /(\uc2b9\uc778|approve|confirm)/i.test(a.text) - /(\uc2b9\uc778|approve|confirm)/i.test(b.text);
+        return exactScore || approvalPenalty || panelScore || lowerScore || a.x - b.x || b.y - a.y;
       });
     const target = candidates[0];
     if (!target) {
@@ -1108,15 +1122,27 @@ async function rejectPaidFlowCreditConfirmation(page) {
       el.getAttribute("aria-label"),
       el.getAttribute("title"),
     ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const clickableOf = (el) => el.closest("button,[role='button'],[role='menuitem'],[tabindex]") || el;
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-    const candidates = Array.from(document.querySelectorAll("button,[role='button']"))
+    const seen = new Set();
+    const candidates = Array.from(document.querySelectorAll("button,[role='button'],[role='menuitem'],[tabindex],span,div"))
       .filter(visible)
       .map((el) => {
-        const rect = el.getBoundingClientRect();
+        const clickable = clickableOf(el);
+        const key = clickable;
+        if (seen.has(key)) return null;
+        seen.add(key);
+        return { source: el, el: clickable };
+      })
+      .filter(Boolean)
+      .filter(({ el }) => visible(el))
+      .map((el) => {
+        const rect = el.el.getBoundingClientRect();
+        const text = [textOf(el.el), textOf(el.source)].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
         return {
-          el,
-          text: textOf(el),
+          el: el.el,
+          text,
           x: Math.round(rect.x + rect.width / 2),
           y: Math.round(rect.y + rect.height / 2),
           width: Math.round(rect.width),
@@ -1125,11 +1151,13 @@ async function rejectPaidFlowCreditConfirmation(page) {
           lowerPanel: viewportHeight ? rect.y + rect.height / 2 > viewportHeight * 0.55 : true,
         };
       })
-      .filter((item) => /(\uac70\ubd80|reject|decline|cancel)/i.test(item.text))
+      .filter((item) => /(\uac70\ubd80|reject|decline|cancel|dismiss|no\b)/i.test(item.text))
       .sort((a, b) => {
+        const exactScore = /^(check\s*)?(\uac70\ubd80|reject|decline|cancel)$/i.test(b.text) - /^(check\s*)?(\uac70\ubd80|reject|decline|cancel)$/i.test(a.text);
         const panelScore = (b.inRightPanel ? 1 : 0) - (a.inRightPanel ? 1 : 0);
         const lowerScore = (b.lowerPanel ? 1 : 0) - (a.lowerPanel ? 1 : 0);
-        return panelScore || lowerScore || a.x - b.x || b.y - a.y;
+        const approvalPenalty = /(\uc2b9\uc778|approve|confirm)/i.test(a.text) - /(\uc2b9\uc778|approve|confirm)/i.test(b.text);
+        return exactScore || approvalPenalty || panelScore || lowerScore || a.x - b.x || b.y - a.y;
       });
     const target = candidates[0];
     if (!target) {

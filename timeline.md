@@ -501,3 +501,10 @@
 - Live no-spend verification passed against the authenticated Flow profile with `imageMode=true`, `nanoBananaPro=true`, `aspect16x9=true`, and `oneImage=true`.
 - Repacked the Electron app and recreated the desktop shortcut so it launches the updated packaged executable.
 - Verification: `npm.cmd run smoke:flow-settings-no-spend`, `npm.cmd run check:flow-output-mode`, `npm.cmd run check:flow-policy-safety`, `node scripts/check-youtube-job-schema.mjs`, `npm.cmd run check:web-ui-automation`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/create-desktop-shortcut.ps1`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
+
+## 2026-06-11 - Fix - Flow credit rejection button targeting
+
+- Investigated a live Google Flow credit confirmation card where Hermes stayed idle on "크레딧 15개를 사용하여 1개 동영상 생성을 시작할까요?" instead of clicking `거부`.
+- Hardened paid/video credit rejection so it scans visible text nodes as well as buttons, resolves their clickable ancestor, prioritizes exact reject labels, and penalizes approval/confirm candidates.
+- Repacked the Electron app after closing the locked packaged Hermes process and recreated the desktop shortcut to launch the updated build.
+- Verification: `node --check automation/google-flow-media.mjs`, `node scripts/check-flow-credit-confirmation-guard.mjs`, `node scripts/check-flow-video-credit-reject-contract.mjs`, `npm.cmd run check:flow-policy-safety`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/create-desktop-shortcut.ps1`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
