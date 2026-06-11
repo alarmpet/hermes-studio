@@ -1,8 +1,6 @@
 import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
-import { chromium } from "playwright";
 import { isFlowPolicyWarningText } from "../electron/services/flow-prompt-safety.mjs";
 import { attachFlowIngredients } from "./google-flow-ingredients.mjs";
 import {
@@ -10,6 +8,12 @@ import {
 } from "./google-flow-chip-classifier.mjs";
 import { configureFlowOutputMode, verifyFlowOutputMode, verifyGeneratorMenuClosed } from "./google-flow-output-mode.mjs";
 import { maximizeChromiumWindow } from "./chromium-window-bounds.mjs";
+import {
+  createWebUiProviderContext,
+  startWebUiTrace,
+  stopWebUiTrace,
+  writeWebUiEvidence,
+} from "./web-ui-provider-harness.mjs";
 
 export const GOOGLE_FLOW_URL = "https://labs.google/fx/ko/tools/flow";
 
@@ -204,40 +208,6 @@ function assertRuntime({ chromePath, profileDir, jobDir }) {
   if (!chromePath) throw new Error("Chrome executable is required for Google Flow automation.");
   if (!profileDir) throw new Error("Google Flow profile directory is required.");
   if (!jobDir) throw new Error("Job directory is required for Google Flow output.");
-}
-
-function isProcessRunning(pid) {
-  try {
-    process.kill(Number(pid), 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function releaseAppManagedAuthWindow(profileDir) {
-  // Step 1: kill the process registered in the lock file (existing logic)
-  const lockPath = join(profileDir, "hermes-profile.lock.json");
-  if (existsSync(lockPath)) {
-    const lock = JSON.parse(await readFile(lockPath, "utf8").catch(() => "{}"));
-    if (lock.pid && isProcessRunning(lock.pid)) {
-      try {
-        process.kill(Number(lock.pid));
-      } catch {
-        // The browser may have already exited between the liveness check and kill.
-      }
-      for (let i = 0; i < 20; i += 1) {
-        if (!isProcessRunning(lock.pid)) break;
-        await delay(250);
-      }
-    }
-    await rm(lockPath, { force: true });
-  }
-
-  // Step 2: aggressively kill ANY Chrome process that still has this profile dir open.
-  // Chrome refuses to start if another instance owns the same user-data-dir, so we
-  // must ensure the directory is fully released before launchPersistentContext.
-  await killChromeHoldingProfile(profileDir);
 }
 
 async function killChromeHoldingProfile(profileDir) {
@@ -1513,24 +1483,36 @@ export async function generateGoogleFlowVideoFromPrompt({
   flowPacer,
   flowAccountSlotId = "default",
   jobId = "",
+  jobOptions = {},
 }) {
   assertRuntime({ chromePath, profileDir, jobDir });
   await mkdir(jobDir, { recursive: true });
   onProgress?.({ message: `장면 ${sceneOrder} Google Flow 프로필을 준비하는 중입니다.` });
-  await releaseAppManagedAuthWindow(profileDir);
+  let context;
+  let page;
+  let tracePath = "";
+  let traceStopped = false;
 
   onProgress?.({ message: `장면 ${sceneOrder} Google Flow 브라우저를 여는 중입니다.` });
-  const context = await chromium.launchPersistentContext(profileDir, {
-    executablePath: chromePath,
-    headless: false,
-    viewport: { width: 1920, height: 1080 },
-    locale: "ko-KR",
-    acceptDownloads: true,
-    args: ["--no-first-run", "--no-default-browser-check", "--start-maximized", "--window-size=1920,1080"],
-  });
-
   try {
-    const page = await visiblePage(context);
+    const webUiContext = await createWebUiProviderContext({
+      provider: "google-flow",
+      profileDir,
+      chromePath,
+      jobOptions,
+      headless: false,
+      viewport: { width: 1920, height: 1080 },
+      windowSize: "1920,1080",
+    });
+    context = webUiContext.context;
+    page = await visiblePage(context);
+    tracePath = await startWebUiTrace({
+      context,
+      jobDir,
+      sceneOrder,
+      provider: "flow",
+      enabled: webUiContext.traceEnabled,
+    });
     await ensureLargeViewport(page);
     await writeFile(join(jobDir, `scene_${sceneOrder}_browser_window_state.json`), JSON.stringify({
       ok: true,
@@ -2185,13 +2167,55 @@ export async function generateGoogleFlowVideoFromPrompt({
     if (outputMode === "image" && (/svg/i.test(saved.contentType || "") || /\.svg$/i.test(saved.path || "") || saved.bytes < 10_000)) {
       throw new Error(`Flow image mode captured a non-generated UI asset instead of a full image: ${saved.path} (${saved.bytes} bytes, ${saved.contentType || "unknown content type"})`);
     }
-    return saved;
+    const finalTracePath = await stopWebUiTrace({
+      context,
+      tracePath,
+      saveSuccessfulWebUiTrace: Boolean(jobOptions?.saveSuccessfulWebUiTrace),
+    });
+    traceStopped = true;
+    return {
+      ...saved,
+      sourceUrl: newMedia[0],
+      provider: "google-flow",
+      providerOrigin: "web-ui",
+      evidence: {
+        tracePath: finalTracePath,
+      },
+    };
   } catch (error) {
+    const finalTracePath = await stopWebUiTrace({ context, tracePath, saveTrace: Boolean(tracePath) });
+    traceStopped = true;
+    const evidence = page
+      ? await writeWebUiEvidence({
+        page,
+        jobDir,
+        provider: "flow",
+        sceneOrder,
+        label: "failure",
+        extra: { message: error?.message || "" },
+      }).catch(() => ({}))
+      : {};
+    error.details = {
+      ...(error.details || {}),
+      provider: "google-flow",
+      providerOrigin: "web-ui",
+      evidence: {
+        ...(error.details?.evidence || {}),
+        ...evidence,
+        tracePath: finalTracePath,
+      },
+    };
+    error.provider = "google-flow";
+    error.providerOrigin = "web-ui";
+    error.evidence = error.details.evidence;
     if (/user data directory is already in use|ProcessSingleton|profile.*in use/i.test(error?.message || "")) {
       throw new Error(`Google Flow browser profile is already open. Close the Google Flow authentication Chrome window, then run Generate Final Video again. Details: ${error.message}`);
     }
     throw error;
   } finally {
-    await context.close().catch(() => {});
+    if (context && tracePath && !traceStopped) {
+      await stopWebUiTrace({ context, tracePath }).catch(() => {});
+    }
+    await context?.close().catch(() => {});
   }
 }

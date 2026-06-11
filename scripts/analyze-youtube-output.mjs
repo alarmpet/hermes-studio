@@ -378,8 +378,10 @@ export function analyzeYouTubeOutput(jobDirInput) {
   const renderOptions = readJsonIfExists(join(jobDir, "render-options.json"));
   const renderReport = readJsonIfExists(join(jobDir, "render-report-v2.json"));
   const sceneRenderManifest = readJsonIfExists(join(jobDir, "scene-render-manifest.json"));
+  const sceneMediaManifest = readJsonIfExists(join(jobDir, "scene-media-manifest.json"));
   const audioManifest = readJsonIfExists(join(jobDir, "scene_audio_manifest.json"));
   const scenes = Array.isArray(draft.scenes) ? draft.scenes : [];
+  const mediaScenes = Array.isArray(sceneMediaManifest.scenes) ? sceneMediaManifest.scenes : [];
   const manifestScenes = Array.isArray(sceneRenderManifest.scenes) ? sceneRenderManifest.scenes : [];
   const reportScenes = Array.isArray(renderReport.scenes) && renderReport.scenes.length
     ? renderReport.scenes
@@ -691,6 +693,34 @@ export function analyzeYouTubeOutput(jobDirInput) {
         ? "One or more image scenes used placeholder local fallback after Google Flow did not expose media."
         : "One or more scenes used local image-motion fallback after Google Flow did not expose media.",
       sceneOrders: placeholderSceneOrders.length ? placeholderSceneOrders : fallbackSceneOrders,
+    });
+  }
+
+  const webUiProviderMediaIssues = [];
+  for (const scene of mediaScenes) {
+    if (scene.providerOrigin !== "web-ui" || scene.status === "failed") continue;
+    const fallbackText = cleanText(scene.fallback || scene.fallbackReason || scene.reason).toLowerCase();
+    const hasProviderMedia = Boolean(
+      scene.originalPath
+      && scene.sourceContentType
+      && !fallbackText.includes("local")
+    );
+    if (!hasProviderMedia) {
+      webUiProviderMediaIssues.push({
+        order: scene.order,
+        provider: scene.provider || scene.providerName || "",
+        code: "WEB_UI_PROVIDER_MEDIA_REQUIRED",
+      });
+    }
+  }
+  if (webUiProviderMediaIssues.length) {
+    details.webUiProviderMediaIssues = webUiProviderMediaIssues;
+    failureCodes.push("WEB_UI_PROVIDER_MEDIA_REQUIRED");
+    qualityWarnings.push({
+      code: "WEB_UI_PROVIDER_MEDIA_REQUIRED",
+      severity: "error",
+      message: "One or more Web UI provider scenes completed without verified original provider media.",
+      sceneOrders: webUiProviderMediaIssues.map((item) => item.order),
     });
   }
 

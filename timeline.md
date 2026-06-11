@@ -482,3 +482,12 @@
 - Changed final output QA so unapproved local fallback scenes are an error (`FLOW_IMAGE_LOCAL_FALLBACK`) instead of a warning; the existing `youtube-1781155854425` final now analyzes as `ok:false`.
 - Repacked the Electron app and verified the desktop shortcut launcher resolves to the updated packaged executable.
 - Verification: `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `npm.cmd run check:final-output-qa`, `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781155854425"` expected failure with `FLOW_IMAGE_LOCAL_FALLBACK`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
+
+## 2026-06-11 - Architecture - Web UI provider automation foundation
+
+- Added a shared Web UI provider contract, auth-window/profile release helper, and Playwright persistent-context harness for Google Flow and future providers such as Leonardo or Grok.
+- Moved Google Flow runtime launch through the shared harness, added optional trace capture, and attached `provider:"google-flow"`, `providerOrigin:"web-ui"`, and evidence metadata to success and failure results.
+- Propagated provider metadata into scene media records and `scene-media-manifest.json`, then added final QA protection for completed Web UI scenes that lack verified original provider media.
+- Added Web UI automation contract/smoke checks and included them in the default `check` chain.
+- Repacked the Electron app and verified the desktop shortcut launcher resolves to the updated packaged executable.
+- Verification: `npm.cmd run check:web-ui-automation`, `node scripts/check-desktop-progress-feedback.mjs`, `npm.cmd run check:flow-output-mode`, `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:final-output-qa`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.

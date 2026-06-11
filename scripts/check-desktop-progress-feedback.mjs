@@ -54,7 +54,11 @@ assert.doesNotMatch(service, /not wired yet/, "desktop Flow media generation mus
 assert.match(draftService, /OpenRouter/, "desktop draft service should use OpenRouter for script generation");
 assert.match(draftService, /response_format:\s*\{\s*type:\s*"json_object"\s*\}/, "desktop draft generation should request JSON output");
 assert.match(draftService, /fetchArticleSource/, "desktop draft service should support URL article sources");
-assert.match(flowAutomation, /launchPersistentContext/, "Flow automation should use the authenticated persistent profile");
+assert.match(flowAutomation, /createWebUiProviderContext/, "Flow automation should use the shared authenticated Web UI harness");
+assert.match(flowAutomation, /startWebUiTrace/, "Flow automation should support conditional trace capture");
+assert.match(flowAutomation, /writeWebUiEvidence/, "Flow automation should save shared Web UI failure evidence");
+assert.match(flowAutomation, /providerOrigin:\s*"web-ui"/, "Flow automation should tag Web UI provider media");
+assert.match(flowAutomation, /jobOptions/, "Flow automation should pass job options into provider harness behavior");
 assert.match(flowAutomation, /Flow did not expose a new \$\{outputMode\} URL/, "Flow automation should save diagnostic evidence when media is not exposed");
 assert.match(flowAutomation, /scene_\$\{sceneOrder\}_flow_submitted\.png/, "Flow automation should save a post-submit screenshot");
 assert.match(flowAutomation, /verifyFlowSubmissionStarted/, "Flow automation should verify generation started after clicking create");

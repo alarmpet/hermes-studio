@@ -8,6 +8,7 @@ const rendererHtml = readFileSync(new URL("../electron/renderer/index.html", imp
 const rendererApp = readFileSync(new URL("../electron/renderer/app.js", import.meta.url), "utf8");
 const stages = readFileSync(new URL("../youtube-workflow-stages.mjs", import.meta.url), "utf8");
 const flow = readFileSync(new URL("../automation/google-flow-media.mjs", import.meta.url), "utf8");
+const webUiHarness = readFileSync(new URL("../automation/web-ui-provider-harness.mjs", import.meta.url), "utf8");
 const outputModeHelper = readFileSync(new URL("../automation/google-flow-output-mode.mjs", import.meta.url), "utf8");
 const packageJson = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 
@@ -92,7 +93,7 @@ assert.match(outputModeHelper, /excludeGeneratorLabels/, "image mode should expl
 assert.match(outputModeHelper, /selectedImageModel/, "Flow verification should report selected image model");
 assert.match(outputModeHelper, /selectedImageModel !== "unknown"/, "image mode verification should require a known image model");
 assert.doesNotMatch(outputModeHelper, /imageModel:\s*\[[^\]]*"Nano Banana Pro"/s, "image model selection should not be pinned to Nano Banana Pro");
-assert.match(flow, /locale:\s*["']ko-KR["']/, "Flow browser context should force ko-KR locale for stable labels");
+assert.match(webUiHarness, /locale:\s*["']ko-KR["']/, "Flow browser context should force ko-KR locale for stable labels");
 assert.match(flow, /retryFlowOutputModeAfterReload/, "Flow automation should have one bounded reload retry for transient mode-switch failures");
 assert.match(flow, /flow_mode_verification/, "Flow automation must save mode verification artifacts");
 assert.match(flow, /chooseFlowGeneratorChip/, "Flow generator-ready detection must use the shared chip classifier");

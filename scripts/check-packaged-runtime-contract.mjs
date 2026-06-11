@@ -80,6 +80,9 @@ if (existsSync(unpacked)) {
     const packagedStages = readFileSync(join(extractDir, "youtube-workflow-stages.mjs"), "utf8");
     const packagedPlanner = readFileSync(join(extractDir, "electron/services/script-planner.mjs"), "utf8");
     const packagedFlowAutomation = readFileSync(join(extractDir, "automation/google-flow-media.mjs"), "utf8");
+    const packagedWebUiHarness = readFileSync(join(extractDir, "automation/web-ui-provider-harness.mjs"), "utf8");
+    const packagedWebUiContract = readFileSync(join(extractDir, "automation/web-ui-provider-contract.mjs"), "utf8");
+    const packagedWebUiAuthWindow = readFileSync(join(extractDir, "automation/web-ui-auth-window.mjs"), "utf8");
     const packagedChromiumWindowBounds = readFileSync(join(extractDir, "automation/chromium-window-bounds.mjs"), "utf8");
     const packagedSafety = readFileSync(join(extractDir, "electron/services/flow-prompt-safety.mjs"), "utf8");
     const packagedDirectScript = readFileSync(join(extractDir, "electron/services/direct-script-draft-service.mjs"), "utf8");
@@ -117,8 +120,16 @@ if (existsSync(unpacked)) {
     assert.match(packagedFlowAutomation, /serializeFlowSubmitAttempt/, "packaged Flow automation should serialize submit attempts without assuming create coordinates");
     assert.doesNotMatch(packagedFlowAutomation, /mouseClick:\s*\{\s*x:\s*[^}]*positions\.create\.x/s, "packaged Flow automation should not dereference missing create button coordinates");
     assert.match(packagedFlowAutomation, /ensureLargeViewport/, "packaged Flow automation should verify its viewport");
-    assert.match(packagedFlowAutomation, /--start-maximized/, "packaged Flow automation should start Chrome maximized");
-    assert.match(packagedFlowAutomation, /chromium-window-bounds\.mjs/, "packaged Flow automation should use the shared Chromium bounds guard");
+    assert.match(packagedFlowAutomation, /createWebUiProviderContext/, "packaged Flow automation should use the shared Web UI provider harness");
+    assert.match(packagedFlowAutomation, /providerOrigin:\s*"web-ui"/, "packaged Flow automation should mark Web UI provider media");
+    assert.match(packagedWebUiHarness, /launchPersistentContext/, "packaged Web UI harness should use persistent authenticated profiles");
+    assert.match(packagedWebUiHarness, /releaseAppManagedAuthWindow/, "packaged Web UI harness should release app-managed auth windows");
+    assert.match(packagedWebUiHarness, /maximizeChromiumWindow\(page,/, "packaged Web UI harness should maximize with the page object");
+    assert.match(packagedWebUiHarness, /acceptDownloads:\s*true/, "packaged Web UI harness should allow downloads");
+    assert.match(packagedWebUiHarness, /enableWebUiTracing/, "packaged Web UI harness should include conditional tracing");
+    assert.match(packagedWebUiContract, /assertProviderMediaResult/, "packaged Web UI contract should validate provider media");
+    assert.match(packagedWebUiContract, /providerOrigin:\s*"web-ui"/, "packaged Web UI contract should tag provider origin");
+    assert.match(packagedWebUiAuthWindow, /wmic process/, "packaged Web UI auth helper should release profile owners");
     assert.match(packagedFlowAutomation, /focusPromptTextboxByDom/, "packaged Flow automation should include prompt textbox DOM focus fallback");
     assert.match(packagedFlowAutomation, /flow_prompt_focus_failed\.json/, "packaged Flow automation should write prompt focus failure diagnostics");
     assert.match(packagedFlowAutomation, /retryFlowSubmitAfterIdle/, "packaged Flow automation should self-heal video and image submit-idle failures");

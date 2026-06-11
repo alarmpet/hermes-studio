@@ -304,6 +304,7 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
       flowPacer: flowSceneContext.flowPacer,
       flowAccountSlotId: flowSceneContext.slot.id,
       jobId: job?.id || context.job?.id || "",
+      jobOptions: job?.options || {},
       onProgress: ({ message, details } = {}) => {
         const isFlowModeMismatch = details?.eventType === "flow-mode-mismatch";
         const isFlowHardFailure = details?.eventType === "flow-abnormal-activity"
@@ -371,6 +372,7 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
           flowPacer: flowSceneContext.flowPacer,
           flowAccountSlotId: flowSceneContext.slot.id,
           jobId: job?.id || context.job?.id || "",
+          jobOptions: job?.options || {},
           onProgress: ({ message, details } = {}) => {
             const enrichedDetails = {
               ...details,
@@ -430,6 +432,9 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
         bytes: imageMedia.bytes,
         contentType: "video/mp4",
         sourceContentType: imageMedia.contentType,
+        provider: imageMedia.provider || "google-flow",
+        providerOrigin: imageMedia.providerOrigin || "web-ui",
+        evidence: imageMedia.evidence || {},
         flowOutputMode: "image",
         sceneOutputMode: "image",
         originalSceneOutputMode: "video",
@@ -502,6 +507,9 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
         bytes: media.bytes,
         contentType: "video/mp4",
         sourceContentType: media.contentType,
+        provider: media.provider || "google-flow",
+        providerOrigin: media.providerOrigin || "web-ui",
+        evidence: media.evidence || {},
         flowOutputMode: "image",
         sceneOutputMode: "image",
         flowAccountSlotId: flowSceneContext.slot.id,
@@ -574,6 +582,9 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
     bytes: media.bytes,
     contentType: "video/mp4",
     sourceContentType: media.contentType,
+    provider: media.provider || "google-flow",
+    providerOrigin: media.providerOrigin || "web-ui",
+    evidence: media.evidence || {},
     flowOutputMode: outputMode,
     sceneOutputMode: outputMode,
     flowAccountSlotId: flowSceneContext.slot.id,
