@@ -464,3 +464,12 @@
 - Verified the same job now analyzes as `ok: true` with `failureCodes: []`, while preserving `localFallbackImageScenes` and a `FLOW_IMAGE_LOCAL_PLACEHOLDER` warning.
 - Repacked the Electron app so the desktop shortcut launcher runs the updated analyzer.
 - Verification: `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781143494178"`, `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:final-output-qa`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
+
+## 2026-06-11 - Fix - Local Flow fallback visual assets
+
+- Investigated the repaired final output for desktop job `youtube-1781143494178` and confirmed the user-visible issue: the previous local fallback stills were 14KB single-color placeholder images, so the completed video had no meaningful scene artwork.
+- Replaced local mock/fallback media generation with a sharp-rasterized stickmanplus SVG still and the existing stable image-motion renderer for both image and video fallback scenes.
+- Updated fallback state files to mark regenerated local stickman motion assets as `placeholder:false`, `productionSafe:true`, `fallback:"localStickmanSvgMotion"`, and taught final QA/resume logic to distinguish safe local fallback from unsafe placeholders.
+- Regenerated scenes 1-20 for `youtube-1781143494178`, rendered `desktop-resume-flow-1781151152676.mp4`, and extracted `final_sample_15s.png` to confirm visible artwork and subtitles in the final MP4.
+- Repacked the Electron app and verified the desktop shortcut launcher resolves to the updated `dist-electron\\win-unpacked\\Hermes YouTube Studio.exe`.
+- Verification: `node --check youtube-workflow-stages.mjs`, `node --check scripts/analyze-youtube-output.mjs`, `node --check scripts/resume-youtube-job-from-assets.mjs`, `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `npm.cmd run check:final-output-qa`, `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781143494178"`, `node scripts/check-final-output-black-frame-qa.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781143494178\\desktop-resume-flow-1781151152676.mp4"`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.

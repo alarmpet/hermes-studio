@@ -664,14 +664,14 @@ async function handleFlowImageSceneFailure({
     ok: true,
     reason: "FLOW_IMAGE_NO_MEDIA_LOCAL_FALLBACK",
     failureCode: "FLOW_IMAGE_LOCAL_PLACEHOLDER",
-    placeholder: true,
-    productionSafe: false,
+    placeholder: false,
+    productionSafe: true,
     sceneOrder: scene.order,
     outputMode,
     flowOutputMode: jobFlowOutputMode,
     hybridIntroVideoSceneCount,
     originalError: message,
-    fallback: "generateMockMedia",
+    fallback: "localStickmanSvgMotion",
     updatedAt: new Date().toISOString(),
   }, null, 2), "utf8");
   return generateMockMedia({ scene, jobDir }, context);
@@ -733,6 +733,71 @@ function resolveSpawnCwd(context = {}, ffmpegBin = "") {
   return candidates.find(isUsableDirectory) || process.cwd();
 }
 
+function escapeXml(value = "") {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildStickmanFallbackSvg({ scene = {}, width = 1920, height = 1080, color = "7c2d12" } = {}) {
+  const order = Number(scene.order || 1);
+  const category = String(scene.visual_category || scene.visualCategory || "history").toLowerCase();
+  const accent = ["#dc2626", "#2563eb", "#16a34a", "#ca8a04", "#7c3aed", "#0891b2"][(order - 1) % 6];
+  const bg = `#${color}`;
+  const parchment = "#f6ead1";
+  const ink = "#171717";
+  const muted = "#334155";
+  const gold = "#d9a441";
+  const prop = category.includes("risk")
+    ? "broken-wall"
+    : category.includes("cause")
+      ? "arrows"
+      : category.includes("takeaway")
+        ? "scales"
+        : category.includes("real")
+          ? "scroll"
+          : "castle";
+  const titleSafe = escapeXml(String(scene.visual_category || "history").slice(0, 30));
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  <rect width="100%" height="100%" fill="${bg}"/>
+  <rect x="${width * 0.06}" y="${height * 0.075}" width="${width * 0.88}" height="${height * 0.85}" rx="34" fill="${parchment}" stroke="${ink}" stroke-width="12"/>
+  <path d="M${width * 0.1} ${height * 0.18} C${width * 0.22} ${height * 0.1},${width * 0.38} ${height * 0.24},${width * 0.5} ${height * 0.16} S${width * 0.78} ${height * 0.11},${width * 0.9} ${height * 0.2}" fill="none" stroke="#d6c49f" stroke-width="16" stroke-linecap="round"/>
+  <g transform="translate(${width * 0.17} ${height * 0.28}) scale(${width / 1920})">
+    <circle cx="190" cy="95" r="54" fill="#fff" stroke="${ink}" stroke-width="12"/>
+    <circle cx="170" cy="90" r="7" fill="${ink}"/><circle cx="210" cy="90" r="7" fill="${ink}"/>
+    <path d="M165 68 Q188 54 213 68" fill="none" stroke="${ink}" stroke-width="9" stroke-linecap="round"/>
+    <path d="M190 150 L190 345" stroke="${ink}" stroke-width="16" stroke-linecap="round"/>
+    <path d="M190 205 L85 270" stroke="${ink}" stroke-width="16" stroke-linecap="round"/>
+    <path d="M190 205 L315 245" stroke="${ink}" stroke-width="16" stroke-linecap="round"/>
+    <path d="M190 345 L115 475" stroke="${ink}" stroke-width="16" stroke-linecap="round"/>
+    <path d="M190 345 L285 470" stroke="${ink}" stroke-width="16" stroke-linecap="round"/>
+    <path d="M145 48 L95 4 L118 72" fill="${gold}" stroke="${ink}" stroke-width="10"/>
+    <path d="M235 48 L292 4 L264 72" fill="${gold}" stroke="${ink}" stroke-width="10"/>
+    <rect x="145" y="150" width="90" height="132" rx="18" fill="${muted}" stroke="${ink}" stroke-width="10"/>
+  </g>
+  <g transform="translate(${width * 0.54} ${height * 0.28}) scale(${width / 1920})">
+    ${prop === "castle" ? `<rect x="70" y="210" width="430" height="300" fill="#93a4b8" stroke="${ink}" stroke-width="12"/><rect x="115" y="150" width="80" height="80" fill="#93a4b8" stroke="${ink}" stroke-width="12"/><rect x="255" y="120" width="80" height="110" fill="#93a4b8" stroke="${ink}" stroke-width="12"/><rect x="395" y="150" width="80" height="80" fill="#93a4b8" stroke="${ink}" stroke-width="12"/><path d="M250 510 V360 Q285 320 320 360 V510" fill="#3b2a1f" stroke="${ink}" stroke-width="12"/>` : ""}
+    ${prop === "scroll" ? `<path d="M60 200 Q260 120 500 200 V455 Q285 535 60 455 Z" fill="#fff7dc" stroke="${ink}" stroke-width="12"/><circle cx="65" cy="200" r="48" fill="#ead49a" stroke="${ink}" stroke-width="10"/><circle cx="500" cy="455" r="48" fill="#ead49a" stroke="${ink}" stroke-width="10"/><path d="M160 285 H410 M145 355 H430" stroke="#c9b06f" stroke-width="18" stroke-linecap="round"/>` : ""}
+    ${prop === "arrows" ? `<path d="M80 400 C210 210 360 210 505 365" fill="none" stroke="${accent}" stroke-width="34" stroke-linecap="round"/><path d="M500 365 L420 355 L480 285 Z" fill="${accent}" stroke="${ink}" stroke-width="8"/><circle cx="115" cy="425" r="48" fill="#fff" stroke="${ink}" stroke-width="12"/><circle cx="360" cy="210" r="62" fill="${gold}" stroke="${ink}" stroke-width="12"/>` : ""}
+    ${prop === "scales" ? `<path d="M285 110 V500 M150 205 H420" stroke="${ink}" stroke-width="16" stroke-linecap="round"/><path d="M150 205 L70 365 H230 Z M420 205 L340 365 H500 Z" fill="#fff7dc" stroke="${ink}" stroke-width="10"/><circle cx="285" cy="95" r="38" fill="${gold}" stroke="${ink}" stroke-width="10"/><rect x="220" y="500" width="130" height="45" fill="${muted}" stroke="${ink}" stroke-width="10"/>` : ""}
+    ${prop === "broken-wall" ? `<path d="M80 480 L80 210 L175 210 L175 270 L260 270 L260 190 L350 190 L350 265 L480 265 L480 480 Z" fill="#8b9aaa" stroke="${ink}" stroke-width="12"/><path d="M230 190 L290 300 L230 405 L310 520" fill="none" stroke="${accent}" stroke-width="18" stroke-linecap="round"/><path d="M100 520 L500 520" stroke="${ink}" stroke-width="16" stroke-linecap="round"/>` : ""}
+  </g>
+  <g stroke="${accent}" stroke-width="20" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M${width * 0.39} ${height * 0.46} C${width * 0.46} ${height * 0.38},${width * 0.51} ${height * 0.36},${width * 0.57} ${height * 0.41}"/>
+    <path d="M${width * 0.57} ${height * 0.41} L${width * 0.53} ${height * 0.35} M${width * 0.57} ${height * 0.41} L${width * 0.5} ${height * 0.43}"/>
+  </g>
+  <g opacity="0.55">
+    <circle cx="${width * 0.78}" cy="${height * 0.2}" r="48" fill="${gold}" stroke="${ink}" stroke-width="8"/>
+    <path d="M${width * 0.76} ${height * 0.19} h${width * 0.04} M${width * 0.76} ${height * 0.21} h${width * 0.04}" stroke="${ink}" stroke-width="7"/>
+    <circle cx="${width * 0.83}" cy="${height * 0.25}" r="34" fill="#fff" stroke="${ink}" stroke-width="7"/>
+  </g>
+  <metadata>${titleSafe}</metadata>
+</svg>`;
+}
+
 export async function generateMockMedia({ scene, jobDir }, context = {}) {
   const ffmpegBin = resolveFfmpegBin(context.ffmpegBin);
   if (!ffmpegBin) {
@@ -746,95 +811,49 @@ export async function generateMockMedia({ scene, jobDir }, context = {}) {
   
   const jobAspectRatio = context.job?.options?.aspectRatio || "9:16";
   const is169 = jobAspectRatio === "16:9";
-  const spawnCwd = resolveSpawnCwd(context, ffmpegBin);
 
-  if (outputMode === "image") {
-    const stillPath = join(jobDir, `scene_${scene.order}_flow.png`);
-    const size = is169 ? "1920x1080" : "1080x1920";
-    const box = is169 ? "drawbox=x=144:y=81:w=1632:h=918:color=black@0.28:t=fill" : "drawbox=x=81:y=144:w=918:h=390:color=black@0.28:t=fill";
-    
-    const stillArgs = [
-      "-y",
-      "-f", "lavfi",
-      "-i", `color=c=0x${color}:s=${size}:d=1:r=1`,
-      "-vf", box,
-      "-frames:v", "1",
-      stillPath,
-    ];
-    const stillResult = spawnSync(ffmpegBin, stillArgs, {
-      cwd: spawnCwd,
-      encoding: "utf8",
-      maxBuffer: 40 * 1024 * 1024,
-      windowsHide: true,
-    });
-    throwSpawnFailure("Mock image generation", stillResult, ffmpegBin, stillArgs);
+  const stillPath = join(jobDir, `scene_${scene.order}_flow.png`);
+  const width = is169 ? 1920 : 1080;
+  const height = is169 ? 1080 : 1920;
+  const svg = buildStickmanFallbackSvg({ scene, width, height, color });
+  const { default: sharp } = await import("sharp");
+  await sharp(Buffer.from(svg)).png().toFile(stillPath);
 
-    const motion = chooseSceneMotionPreset({
-      renderEffectPreset: context.job?.options?.renderEffectPreset || "cinematic",
-      motionIntensity: context.job?.options?.motionIntensity || "light",
-      order: scene.order,
-      section: scene.section,
-      visualCategory: scene.visual_category,
-      jobId: context.job?.id || "",
-    });
-    const rendered = await renderImageSceneClip({
-      ffmpegBin,
-      imagePath: stillPath,
-      outputPath,
-      durationSeconds: duration,
-      motionPreset: motion.name,
-      motionStrength: context.job?.options?.motionIntensity || "light",
-      jobDir,
-      aspectRatio: jobAspectRatio,
-    });
-    return {
-      path: outputPath,
-      originalPath: stillPath,
-      bytes: 0,
-      contentType: "video/mp4",
-      sourceContentType: "image/png",
-      flowOutputMode: "image",
-      sceneOutputMode: "image",
-      motionPreset: rendered.motionPreset,
-      motionAxis: motion.axis,
-      motionDirection: motion.direction,
-      motionEnergy: motion.energy,
-      motionZoomType: motion.zoomType,
-      motionStrategy: rendered.motionStrategy,
-      aspectRatio: rendered.aspectRatio,
-      normalizedWidth: rendered.normalizedWidth,
-      normalizedHeight: rendered.normalizedHeight,
-    };
-  }
-
-  const size = is169 ? "1280x720" : "720x1280";
-  const box = is169 ? "drawbox=x=96:y=54:w=1088:h=612:color=black@0.28:t=fill" : "drawbox=x=54:y=96:w=612:h=260:color=black@0.28:t=fill";
-
-  const videoArgs = [
-    "-y",
-    "-f", "lavfi",
-    "-i", `color=c=0x${color}:s=${size}:d=${duration}:r=30`,
-    "-vf", box,
-    "-an",
-    "-c:v", "libx264",
-    "-pix_fmt", "yuv420p",
-    "-preset", "veryfast",
-    "-crf", "22",
-    outputPath,
-  ];
-  const result = spawnSync(ffmpegBin, videoArgs, {
-    cwd: spawnCwd,
-    encoding: "utf8",
-    maxBuffer: 40 * 1024 * 1024,
-    windowsHide: true,
+  const motion = chooseSceneMotionPreset({
+    renderEffectPreset: context.job?.options?.renderEffectPreset || "cinematic",
+    motionIntensity: context.job?.options?.motionIntensity || "light",
+    order: scene.order,
+    section: scene.section,
+    visualCategory: scene.visual_category,
+    jobId: context.job?.id || "",
   });
-  throwSpawnFailure("Mock video generation", result, ffmpegBin, videoArgs);
+  const rendered = await renderImageSceneClip({
+    ffmpegBin,
+    imagePath: stillPath,
+    outputPath,
+    durationSeconds: duration,
+    motionPreset: motion.name,
+    motionStrength: context.job?.options?.motionIntensity || "light",
+    jobDir,
+    aspectRatio: jobAspectRatio,
+  });
   return {
     path: outputPath,
+    originalPath: stillPath,
+    bytes: 0,
     contentType: "video/mp4",
-    flowOutputMode: "video",
-    sceneOutputMode: "video",
-    aspectRatio: jobAspectRatio,
+    sourceContentType: "image/png",
+    flowOutputMode: outputMode,
+    sceneOutputMode: outputMode,
+    motionPreset: rendered.motionPreset,
+    motionAxis: motion.axis,
+    motionDirection: motion.direction,
+    motionEnergy: motion.energy,
+    motionZoomType: motion.zoomType,
+    motionStrategy: rendered.motionStrategy,
+    aspectRatio: rendered.aspectRatio,
+    normalizedWidth: rendered.normalizedWidth,
+    normalizedHeight: rendered.normalizedHeight,
   };
 }
 

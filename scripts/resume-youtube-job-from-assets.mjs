@@ -22,9 +22,22 @@ const job = JSON.parse(readFileSync(jobPath, "utf8"));
 const draft = JSON.parse(readFileSync(draftPath, "utf8"));
 const allowLocalFallbackFinal = process.env.HERMES_ALLOW_LOCAL_FALLBACK_FINAL === "1"
   || job.options?.allowLiveImagePlaceholderFallback === true;
+const readFallbackState = (order) => {
+  const statePath = join(jobDir, `scene_${order}_flow_image_local_fallback.json`);
+  if (!existsSync(statePath)) return null;
+  try {
+    return JSON.parse(readFileSync(statePath, "utf8"));
+  } catch {
+    return {};
+  }
+};
 const placeholderSceneOrders = (draft.scenes || [])
   .map((scene, index) => Number(scene.order || index + 1))
-  .filter((order) => existsSync(join(jobDir, `scene_${order}_flow_image_local_fallback.json`)));
+  .filter((order) => {
+    const fallbackState = readFallbackState(order);
+    if (!fallbackState) return false;
+    return fallbackState.placeholder !== false || fallbackState.productionSafe !== true;
+  });
 if (placeholderSceneOrders.length && !allowLocalFallbackFinal) {
   throw new Error(`FLOW_IMAGE_LOCAL_PLACEHOLDER: retry image scenes before final render. retryFlowImageScenes=true sceneOrders=${placeholderSceneOrders.join(",")}`);
 }

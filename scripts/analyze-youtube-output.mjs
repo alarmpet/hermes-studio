@@ -651,15 +651,38 @@ export function analyzeYouTubeOutput(jobDirInput) {
   }
 
   const localFallbackImageScenes = scenes
-    .map((scene, index) => Number(scene.order || index + 1))
-    .filter((order) => existsSync(join(jobDir, `scene_${order}_flow_image_local_fallback.json`)));
+    .map((scene, index) => {
+      const order = Number(scene.order || index + 1);
+      const statePath = join(jobDir, `scene_${order}_flow_image_local_fallback.json`);
+      if (!existsSync(statePath)) return null;
+      let state = {};
+      try {
+        state = JSON.parse(readFileSync(statePath, "utf8"));
+      } catch {
+        state = {};
+      }
+      return {
+        order,
+        placeholder: state.placeholder !== false,
+        productionSafe: state.productionSafe === true,
+        fallback: cleanText(state.fallback),
+      };
+    })
+    .filter(Boolean);
   if (localFallbackImageScenes.length) {
-    details.localFallbackImageScenes = localFallbackImageScenes;
+    const fallbackSceneOrders = localFallbackImageScenes.map((item) => item.order);
+    const placeholderSceneOrders = localFallbackImageScenes
+      .filter((item) => item.placeholder || !item.productionSafe)
+      .map((item) => item.order);
+    details.localFallbackImageScenes = fallbackSceneOrders;
+    details.localFallbackImageSceneStates = localFallbackImageScenes;
     qualityWarnings.push({
-      code: "FLOW_IMAGE_LOCAL_PLACEHOLDER",
+      code: placeholderSceneOrders.length ? "FLOW_IMAGE_LOCAL_PLACEHOLDER" : "FLOW_IMAGE_LOCAL_FALLBACK",
       severity: "warning",
-      message: "One or more image scenes used local fallback after Google Flow did not expose media.",
-      sceneOrders: localFallbackImageScenes,
+      message: placeholderSceneOrders.length
+        ? "One or more image scenes used placeholder local fallback after Google Flow did not expose media."
+        : "One or more scenes used local image-motion fallback after Google Flow did not expose media.",
+      sceneOrders: placeholderSceneOrders.length ? placeholderSceneOrders : fallbackSceneOrders,
     });
   }
 

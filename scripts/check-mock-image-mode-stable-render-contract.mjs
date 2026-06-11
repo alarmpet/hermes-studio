@@ -7,9 +7,12 @@ const packageJson = readFileSync(new URL("../package.json", import.meta.url), "u
 
 assert.match(stages, /function isImageSceneMode/, "mock media should classify image scenes explicitly");
 assert.match(stages, /scene_\$\{scene\.order\}_flow\.png/, "mock image scenes should create the same still-image source contract as Flow image scenes");
+assert.match(stages, /buildStickmanFallbackSvg/, "mock image scenes should generate a real stickman-style local fallback still");
+assert.match(stages, /await import\("sharp"\)/, "mock image fallback stills should be rasterized from SVG with sharp");
 assert.match(stages, /await renderImageSceneClip/, "mock image scenes should render through the stable image sequence renderer");
 assert.match(stages, /sourceContentType:\s*"image\/png"/, "mock image scene metadata should expose the still source content type");
 assert.match(stages, /originalPath:\s*stillPath/, "mock image scene metadata should preserve the still image source path");
+assert.doesNotMatch(stages, /drawbox=x=144:y=81:w=1632:h=918/, "mock image fallback must not regress to the old single-color placeholder card");
 assert.match(packageJson, /check-mock-image-mode-stable-render-contract\.mjs/, "package checks should include mock image mode stable render contract");
 
 console.log(JSON.stringify({ ok: true, checked: "mock-image-mode-stable-render-contract" }));
