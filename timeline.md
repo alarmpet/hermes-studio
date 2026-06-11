@@ -491,3 +491,13 @@
 - Added Web UI automation contract/smoke checks and included them in the default `check` chain.
 - Repacked the Electron app and verified the desktop shortcut launcher resolves to the updated packaged executable.
 - Verification: `npm.cmd run check:web-ui-automation`, `node scripts/check-desktop-progress-feedback.mjs`, `npm.cmd run check:flow-output-mode`, `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:final-output-qa`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
+
+## 2026-06-11 - Fix - Flow Nano Banana Pro settings and credit guard
+
+- Updated Google Flow project entry to recognize the current `add_2` new-project control and added a no-spend smoke diagnostic for Flow image settings.
+- Changed Flow image mode to default to Nano Banana Pro, 16:9, and 1x, and added a required bottom `Agent` selector click so Flow leaves Agentic mode before normal image generation.
+- Added hard pre-submit gates for unconfirmed image settings and paid-credit confirmations; paid Flow credit dialogs are rejected with structured diagnostics instead of being approved automatically.
+- Added Studio controls/evidence for Flow image model and a locked paid-credit rejection guard, plus contract tests for project entry, Pro/16:9/1x settings, and credit rejection.
+- Live no-spend verification passed against the authenticated Flow profile with `imageMode=true`, `nanoBananaPro=true`, `aspect16x9=true`, and `oneImage=true`.
+- Repacked the Electron app and recreated the desktop shortcut so it launches the updated packaged executable.
+- Verification: `npm.cmd run smoke:flow-settings-no-spend`, `npm.cmd run check:flow-output-mode`, `npm.cmd run check:flow-policy-safety`, `node scripts/check-youtube-job-schema.mjs`, `npm.cmd run check:web-ui-automation`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/create-desktop-shortcut.ps1`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.

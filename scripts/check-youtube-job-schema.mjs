@@ -130,6 +130,18 @@ assert.equal(normalizeYouTubeJobRequest({
   sourceValue: "image mode",
   options: { flowOutputMode: "image" },
 }).options.flowOutputMode, "image");
+const flowImageModelJob = normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "image model",
+  options: { flowOutputMode: "image", flowImageModel: "nano-banana-2", rejectPaidFlowCredits: false },
+});
+assert.equal(flowImageModelJob.options.flowImageModel, "nano-banana-2");
+assert.equal(flowImageModelJob.options.rejectPaidFlowCredits, true, "paid Flow credit confirmations should remain rejected even if a caller passes false");
+assert.equal(normalizeYouTubeJobRequest({
+  sourceType: "keyword",
+  sourceValue: "default image model",
+  options: { flowOutputMode: "image", flowImageModel: "bad-model" },
+}).options.flowImageModel, "nano-banana-pro");
 
 const hybridJob = normalizeYouTubeJobRequest({
   sourceType: "keyword",

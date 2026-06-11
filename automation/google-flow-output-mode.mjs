@@ -6,22 +6,29 @@ import {
 const LABELS = {
   image: ["이미지", "image"],
   video: ["동영상", "video"],
+  agentOff: ["\uc548\ud568", "\uc0ac\uc6a9 \uc548\ud568", "none", "off", "disabled"],
   imageSection: ["이미지 생성 기본값", "image generation"],
   videoSection: ["동영상 생성 기본값", "video generation"],
-  imageModel: ["Imagen 4", "Nano Banana 2"],
-  imageModelDropdown: ["Imagen 4", "Nano Banana 2", "Nano Banana"],
+  imageModel: ["Nano Banana Pro"],
+  imageModelDropdown: ["Nano Banana Pro", "Imagen 4", "Nano Banana 2", "Nano Banana"],
   videoModel: ["Veo 3.1 - Lite", "Veo"],
   aspect: ["9:16", "crop_9_16"],
   landscapeAspect: ["16:9", "crop_16_9"],
   count: ["1x"],
 };
 
+const IMAGE_MODEL_LABELS = {
+  "nano-banana-pro": ["Nano Banana Pro"],
+  "nano-banana-2": ["Nano Banana 2"],
+  imagen: ["Imagen 4"],
+};
+
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function configureFlowOutputMode(page, outputMode = "video", aspectRatio = "9:16") {
-  if (outputMode === "image") return configureFlowImage(page, aspectRatio);
+export async function configureFlowOutputMode(page, outputMode = "video", aspectRatio = "9:16", options = {}) {
+  if (outputMode === "image") return configureFlowImage(page, aspectRatio, options);
   return configureFlowVideo(page, aspectRatio);
 }
 
@@ -125,21 +132,142 @@ async function configureFlowVideo(page, aspectRatio = "9:16") {
   });
 }
 
-async function configureFlowImage(page, aspectRatio = "9:16") {
+async function configureFlowImage(page, aspectRatio = "9:16", options = {}) {
+  const requestedImageModel = IMAGE_MODEL_LABELS[options.flowImageModel] ? options.flowImageModel : "nano-banana-pro";
   return configureFlowGenerator(page, {
     requestedOutputMode: "image",
     targetLabels: LABELS.image,
     sectionLabels: LABELS.imageSection,
     modelDropdownLabels: LABELS.imageModelDropdown,
-    generatorLabels: LABELS.imageModel,
-    excludeGeneratorLabels: ["Nano Banana Pro"],
+    generatorLabels: IMAGE_MODEL_LABELS[requestedImageModel],
+    requestedImageModel,
     modelRequired: true,
     aspectLabels: aspectRatio === "16:9" ? LABELS.landscapeAspect : LABELS.aspect,
     countLabels: LABELS.count,
+    countRequired: true,
+    agentModeOffRequired: true,
   });
 }
 
 async function configureFlowGenerator(page, config) {
+  const disableAgentMode = () => page.evaluate(async ({ offLabels }) => {
+    const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    const visible = (el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return !el.disabled
+        && el.getAttribute("aria-disabled") !== "true"
+        && style.visibility !== "hidden"
+        && style.display !== "none"
+        && rect.width > 8
+        && rect.height > 8;
+    };
+    const textOf = (el) => [
+      el.innerText,
+      el.textContent,
+      el.getAttribute("aria-label"),
+      el.getAttribute("title"),
+    ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const bottomButtons = () => Array.from(document.querySelectorAll("button,[role='button']"))
+      .filter(visible)
+      .map((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          el,
+          text: textOf(el),
+          x: Math.round(rect.x + rect.width / 2),
+          y: Math.round(rect.y + rect.height / 2),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          rect,
+        };
+      })
+      .filter((item) => item.y > window.innerHeight * 0.64);
+    const agentChip = bottomButtons()
+      .filter((item) => /agent|agentic|\uc5d0\uc774\uc804\ud2b8/i.test(item.text))
+      .filter((item) => !/article_spark|request|\uc694\uccad/i.test(item.text))
+      .sort((a, b) => {
+        const whiteA = getComputedStyle(a.el).backgroundColor || "";
+        const whiteB = getComputedStyle(b.el).backgroundColor || "";
+        const scoreA = /255|248|245|240/.test(whiteA) ? 1 : 0;
+        const scoreB = /255|248|245|240/.test(whiteB) ? 1 : 0;
+        return scoreB - scoreA || b.width - a.width || a.x - b.x;
+      })[0];
+    if (!agentChip) {
+      return {
+        ok: false,
+        reason: "agent chip not found",
+        bottomButtons: bottomButtons().slice(0, 12).map(({ el, rect, ...item }) => item),
+      };
+    }
+    agentChip.el.click();
+    await sleep(600);
+    const lowerOffLabels = offLabels.map((label) => String(label || "").toLowerCase());
+    const options = Array.from(document.querySelectorAll("button,[role='button'],[role='option']"))
+      .filter(visible)
+      .map((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          el,
+          text: textOf(el),
+          x: Math.round(rect.x + rect.width / 2),
+          y: Math.round(rect.y + rect.height / 2),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          distance: Math.abs((rect.x + rect.width / 2) - agentChip.x) + Math.abs((rect.y + rect.height / 2) - agentChip.y),
+        };
+      })
+      .filter((item) => lowerOffLabels.some((label) => item.text.toLowerCase().includes(label)))
+      .filter((item) => item.y > window.innerHeight * 0.45)
+      .sort((a, b) => a.distance - b.distance || a.y - b.y);
+    const offOption = options[0];
+    const postClickModelChip = bottomButtons()
+      .filter((item) => /Nano Banana|Imagen|Veo|crop_16_9|crop_9_16|1x/i.test(item.text))
+      .filter((item) => !/agent|agentic|\uc5d0\uc774\uc804\ud2b8|article_spark|request/i.test(item.text))
+      .sort((a, b) => b.width - a.width || a.x - b.x)[0];
+    if (!offOption && postClickModelChip) {
+      const { el, ...agentChipInfo } = agentChip;
+      const { el: modelEl, ...postClickModelChipInfo } = postClickModelChip;
+      return {
+        ok: true,
+        agentModeOff: true,
+        reason: "agent selector clicked and model chip became active",
+        agentChip: agentChipInfo,
+        postClickModelChip: postClickModelChipInfo,
+      };
+    }
+    if (!offOption) {
+      return {
+        ok: false,
+        reason: "agent off option not found",
+        agentChip: (({ el, rect, ...item }) => item)(agentChip),
+        visibleOptions: Array.from(document.querySelectorAll("button,[role='button'],[role='option']"))
+          .filter(visible)
+          .map((el) => {
+            const rect = el.getBoundingClientRect();
+            return {
+              text: textOf(el),
+              x: Math.round(rect.x + rect.width / 2),
+              y: Math.round(rect.y + rect.height / 2),
+              width: Math.round(rect.width),
+              height: Math.round(rect.height),
+            };
+          })
+          .filter((item) => item.y > window.innerHeight * 0.45)
+          .slice(0, 20),
+      };
+    }
+    offOption.el.click();
+    await sleep(600);
+    const { el, ...agentChipInfo } = agentChip;
+    const { el: offEl, ...offOptionInfo } = offOption;
+    return {
+      ok: true,
+      agentModeOff: true,
+      agentChip: agentChipInfo,
+      offOption: offOptionInfo,
+    };
+  }, { offLabels: LABELS.agentOff });
   const findBottomGeneratorChip = () => page.evaluate((classifierSource) => {
     try {
       const {
@@ -367,8 +495,46 @@ async function configureFlowGenerator(page, config) {
     }
     return match;
   };
+  const chipMatchesConfig = (label = "") => {
+    const text = String(label || "");
+    const modelOk = !config.generatorLabels?.length || config.generatorLabels.some((label) => text.toLowerCase().includes(String(label).toLowerCase()));
+    const aspectOk = !config.aspectLabels?.length || config.aspectLabels.some((label) => text.toLowerCase().includes(String(label).toLowerCase()));
+    const countOk = !config.countRequired || /1x/i.test(text);
+    const modeOk = config.requestedOutputMode !== "image" || /Nano Banana|Imagen|image|\uc774\ubbf8\uc9c0/i.test(text);
+    return modelOk && aspectOk && countOk && modeOk;
+  };
 
   const results = [];
+  if (config.agentModeOffRequired) {
+    results.push(await disableAgentMode());
+    await delay(500);
+  }
+  const initialChip = await findBottomGeneratorChip();
+  results.push(initialChip);
+  if (initialChip.ok && chipMatchesConfig(initialChip.text)) {
+    const menuClosed = await closeFlowGeneratorMenu(page);
+    const selectedModelResult = initialChip.ok && /Nano Banana|Imagen/i.test(initialChip.text || "") ? initialChip : null;
+    const selectedAspectResult = initialChip.ok && /16:9|9:16|crop_16_9|crop_9_16/i.test(initialChip.text || "") ? initialChip : null;
+    const selectedCountResult = initialChip.ok && /1x/i.test(initialChip.text || "") ? initialChip : null;
+    const criticalResults = results.filter((item) => !item.optional);
+    return {
+      ok: criticalResults.every((item) => item.ok) && menuClosed.ok,
+      requestedOutputMode: config.requestedOutputMode,
+      requestedImageModel: config.requestedImageModel || "",
+      selectedOutputMode: config.requestedOutputMode,
+      selectedImageModelLabel: selectedModelResult?.text || "",
+      selectedAspectLabel: selectedAspectResult?.text || "",
+      selectedCountLabel: selectedCountResult?.text || "",
+      settingsPanelApplied: false,
+      bottomChipApplied: true,
+      saved: false,
+      menuClosed,
+      results,
+      selectedChip: initialChip.selectedChip,
+      rejectedChipReasons: initialChip.rejectedChipReasons || [],
+      summary: await pageSummary(),
+    };
+  }
   results.push(await openBottomGeneratorChip());
   const agentSettingsPanelOpen = await isAgentSettingsPanelOpen();
   if (agentSettingsPanelOpen) {
@@ -414,7 +580,7 @@ async function configureFlowGenerator(page, config) {
   await delay(300);
 
   if (!agentSettingsPanelOpen) results.push(await openBottomGeneratorChip());
-  results.push(await clickMatch(config.countLabels, { ...scoped, exact: true, optional: true }));
+  results.push(await clickMatch(config.countLabels, { ...scoped, exact: true, optional: !config.countRequired }));
   const saveResult = await clickSave();
   results.push({ ...saveResult, saveSettings: true });
   if (!saveResult.ok) await page.keyboard.press("Escape").catch(() => {});
@@ -422,9 +588,16 @@ async function configureFlowGenerator(page, config) {
   const menuClosed = await closeFlowGeneratorMenu(page);
 
   const criticalResults = results.filter((item) => !item.optional);
+  const selectedModelResult = [...results].reverse().find((item) => item.ok && /Nano Banana|Imagen/i.test(item.text || ""));
+  const selectedAspectResult = results.find((item) => item.ok && /16:9|9:16|crop_16_9|crop_9_16/i.test(item.text || ""));
+  const selectedCountResult = results.find((item) => item.ok && /1x|1\s*(?:\uc7a5|image)/i.test(item.text || ""));
   return {
     ok: criticalResults.every((item) => item.ok) && menuClosed.ok,
     requestedOutputMode: config.requestedOutputMode,
+    requestedImageModel: config.requestedImageModel || "",
+    selectedImageModelLabel: selectedModelResult?.text || "",
+    selectedAspectLabel: selectedAspectResult?.text || "",
+    selectedCountLabel: selectedCountResult?.text || "",
     settingsPanelApplied: true,
     saved: saveResult.ok,
     menuClosed,

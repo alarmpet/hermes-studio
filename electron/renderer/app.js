@@ -72,6 +72,8 @@ const transitionPreset = document.querySelector("#transitionPreset");
 const transitionSeconds = document.querySelector("#transitionSeconds");
 const renderEffectPreview = document.querySelector("#renderEffectPreview");
 const flowOutputModeHint = document.querySelector("#flowOutputModeHint");
+const flowImageModel = document.querySelector("#flowImageModel");
+const rejectPaidFlowCredits = document.querySelector("#rejectPaidFlowCredits");
 const videoFormatHint = document.querySelector("#videoFormatHint");
 const autoLandscapeLongform = document.querySelector("#autoLandscapeLongform");
 const aspectRatioHint = document.querySelector("#aspectRatioHint");
@@ -316,6 +318,8 @@ function readJobInput() {
     scriptStructure: getSourceType() === "script" ? "direct-script" : "hpsl",
     sceneStrategy: "sentence-proportional",
     flowOutputMode: getFlowOutputMode(),
+    flowImageModel: flowImageModel?.value || "nano-banana-pro",
+    rejectPaidFlowCredits: rejectPaidFlowCredits?.checked !== false,
     flowAccountRoutingEnabled: Boolean(flowAccountRoutingEnabled?.checked),
     flowAccountBatchSize: Math.max(1, Math.min(60, Math.round(Number(flowAccountBatchSize?.value || 30)))),
     flowAccountMinSubmitGapMs: 60_000,

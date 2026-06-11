@@ -242,7 +242,7 @@ async function visiblePage(context) {
   return existing || context.newPage();
 }
 
-async function ensureFlowProject(page) {
+export async function ensureFlowProject(page) {
   await page.goto(GOOGLE_FLOW_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
   await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
 
@@ -264,6 +264,7 @@ async function ensureFlowProject(page) {
         return !el.disabled && style.display !== "none" && style.visibility !== "hidden" && rect.width > 8 && rect.height > 8;
       };
       const words = [
+        "add_2",
         "new project",
         "create project",
         "get started",
@@ -325,7 +326,7 @@ async function dismissFlowBlockingNotices(page) {
   }).catch((error) => ({ dismissed: false, reason: error?.message || String(error) }));
 }
 
-async function waitForFlowGeneratorReady(page, jobDir, sceneOrder) {
+export async function waitForFlowGeneratorReady(page, jobDir, sceneOrder) {
   let lastState = null;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const noticeState = await dismissFlowBlockingNotices(page);
@@ -991,6 +992,7 @@ async function probeFlowGenerationConfirmationState(page) {
     return {
       open,
       approvalVisible,
+      paidCreditVisible,
       target: candidates[0] || null,
       candidates: candidates.slice(0, 5),
     };
@@ -999,6 +1001,7 @@ async function probeFlowGenerationConfirmationState(page) {
 
 async function approveFlowGenerationConfirmation(page) {
   let state = await probeFlowGenerationConfirmationState(page);
+  if (state.paidCreditVisible) return { approved: false, reason: "paid-credit-confirmation-not-approved", state };
   if (!state.open) return { approved: false, reason: "no-generation-confirmation", state };
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     const target = state.target;
@@ -1006,6 +1009,7 @@ async function approveFlowGenerationConfirmation(page) {
     await page.mouse.click(target.x, target.y).catch(() => {});
     await delay(900);
     const after = await probeFlowGenerationConfirmationState(page);
+    if (after.paidCreditVisible) return { approved: false, reason: "paid-credit-confirmation-not-approved", state: after };
     if (!after.open || !after.approvalVisible) {
       return {
         approved: true,
@@ -1083,11 +1087,114 @@ async function rejectFlowVideoCreditConfirmation(page) {
   return state;
 }
 
+async function rejectPaidFlowCreditConfirmation(page) {
+  const state = await page.evaluate(() => {
+    const bodyText = document.body?.innerText || "";
+    const paidCreditOpen = /(\ud06c\ub808\ub527|credit).*(\uc0ac\uc6a9|use)|(\uc0dd\uc131|generation).*(\ud06c\ub808\ub527|credit)|15\uac1c|15\s*credits/i.test(bodyText);
+    if (!paidCreditOpen) return { open: false, rejected: false, reason: "no-paid-credit-confirmation" };
+    const visible = (el) => {
+      const style = getComputedStyle(el);
+      const rect = el.getBoundingClientRect();
+      return !el.disabled
+        && el.getAttribute("aria-disabled") !== "true"
+        && style.visibility !== "hidden"
+        && style.display !== "none"
+        && rect.width > 8
+        && rect.height > 8;
+    };
+    const textOf = (el) => [
+      el.innerText,
+      el.textContent,
+      el.getAttribute("aria-label"),
+      el.getAttribute("title"),
+    ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const candidates = Array.from(document.querySelectorAll("button,[role='button']"))
+      .filter(visible)
+      .map((el) => {
+        const rect = el.getBoundingClientRect();
+        return {
+          el,
+          text: textOf(el),
+          x: Math.round(rect.x + rect.width / 2),
+          y: Math.round(rect.y + rect.height / 2),
+          width: Math.round(rect.width),
+          height: Math.round(rect.height),
+          inRightPanel: viewportWidth ? rect.x + rect.width / 2 > viewportWidth * 0.55 : true,
+          lowerPanel: viewportHeight ? rect.y + rect.height / 2 > viewportHeight * 0.55 : true,
+        };
+      })
+      .filter((item) => /(\uac70\ubd80|reject|decline|cancel)/i.test(item.text))
+      .sort((a, b) => {
+        const panelScore = (b.inRightPanel ? 1 : 0) - (a.inRightPanel ? 1 : 0);
+        const lowerScore = (b.lowerPanel ? 1 : 0) - (a.lowerPanel ? 1 : 0);
+        return panelScore || lowerScore || a.x - b.x || b.y - a.y;
+      });
+    const target = candidates[0];
+    if (!target) {
+      return {
+        open: true,
+        rejected: false,
+        reason: "reject-button-not-found",
+        bodyTail: bodyText.slice(-800),
+        candidates: candidates.slice(0, 5).map(({ el, ...item }) => item),
+      };
+    }
+    target.el.click();
+    const { el, ...targetInfo } = target;
+    return { open: true, rejected: true, target: targetInfo };
+  }).catch((error) => ({ open: false, rejected: false, reason: error?.message || String(error) }));
+  if (state.rejected) await delay(900);
+  return state;
+}
+
 async function verifyFlowSubmissionStarted(page, jobDir, sceneOrder, outputMode = "video", onProgress, accountSlotId = "default") {
   let lastState = null;
   for (let i = 0; i < 20; i += 1) {
     await delay(1000);
     lastState = await probeFlowSubmitState(page);
+    const paidCreditRejection = await rejectPaidFlowCreditConfirmation(page);
+    if (paidCreditRejection.rejected) {
+      const screenshotPath = join(jobDir, `scene_${sceneOrder}_flow_paid_credit_rejected.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true }).catch(() => {});
+      await writeFile(join(jobDir, `scene_${sceneOrder}_flow_paid_credit_rejected.json`), JSON.stringify({
+        ok: true,
+        outputMode,
+        accountSlotId,
+        rejection: paidCreditRejection,
+        screenshotPath,
+        updatedAt: new Date().toISOString(),
+      }, null, 2), "utf8").catch(() => {});
+      onProgress?.({
+        message: `Scene ${sceneOrder} Flow paid credit confirmation was rejected; Hermes will not spend credits automatically.`,
+        details: {
+          eventType: "flow-paid-credit-rejected",
+          failureCode: "FLOW_PAID_CREDIT_CONFIRMATION_REJECTED",
+          sceneOrder,
+          outputMode,
+          accountSlotId,
+          screenshotPath,
+          rejection: paidCreditRejection,
+        },
+      });
+      const error = new Error(`FLOW_PAID_CREDIT_CONFIRMATION_REJECTED: Scene ${sceneOrder} generation requires paid credits and was rejected. Screenshot: ${screenshotPath}`);
+      error.failureCode = "FLOW_PAID_CREDIT_CONFIRMATION_REJECTED";
+      error.actionRequired = false;
+      error.retryable = true;
+      error.screenshotPath = screenshotPath;
+      error.details = {
+        failureCode: "FLOW_PAID_CREDIT_CONFIRMATION_REJECTED",
+        actionRequired: false,
+        retryable: true,
+        sceneOrder,
+        outputMode,
+        accountSlotId,
+        screenshotPath,
+        rejection: paidCreditRejection,
+      };
+      throw error;
+    }
     if (outputMode === "video") {
       const rejection = await rejectFlowVideoCreditConfirmation(page);
       if (rejection.rejected) {
@@ -1341,15 +1448,30 @@ function modeStateWithSpecificMenuFailure(modeState, outputMode, menuState) {
   };
 }
 
-function modeStateFromSavedSettingsPanel(modeState, outputMode) {
+function modeStateFromSavedSettingsPanel(modeState, outputMode, switchResult = {}) {
   if (modeState.selectedOutputMode !== "unknown" || modeState.generatorMenuOpen) return modeState;
+  const selectedImageModel = /Nano Banana Pro/i.test(switchResult.selectedImageModelLabel || "")
+    ? "nano-banana-pro"
+    : /Nano Banana 2/i.test(switchResult.selectedImageModelLabel || "")
+      ? "nano-banana-2"
+      : /Imagen/i.test(switchResult.selectedImageModelLabel || "")
+        ? "imagen"
+        : switchResult.requestedImageModel || modeState.selectedImageModel;
   return {
     ...modeState,
     selectedOutputMode: outputMode,
-    ok: true,
+    selectedImageModel,
+    selectedImageModelLabel: switchResult.selectedImageModelLabel || "",
+    selectedAspectRatio: /16:9/i.test(switchResult.selectedAspectLabel || "")
+      ? "16:9"
+      : /9:16/i.test(switchResult.selectedAspectLabel || "")
+        ? "9:16"
+        : modeState.selectedAspectRatio,
+    selectedCountLabel: switchResult.selectedCountLabel || "",
+    ok: Boolean(switchResult.ok),
     settingsPanelApplied: true,
-    saved: true,
-    reason: "Google Flow settings panel was applied and saved; the current Flow UI no longer exposes a separate video/image bottom chip after save.",
+    saved: Boolean(switchResult.saved),
+    reason: "Google Flow settings panel was applied and saved; verification is based on saved settings evidence.",
   };
 }
 
@@ -1536,7 +1658,7 @@ export async function generateGoogleFlowVideoFromPrompt({
       await ensureFlowProject(page);
       await dismissFlowCookieConsent(page);
       await waitForFlowGeneratorReady(page, jobDir, sceneOrder);
-      const retrySwitchResult = await configureFlowOutputMode(page, outputMode, aspectRatio);
+      const retrySwitchResult = await configureFlowOutputMode(page, outputMode, aspectRatio, jobOptions);
       const retryVerification = await verifyFlowOutputMode(page, outputMode, aspectRatio);
       await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_retry_verification.json`), JSON.stringify({
         retrySwitchResult,
@@ -1547,14 +1669,14 @@ export async function generateGoogleFlowVideoFromPrompt({
     };
     onProgress?.({ message: `장면 ${sceneOrder} Google Flow 설정을 확인하는 중입니다.` });
     onProgress?.({ message: `장면 ${sceneOrder} Google Flow ${outputMode === "image" ? "이미지" : "영상"} 설정을 확인하는 중입니다.`, details: { outputMode } });
-    const modeSwitchResult = await configureFlowOutputMode(page, outputMode, aspectRatio);
+    const modeSwitchResult = await configureFlowOutputMode(page, outputMode, aspectRatio, jobOptions);
     await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_switch.json`), JSON.stringify(modeSwitchResult, null, 2), "utf8");
     await page.screenshot({ path: join(jobDir, `scene_${sceneOrder}_flow_mode_after_click.png`), fullPage: true }).catch(() => {});
     const modeVerification = await verifyFlowOutputMode(page, outputMode, aspectRatio);
     await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_verification.json`), JSON.stringify(modeVerification, null, 2), "utf8");
     let finalModeSwitchResult = modeSwitchResult;
     let finalModeVerification = modeSwitchResult?.settingsPanelApplied && modeSwitchResult?.saved && modeVerification.selectedOutputMode === "unknown" && !modeVerification.generatorMenuOpen
-      ? modeStateFromSavedSettingsPanel(modeVerification, outputMode)
+      ? modeStateFromSavedSettingsPanel(modeVerification, outputMode, modeSwitchResult)
       : modeVerification;
     if (!finalModeSwitchResult.ok || !finalModeVerification.ok) {
       const retryResult = await retryFlowOutputModeAfterReload({
@@ -1569,7 +1691,7 @@ export async function generateGoogleFlowVideoFromPrompt({
       && finalModeVerification.selectedOutputMode === "unknown"
       && !finalModeVerification.generatorMenuOpen
     ) {
-      finalModeVerification = modeStateFromSavedSettingsPanel(finalModeVerification, outputMode);
+      finalModeVerification = modeStateFromSavedSettingsPanel(finalModeVerification, outputMode, finalModeSwitchResult);
     }
     if (
       finalModeSwitchResult?.settingsPanelApplied
@@ -1585,7 +1707,7 @@ export async function generateGoogleFlowVideoFromPrompt({
       }, null, 2), "utf8");
       const closedModeVerification = await verifyFlowOutputMode(page, outputMode, aspectRatio);
       await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_after_saved_panel_close_verification.json`), JSON.stringify(closedModeVerification, null, 2), "utf8");
-      finalModeVerification = modeStateFromSavedSettingsPanel(closedModeVerification, outputMode);
+      finalModeVerification = modeStateFromSavedSettingsPanel(closedModeVerification, outputMode, finalModeSwitchResult);
     }
     const modeSelectionMatches = finalModeVerification.selectedOutputMode === outputMode
       && (outputMode !== "image" || finalModeVerification.selectedImageModel !== "unknown");
@@ -1600,6 +1722,39 @@ export async function generateGoogleFlowVideoFromPrompt({
       const closedModeVerification = await verifyFlowOutputMode(page, outputMode, aspectRatio);
       await writeFile(join(jobDir, `scene_${sceneOrder}_flow_mode_after_menu_close_verification.json`), JSON.stringify(closedModeVerification, null, 2), "utf8");
       finalModeVerification = modeStateWithSpecificMenuFailure(closedModeVerification, outputMode, menuState);
+    }
+    if (!finalModeSwitchResult.ok) {
+      finalModeVerification = {
+        ...finalModeVerification,
+        ok: false,
+        failureCode: "FLOW_OUTPUT_SETTINGS_NOT_CONFIRMED",
+        reason: "Google Flow settings were not fully confirmed before submit.",
+        modeSwitchResult: finalModeSwitchResult,
+      };
+    }
+    if (outputMode === "image" && finalModeVerification.ok) {
+      const requestedImageModel = jobOptions?.flowImageModel || "nano-banana-pro";
+      const imageModelMatches = finalModeVerification.selectedImageModel === requestedImageModel;
+      const aspectMatches = finalModeVerification.selectedAspectRatio === aspectRatio;
+      const countMatches = /1x|1\s*(?:\uc7a5|image)|single/i.test(finalModeVerification.selectedCountLabel || "");
+      if (!imageModelMatches || !aspectMatches || !countMatches) {
+        finalModeVerification = {
+          ...finalModeVerification,
+          ok: false,
+          failureCode: "FLOW_IMAGE_SETTINGS_MISMATCH",
+          reason: "Google Flow image settings did not match the requested model, aspect ratio, and 1x count.",
+          imageSettingsCheck: {
+            requestedImageModel,
+            selectedImageModel: finalModeVerification.selectedImageModel,
+            requestedAspectRatio: aspectRatio,
+            selectedAspectRatio: finalModeVerification.selectedAspectRatio,
+            selectedCountLabel: finalModeVerification.selectedCountLabel || "",
+            imageModelMatches,
+            aspectMatches,
+            countMatches,
+          },
+        };
+      }
     }
     if (!finalModeVerification.ok) {
       const mismatchPath = join(jobDir, `scene_${sceneOrder}_flow_mode_mismatch.png`);
@@ -1636,6 +1791,14 @@ export async function generateGoogleFlowVideoFromPrompt({
       };
       throw error;
     }
+    await writeFile(join(jobDir, `scene_${sceneOrder}_flow_effective_settings.json`), JSON.stringify({
+      requestedOutputMode: outputMode,
+      requestedAspectRatio: aspectRatio,
+      requestedImageModel: jobOptions?.flowImageModel || "",
+      modeSwitchResult: finalModeSwitchResult,
+      modeVerification: finalModeVerification,
+      updatedAt: new Date().toISOString(),
+    }, null, 2), "utf8").catch(() => {});
     await page.keyboard.press("Escape").catch(() => {});
     await delay(250);
     const viewport = page.viewportSize?.() || await ensureLargeViewport(page);
@@ -1746,7 +1909,7 @@ export async function generateGoogleFlowVideoFromPrompt({
       await waitForFlowGeneratorReady(page, jobDir, sceneOrder);
 
       // Re-configure output mode
-      await configureFlowOutputMode(page, outputMode, aspectRatio);
+      await configureFlowOutputMode(page, outputMode, aspectRatio, jobOptions);
       await verifyFlowOutputMode(page, outputMode, aspectRatio);
 
       // Submit prompt again
@@ -1809,7 +1972,7 @@ export async function generateGoogleFlowVideoFromPrompt({
 
       await ensureFlowProject(page);
       await waitForFlowGeneratorReady(page, jobDir, sceneOrder);
-      await configureFlowOutputMode(page, outputMode, aspectRatio);
+      await configureFlowOutputMode(page, outputMode, aspectRatio, jobOptions);
       await verifyFlowOutputMode(page, outputMode, aspectRatio);
 
       deadline = extendFlowDeadlineForPolicyRetry({ timeoutMs });

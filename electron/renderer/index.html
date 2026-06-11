@@ -242,6 +242,16 @@
                   <label><input type="radio" name="flowOutputMode" value="hybrid" checked><span>Hybrid</span></label>
                 </div>
                 <div id="flowOutputModeHint" class="preset-preview"></div>
+                <label for="flowImageModel">Flow image model</label>
+                <select id="flowImageModel">
+                  <option value="nano-banana-pro" selected>Nano Banana Pro</option>
+                  <option value="nano-banana-2">Nano Banana 2</option>
+                  <option value="imagen">Imagen 4</option>
+                </select>
+                <label class="checkbox-line" title="Hermes will never approve paid Flow credit confirmations automatically.">
+                  <input id="rejectPaidFlowCredits" type="checkbox" checked disabled>
+                  Reject paid Flow credit confirmations
+                </label>
                 <div id="hybridFlowControls" class="hybrid-controls" hidden>
                   <label for="hybridIntroVideoSceneCount">Opening video scenes</label>
                   <input id="hybridIntroVideoSceneCount" type="number" min="0" max="10" value="1">

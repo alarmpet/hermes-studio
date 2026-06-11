@@ -68,6 +68,8 @@ export const DEFAULT_YOUTUBE_JOB_OPTIONS = {
   useChatGptThumbnail: true,
   sendIntermediateMedia: false,
   flowOutputMode: "hybrid",
+  flowImageModel: "nano-banana-pro",
+  rejectPaidFlowCredits: true,
   flowAccountRoutingEnabled: false,
   flowAccountBatchSize: 30,
   flowAccountMinSubmitGapMs: 60_000,
@@ -271,6 +273,11 @@ export function normalizeYouTubeJobRequest(input = {}) {
   if (!["video", "image", "hybrid", "auto"].includes(options.flowOutputMode)) {
     throw new Error(`Unknown flowOutputMode: ${options.flowOutputMode}`);
   }
+  options.flowImageModel = String(options.flowImageModel || "nano-banana-pro").toLowerCase();
+  if (!["nano-banana-pro", "nano-banana-2", "imagen"].includes(options.flowImageModel)) {
+    options.flowImageModel = "nano-banana-pro";
+  }
+  options.rejectPaidFlowCredits = true;
   options.flowAccountSlots = normalizeJobFlowSlots(options.flowAccountSlots);
   options.flowAccountRoutingEnabled = options.videoFormat === "longform"
     && Boolean(options.flowAccountRoutingEnabled)
