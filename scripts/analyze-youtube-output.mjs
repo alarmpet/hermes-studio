@@ -676,9 +676,17 @@ export function analyzeYouTubeOutput(jobDirInput) {
       .map((item) => item.order);
     details.localFallbackImageScenes = fallbackSceneOrders;
     details.localFallbackImageSceneStates = localFallbackImageScenes;
+    const localFallbackAllowed = Boolean(
+      job?.options?.allowLiveImagePlaceholderFallback
+      || job?.options?.mockMediaMode
+      || job?.options?.allowLocalFallbackFinal
+    );
+    if (!localFallbackAllowed) {
+      failureCodes.push(placeholderSceneOrders.length ? "FLOW_IMAGE_LOCAL_PLACEHOLDER" : "FLOW_IMAGE_LOCAL_FALLBACK");
+    }
     qualityWarnings.push({
       code: placeholderSceneOrders.length ? "FLOW_IMAGE_LOCAL_PLACEHOLDER" : "FLOW_IMAGE_LOCAL_FALLBACK",
-      severity: "warning",
+      severity: localFallbackAllowed ? "warning" : "error",
       message: placeholderSceneOrders.length
         ? "One or more image scenes used placeholder local fallback after Google Flow did not expose media."
         : "One or more scenes used local image-motion fallback after Google Flow did not expose media.",

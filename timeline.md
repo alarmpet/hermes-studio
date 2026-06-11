@@ -473,3 +473,12 @@
 - Regenerated scenes 1-20 for `youtube-1781143494178`, rendered `desktop-resume-flow-1781151152676.mp4`, and extracted `final_sample_15s.png` to confirm visible artwork and subtitles in the final MP4.
 - Repacked the Electron app and verified the desktop shortcut launcher resolves to the updated `dist-electron\\win-unpacked\\Hermes YouTube Studio.exe`.
 - Verification: `node --check youtube-workflow-stages.mjs`, `node --check scripts/analyze-youtube-output.mjs`, `node --check scripts/resume-youtube-job-from-assets.mjs`, `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `npm.cmd run check:final-output-qa`, `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781143494178"`, `node scripts/check-final-output-black-frame-qa.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781143494178\\desktop-resume-flow-1781151152676.mp4"`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.
+
+## 2026-06-11 - Fix - Block unapproved local Flow fallback finals
+
+- Investigated desktop job `youtube-1781155854425` and found all 20 scenes were rendered from `scene_N_flow_image_local_fallback.json` local stickman motion assets, not Google Flow media.
+- Confirmed the Flow screenshots/status files showed `FLOW_GENERATION_FAILED` before media exposure for every checked scene; the app then auto-accepted local fallback because provider-exhausted image failures were treated as recoverable for live jobs.
+- Removed the provider-exhausted auto-allow path and the video-to-image forced fallback override so live Flow image failures now stop with `FLOW_IMAGE_MEDIA_REQUIRED` unless local fallback is explicitly enabled or Mock Media Mode is active.
+- Changed final output QA so unapproved local fallback scenes are an error (`FLOW_IMAGE_LOCAL_FALLBACK`) instead of a warning; the existing `youtube-1781155854425` final now analyzes as `ok:false`.
+- Repacked the Electron app and verified the desktop shortcut launcher resolves to the updated packaged executable.
+- Verification: `npm.cmd run check:flow-policy-safety`, `npm.cmd run check:flow-output-mode`, `npm.cmd run check:final-output-qa`, `node scripts/analyze-youtube-output.mjs "%APPDATA%\\hermes\\outputs\\desktop\\youtube-1781155854425"` expected failure with `FLOW_IMAGE_LOCAL_FALLBACK`, `npm.cmd run electron:pack`, `node scripts/check-packaged-runtime-contract.mjs`, `powershell -ExecutionPolicy Bypass -File scripts/check-shortcut.ps1`.

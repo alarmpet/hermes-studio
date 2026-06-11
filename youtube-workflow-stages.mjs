@@ -400,7 +400,7 @@ export async function generateSceneMedia({ job, scene, jobDir }, context = {}) {
           scene,
           job,
           jobDir,
-          context: { ...mediaContext, allowLiveImagePlaceholderFallback: true },
+          context: mediaContext,
           jobFlowOutputMode,
           hybridIntroVideoSceneCount,
         });
@@ -619,25 +619,23 @@ async function handleFlowImageSceneFailure({
     || /FLOW_GENERATION_FAILED|FLOW_GENERATION_STALLED|FLOW_GENERATION_CANCELLED|no-new-image-url|Flow did not expose a new image URL|flow-submit-did-not-start|Google Flow did not start generation/i.test(message)
   );
   if (!recoverableImageFailure) throw error;
-  const flowImageProviderExhausted = ["FLOW_GENERATION_FAILED", "FLOW_GENERATION_STALLED", "FLOW_GENERATION_CANCELLED"].includes(error?.failureCode)
-    || /FLOW_GENERATION_FAILED|FLOW_GENERATION_STALLED|FLOW_GENERATION_CANCELLED/i.test(message);
-
   const allowLiveImagePlaceholderFallback = Boolean(
     context.allowLiveImagePlaceholderFallback
-    || flowImageProviderExhausted
+    || job?.options?.allowLiveImagePlaceholderFallback
     || job?.options?.mockMediaMode
     || context.job?.options?.mockMediaMode
     || context.mockMediaMode
   );
   if (!allowLiveImagePlaceholderFallback) {
-    const failure = new Error(`FLOW_IMAGE_SUBMIT_DID_NOT_START: Scene ${scene.order} Flow image generation stayed idle after submit. Screenshot or retry diagnostics are available in the job folder.`);
+    const failure = new Error(`FLOW_IMAGE_MEDIA_REQUIRED: Scene ${scene.order} Google Flow did not expose usable media, and local fallback is disabled for live jobs. Retry Flow generation before final render.`);
     Object.assign(failure, {
-      failureCode: "FLOW_IMAGE_SUBMIT_DID_NOT_START",
+      failureCode: "FLOW_IMAGE_MEDIA_REQUIRED",
       actionRequired: true,
       details: {
       sceneOrder: scene.order,
       flowOutputMode: jobFlowOutputMode,
       sceneOutputMode: outputMode,
+      originalFailureCode: error?.failureCode || "",
       originalError: message,
       },
     });

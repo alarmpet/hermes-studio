@@ -25,12 +25,12 @@ assert.doesNotMatch(
 assert.match(
   stages,
   /handleFlowImageSceneFailure/,
-  "Scene media generation should route Flow image no-media failures through a non-fatal fallback",
+  "Scene media generation should route Flow image no-media failures through a centralized policy gate",
 );
 assert.match(
   stages,
   /generateMockMedia\(\{\s*scene,\s*jobDir\s*\},\s*context\s*\)/s,
-  "Flow image fallback should reuse the local image-scene mock renderer rather than failing the whole job",
+  "Explicitly allowed Flow image fallback should reuse the local image-scene mock renderer",
 );
 assert.match(
   stages,
@@ -39,18 +39,18 @@ assert.match(
 );
 assert.match(
   stages,
-  /allowLiveImagePlaceholderFallback:\s*true/,
-  "video-to-image fallback should recover through local image-motion rendering if Flow image also fails",
+  /FLOW_IMAGE_MEDIA_REQUIRED/,
+  "Live Flow image failures should stop with an action-required media-required error when local fallback is disabled",
 );
-assert.match(
+assert.doesNotMatch(
   stages,
   /flowImageProviderExhausted/,
-  "direct Flow image scenes should continue through local image-motion fallback after retryable provider failures",
+  "Provider-exhausted Flow failures must not automatically allow local fallback in live jobs",
 );
-assert.match(
+assert.doesNotMatch(
   stages,
   /context\.allowLiveImagePlaceholderFallback[\s\S]*flowImageProviderExhausted[\s\S]*job\?\.options\?\.mockMediaMode/,
-  "provider-exhausted image fallback should be explicit and separate from mock mode",
+  "Provider-exhausted fallback must not be part of the live fallback allow-list",
 );
 assert.match(
   stages,

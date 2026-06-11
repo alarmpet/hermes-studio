@@ -9,28 +9,33 @@ const analyzer = readFileSync(resolve(root, "scripts/analyze-youtube-output.mjs"
 
 assert.match(
   stages,
-  /FLOW_IMAGE_SUBMIT_DID_NOT_START/,
-  "Flow image submit failures should have a specific failure code, not only generic no-media fallback",
+  /FLOW_IMAGE_MEDIA_REQUIRED/,
+  "Flow image failures should have a specific media-required code, not silently produce local fallback media",
 );
 assert.match(
   stages,
   /actionRequired:\s*true|throw new Error/,
   "Live Flow image submit failures must not silently produce production placeholder scenes",
 );
+assert.doesNotMatch(
+  stages,
+  /\|\|\s*flowImageProviderExhausted/,
+  "Retryable provider failures must not automatically opt live jobs into local fallback final media",
+);
 assert.match(
   analyzer,
   /FLOW_IMAGE_LOCAL_PLACEHOLDER/,
   "Output analyzer should warn about local fallback image scenes in live jobs",
 );
-assert.doesNotMatch(
+assert.match(
   analyzer,
-  /failureCodes\.push\("FLOW_IMAGE_LOCAL_PLACEHOLDER"\)/,
-  "Local Flow fallback should not hard-fail an otherwise valid final render",
+  /failureCodes\.push\(placeholderSceneOrders\.length \? "FLOW_IMAGE_LOCAL_PLACEHOLDER" : "FLOW_IMAGE_LOCAL_FALLBACK"\)/,
+  "Unapproved local Flow fallback should hard-fail final QA in live jobs",
 );
 assert.match(
   analyzer,
-  /severity:\s*"warning"/,
-  "Local Flow fallback should remain visible as a warning",
+  /severity:\s*localFallbackAllowed \? "warning" : "error"/,
+  "Local Flow fallback should be an error unless explicitly allowed",
 );
 assert.match(
   analyzer,

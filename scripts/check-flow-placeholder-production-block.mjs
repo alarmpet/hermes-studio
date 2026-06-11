@@ -9,8 +9,9 @@ const analyzer = readFileSync(resolve(root, "scripts/analyze-youtube-output.mjs"
 
 assert.match(stages, /allowLiveImagePlaceholderFallback/, "Live placeholder fallback should require an explicit opt-in flag");
 assert.match(stages, /job\?\.options\?\.mockMediaMode[\s\S]*context\.mockMediaMode/, "Production fallback block must still allow Mock Media Mode fallback");
-assert.match(stages, /FLOW_IMAGE_SUBMIT_DID_NOT_START/, "Image submit failures should retain a specific failure code");
+assert.match(stages, /FLOW_IMAGE_MEDIA_REQUIRED/, "Live image failures should stop instead of silently rendering local fallback media");
 assert.match(stages, /actionRequired:\s*true/, "Image submit failures should surface user action when live fallback is not allowed");
+assert.doesNotMatch(stages, /\|\|\s*flowImageProviderExhausted/, "Provider failures must not auto-enable local fallback for live jobs");
 assert.match(analyzer, /FLOW_IMAGE_LOCAL_PLACEHOLDER/, "Analyzer should flag local placeholder images");
 assert.match(analyzer, /localFallbackImageScenes/, "Analyzer should summarize local fallback image scene orders");
 
